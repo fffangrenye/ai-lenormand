@@ -44,7 +44,9 @@ function LoginClient() {
           <form onSubmit={handleSubmit} className="w-full rounded-[6px] border border-ink/10 bg-[#FFFDF8]/86 p-6 shadow-paper">
             <p className="text-[12px] uppercase tracking-[0.2em] text-clay/70">Deep Reading</p>
             <h1 className="mt-4 font-serif text-[32px] leading-[1.05] text-ink">登录后进入你的故事</h1>
-            <p className="mt-4 text-[14px] leading-6 text-ink/58">当前原型使用邮箱创建本地会话，方便预览项目创建、切换和保存。</p>
+            <p className="mt-4 text-[14px] leading-6 text-ink/58">
+              登录后可以用项目制持续提问，保存过往记忆，并结合上下文解读你内心的困惑。抽牌后，也可以围绕这次牌面继续追问。
+            </p>
 
             <label className="mt-8 block text-[13px] text-ink/62" htmlFor="email">
               邮箱
