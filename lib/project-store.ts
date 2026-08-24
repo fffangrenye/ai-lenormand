@@ -65,13 +65,7 @@ export type DeepQuota = {
   used: number;
   limit: number;
   remaining: number;
-};
-
-type UserQuotaUsage = {
-  userEmail: string;
-  deepReadingsUsed: number;
-  createdAt: string;
-  updatedAt: string;
+  resetLabel: string;
 };
 
 const SESSION_KEY = "ai-lenormand:auth-session";
@@ -79,13 +73,12 @@ const PROJECTS_KEY = "ai-lenormand:deep-projects";
 const READINGS_KEY = "ai-lenormand:deep-readings";
 const READING_CARDS_KEY = "ai-lenormand:deep-reading-cards";
 const FOLLOW_UP_MESSAGES_KEY = "ai-lenormand:deep-follow-up-messages";
-const QUOTA_USAGE_KEY = "ai-lenormand:quota-usage";
 export const FREE_DEEP_READING_LIMIT = 5;
-export const FREE_FOLLOW_UP_LIMIT = 3;
+export const FREE_FOLLOW_UP_LIMIT = 10;
 const FOLLOW_UP_FAILURE_MESSAGE = "这次追问暂时没有生成成功。你的问题已经保留，可以稍后再问一次。";
 
 export class QuotaExceededError extends Error {
-  constructor(message = "免费额度已用完，充值功能即将开放。") {
+  constructor(message = "今日免费额度已用完，明天 00:00 后刷新。") {
     super(message);
     this.name = "QuotaExceededError";
   }
@@ -97,6 +90,25 @@ function canUseStorage() {
 
 function now() {
   return new Date().toISOString();
+}
+
+function getBeijingDateKey(value: string | Date = new Date()) {
+  const date = typeof value === "string" ? new Date(value) : value;
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(date);
+}
+
+function emptyQuota(limit: number): DeepQuota {
+  return {
+    used: 0,
+    limit,
+    remaining: 0,
+    resetLabel: "北京时间 00:00"
+  };
 }
 
 function newId() {
@@ -172,67 +184,47 @@ function writeAllFollowUpMessages(messages: FollowUpMessage[]) {
   window.localStorage.setItem(FOLLOW_UP_MESSAGES_KEY, JSON.stringify(messages));
 }
 
-function readAllQuotaUsage(): UserQuotaUsage[] {
-  if (!canUseStorage()) return [];
-
-  try {
-    const raw = window.localStorage.getItem(QUOTA_USAGE_KEY);
-    return raw ? (JSON.parse(raw) as UserQuotaUsage[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeAllQuotaUsage(usages: UserQuotaUsage[]) {
-  if (!canUseStorage()) return;
-  window.localStorage.setItem(QUOTA_USAGE_KEY, JSON.stringify(usages));
-}
-
 function writeAllProjects(projects: DeepProject[]) {
   if (!canUseStorage()) return;
   window.localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects));
 }
 
-function getOrCreateQuotaUsage(userEmail: string) {
-  const usages = readAllQuotaUsage();
-  const existing = usages.find((usage) => usage.userEmail === userEmail);
-  if (existing) return existing;
-
-  const timestamp = now();
-  const usage: UserQuotaUsage = {
-    userEmail,
-    deepReadingsUsed: 0,
-    createdAt: timestamp,
-    updatedAt: timestamp
-  };
-
-  writeAllQuotaUsage([...usages, usage]);
-  return usage;
-}
-
 export function getDeepReadingQuota(): DeepQuota {
   const session = getSession();
-  if (!session) return { used: 0, limit: FREE_DEEP_READING_LIMIT, remaining: 0 };
+  if (!session) return emptyQuota(FREE_DEEP_READING_LIMIT);
 
-  const used = Math.min(readAllReadings().filter((reading) => reading.userEmail === session.email && reading.status === "completed").length, FREE_DEEP_READING_LIMIT);
+  const todayKey = getBeijingDateKey();
+  const used = Math.min(
+    readAllReadings().filter(
+      (reading) => reading.userEmail === session.email && reading.status === "completed" && reading.completedAt && getBeijingDateKey(reading.completedAt) === todayKey
+    ).length,
+    FREE_DEEP_READING_LIMIT
+  );
   return {
     used,
     limit: FREE_DEEP_READING_LIMIT,
-    remaining: Math.max(FREE_DEEP_READING_LIMIT - used, 0)
+    remaining: Math.max(FREE_DEEP_READING_LIMIT - used, 0),
+    resetLabel: "北京时间 00:00"
   };
 }
 
 export function getFollowUpQuota(readingId: string): DeepQuota {
   const session = getSession();
-  if (!session) return { used: 0, limit: FREE_FOLLOW_UP_LIMIT, remaining: 0 };
+  if (!session) return emptyQuota(FREE_FOLLOW_UP_LIMIT);
 
+  const todayKey = getBeijingDateKey();
   const used = readAllFollowUpMessages().filter(
-    (message) => message.userEmail === session.email && message.readingId === readingId && message.role === "assistant" && message.content !== FOLLOW_UP_FAILURE_MESSAGE
+    (message) =>
+      message.userEmail === session.email &&
+      message.role === "assistant" &&
+      message.content !== FOLLOW_UP_FAILURE_MESSAGE &&
+      getBeijingDateKey(message.createdAt) === todayKey
   ).length;
   return {
     used,
     limit: FREE_FOLLOW_UP_LIMIT,
-    remaining: Math.max(FREE_FOLLOW_UP_LIMIT - used, 0)
+    remaining: Math.max(FREE_FOLLOW_UP_LIMIT - used, 0),
+    resetLabel: "北京时间 00:00"
   };
 }
 
@@ -532,7 +524,7 @@ export async function generateDeepReading(readingId: string) {
   const quota = getDeepReadingQuota();
   if (quota.remaining <= 0) {
     limitReadingToCardsOnly(readingId);
-    throw new QuotaExceededError("免费 AI 深度解读次数已用完，充值功能即将开放。");
+    throw new QuotaExceededError("今日免费 AI 深度解读次数已用完。你仍可以抽牌和保存牌面，明天 00:00 后刷新。");
   }
 
   updateReadingStatus(readingId, "generating");
@@ -602,7 +594,7 @@ export async function sendFollowUpMessage(input: { readingId: string; content: s
   if (!trimmed) throw new Error("Message is empty");
   const followUpQuota = getFollowUpQuota(reading.id);
   if (followUpQuota.remaining <= 0) {
-    throw new QuotaExceededError("这次解读的 3 次免费追问已用完，充值功能即将开放。");
+    throw new QuotaExceededError("今日 10 次免费追问已用完，明天 00:00 后刷新。");
   }
 
   const userMessage: FollowUpMessage = {

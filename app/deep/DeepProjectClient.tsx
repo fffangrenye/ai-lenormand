@@ -501,8 +501,9 @@ function QuotaNotice({ quota, message }: { quota: DeepQuota; message?: string })
       <div className="rounded-[6px] border border-ink/8 bg-[#FFFDF8]/72 px-4 py-3">
         <div className="flex items-center justify-between gap-3">
           <div>
-            <p className="text-[12px] uppercase tracking-[0.17em] text-clay/64">Free Trial</p>
-            <p className="mt-1 text-[13px] leading-5 text-ink/50">AI 深度解读免费剩余 {quota.remaining}/{quota.limit} 次。用完后仍可抽牌和保存牌面。</p>
+            <p className="text-[12px] uppercase tracking-[0.17em] text-clay/64">Daily Free</p>
+            <p className="mt-1 text-[13px] leading-5 text-ink/50">今日 AI 深度解读剩余 {quota.remaining}/{quota.limit} 次。用完后仍可抽牌和保存牌面。</p>
+            <p className="mt-1 text-[12px] leading-5 text-ink/36">每日 {quota.resetLabel} 后刷新。</p>
           </div>
           <span className="shrink-0 rounded-full border border-ink/10 bg-ivory/70 px-3 py-1 text-[12px] text-ink/46">{quota.used}/{quota.limit}</span>
         </div>
@@ -783,7 +784,7 @@ function ReadingChapter({ reading }: { reading: ReadingWithCards }) {
           {reading.status === "failed"
             ? "这次解读暂时没有生成成功，但你的问题和抽到的牌已经保留。"
             : reading.status === "quota_limited"
-              ? "已为你抽出牌面。免费 AI 深度解读次数已用完，充值功能即将开放。你仍可以长按保存牌面。"
+              ? "已为你抽出牌面。今日免费 AI 深度解读次数已用完，明天 00:00 后刷新。你仍可以长按保存牌面。"
             : reading.status === "generating"
               ? "正在生成真实 Deep Reading 解读，请稍候。"
               : reading.coreConclusion}
@@ -836,7 +837,7 @@ function FollowUpChat({ reading }: { reading: ReadingWithCards }) {
     const currentQuota = getFollowUpQuota(reading.id);
     if (currentQuota.remaining <= 0) {
       setQuota(currentQuota);
-      setError("这次解读的 3 次免费追问已用完，充值功能即将开放。");
+      setError("今日 10 次免费追问已用完，明天 00:00 后刷新。");
       return;
     }
 
@@ -860,7 +861,8 @@ function FollowUpChat({ reading }: { reading: ReadingWithCards }) {
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-[12px] uppercase tracking-[0.17em] text-clay/64">Follow-up Chat</p>
-            <p className="mt-1 text-[13px] leading-5 text-ink/48">围绕这次牌面继续追问，免费剩余 {quota.remaining}/{quota.limit} 次。</p>
+            <p className="mt-1 text-[13px] leading-5 text-ink/48">围绕这次牌面继续追问，今日免费剩余 {quota.remaining}/{quota.limit} 次。</p>
+            <p className="mt-1 text-[12px] leading-5 text-ink/36">每日 {quota.resetLabel} 后刷新。</p>
           </div>
           <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-clay/16 bg-[#F5F1E8] text-clay/70">
             <Send size={15} aria-hidden="true" />
@@ -982,7 +984,7 @@ function ReadingWorkspace({
   function startReading() {
     setStep("spread");
     setError("");
-    setQuotaMessage(quota.remaining <= 0 ? "免费 AI 深度解读次数已用完。你仍然可以抽牌和保存牌面，但暂时不会生成解读和追问。" : "");
+    setQuotaMessage(quota.remaining <= 0 ? "今日免费 AI 深度解读次数已用完。你仍然可以抽牌和保存牌面，明天 00:00 后刷新。" : "");
   }
 
   function submitQuestion() {
@@ -997,7 +999,7 @@ function ReadingWorkspace({
       try {
         reading = createReading({ projectId: project.id, spreadType, question });
       } catch (createError) {
-        setError(createError instanceof Error ? createError.message : "免费额度已用完，充值功能即将开放。");
+        setError(createError instanceof Error ? createError.message : "今日免费额度已用完，明天 00:00 后刷新。");
         setStep("question");
         return;
       }
@@ -1021,7 +1023,7 @@ function ReadingWorkspace({
     try {
       reading = createReading({ projectId: project.id, spreadType, question: submittedQuestion });
     } catch (createError) {
-      setError(createError instanceof Error ? createError.message : "免费额度已用完，充值功能即将开放。");
+      setError(createError instanceof Error ? createError.message : "今日免费额度已用完，明天 00:00 后刷新。");
       return;
     }
     const minimumAnimation = wait(5400);
