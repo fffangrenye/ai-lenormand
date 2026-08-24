@@ -20,7 +20,7 @@ export type DeepProject = {
 
 export type SpreadType = "three_card" | "five_card_linear";
 
-export type ReadingStatus = "drawing" | "generating" | "completed" | "failed";
+export type ReadingStatus = "drawing" | "generating" | "completed" | "failed" | "quota_limited";
 
 export type DeepReading = {
   id: string;
@@ -81,7 +81,7 @@ const READING_CARDS_KEY = "ai-lenormand:deep-reading-cards";
 const FOLLOW_UP_MESSAGES_KEY = "ai-lenormand:deep-follow-up-messages";
 const QUOTA_USAGE_KEY = "ai-lenormand:quota-usage";
 export const FREE_DEEP_READING_LIMIT = 5;
-export const FREE_FOLLOW_UP_LIMIT = 5;
+export const FREE_FOLLOW_UP_LIMIT = 3;
 const FOLLOW_UP_FAILURE_MESSAGE = "这次追问暂时没有生成成功。你的问题已经保留，可以稍后再问一次。";
 
 export class QuotaExceededError extends Error {
@@ -210,26 +210,11 @@ function getOrCreateQuotaUsage(userEmail: string) {
   return usage;
 }
 
-function consumeDeepReadingQuota(userEmail: string) {
-  const usage = getOrCreateQuotaUsage(userEmail);
-  if (usage.deepReadingsUsed >= FREE_DEEP_READING_LIMIT) {
-    throw new QuotaExceededError("免费深度占卜次数已用完，充值功能即将开放。");
-  }
-
-  const timestamp = now();
-  writeAllQuotaUsage(
-    readAllQuotaUsage().map((item) =>
-      item.userEmail === userEmail ? { ...item, deepReadingsUsed: item.deepReadingsUsed + 1, updatedAt: timestamp } : item
-    )
-  );
-}
-
 export function getDeepReadingQuota(): DeepQuota {
   const session = getSession();
   if (!session) return { used: 0, limit: FREE_DEEP_READING_LIMIT, remaining: 0 };
 
-  const usage = getOrCreateQuotaUsage(session.email);
-  const used = Math.min(usage.deepReadingsUsed, FREE_DEEP_READING_LIMIT);
+  const used = Math.min(readAllReadings().filter((reading) => reading.userEmail === session.email && reading.status === "completed").length, FREE_DEEP_READING_LIMIT);
   return {
     used,
     limit: FREE_DEEP_READING_LIMIT,
@@ -441,6 +426,10 @@ function failReading(readingId: string) {
   updateReadingStatus(readingId, "failed");
 }
 
+function limitReadingToCardsOnly(readingId: string) {
+  updateReadingStatus(readingId, "quota_limited");
+}
+
 function buildGenerationPayload(readingId: string) {
   const reading = getReadingWithCards(readingId);
   if (!reading) throw new Error("Reading not found");
@@ -497,7 +486,6 @@ export function createReading(input: { projectId: string; spreadType: SpreadType
 
   const project = getProject(input.projectId);
   if (!project) throw new Error("Project not found");
-  consumeDeepReadingQuota(session.email);
 
   const timestamp = now();
   const reading: DeepReading = {
@@ -541,6 +529,12 @@ export function createReading(input: { projectId: string; spreadType: SpreadType
 }
 
 export async function generateDeepReading(readingId: string) {
+  const quota = getDeepReadingQuota();
+  if (quota.remaining <= 0) {
+    limitReadingToCardsOnly(readingId);
+    throw new QuotaExceededError("免费 AI 深度解读次数已用完，充值功能即将开放。");
+  }
+
   updateReadingStatus(readingId, "generating");
 
   try {
@@ -608,7 +602,7 @@ export async function sendFollowUpMessage(input: { readingId: string; content: s
   if (!trimmed) throw new Error("Message is empty");
   const followUpQuota = getFollowUpQuota(reading.id);
   if (followUpQuota.remaining <= 0) {
-    throw new QuotaExceededError("这次解读的 5 次免费追问已用完，充值功能即将开放。");
+    throw new QuotaExceededError("这次解读的 3 次免费追问已用完，充值功能即将开放。");
   }
 
   const userMessage: FollowUpMessage = {

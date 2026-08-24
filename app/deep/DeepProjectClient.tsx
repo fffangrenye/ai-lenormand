@@ -502,7 +502,7 @@ function QuotaNotice({ quota, message }: { quota: DeepQuota; message?: string })
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-[12px] uppercase tracking-[0.17em] text-clay/64">Free Trial</p>
-            <p className="mt-1 text-[13px] leading-5 text-ink/50">深度占卜免费剩余 {quota.remaining}/{quota.limit} 次。</p>
+            <p className="mt-1 text-[13px] leading-5 text-ink/50">AI 深度解读免费剩余 {quota.remaining}/{quota.limit} 次。用完后仍可抽牌和保存牌面。</p>
           </div>
           <span className="shrink-0 rounded-full border border-ink/10 bg-ivory/70 px-3 py-1 text-[12px] text-ink/46">{quota.used}/{quota.limit}</span>
         </div>
@@ -782,6 +782,8 @@ function ReadingChapter({ reading }: { reading: ReadingWithCards }) {
         <p className="mt-3 font-serif text-[22px] leading-8 text-ink">
           {reading.status === "failed"
             ? "这次解读暂时没有生成成功，但你的问题和抽到的牌已经保留。"
+            : reading.status === "quota_limited"
+              ? "已为你抽出牌面。免费 AI 深度解读次数已用完，充值功能即将开放。你仍可以长按保存牌面。"
             : reading.status === "generating"
               ? "正在生成真实 Deep Reading 解读，请稍候。"
               : reading.coreConclusion}
@@ -834,7 +836,7 @@ function FollowUpChat({ reading }: { reading: ReadingWithCards }) {
     const currentQuota = getFollowUpQuota(reading.id);
     if (currentQuota.remaining <= 0) {
       setQuota(currentQuota);
-      setError("这次解读的 5 次免费追问已用完，充值功能即将开放。");
+      setError("这次解读的 3 次免费追问已用完，充值功能即将开放。");
       return;
     }
 
@@ -970,7 +972,7 @@ function ReadingWorkspace({
     try {
       await generateDeepReading(readingId);
     } catch {
-      // The reading is already marked failed; the retry CTA will be shown in the timeline.
+      // The reading is already marked failed or cards-only; the timeline will show the right state.
     } finally {
       setGeneratingReadingId(null);
       onReadingsChange();
@@ -978,15 +980,9 @@ function ReadingWorkspace({
   }
 
   function startReading() {
-    const currentQuota = getDeepReadingQuota();
-    if (currentQuota.remaining <= 0) {
-      setQuotaMessage("免费深度占卜次数已用完，充值功能即将开放。");
-      return;
-    }
-
     setStep("spread");
     setError("");
-    setQuotaMessage("");
+    setQuotaMessage(quota.remaining <= 0 ? "免费 AI 深度解读次数已用完。你仍然可以抽牌和保存牌面，但暂时不会生成解读和追问。" : "");
   }
 
   function submitQuestion() {
