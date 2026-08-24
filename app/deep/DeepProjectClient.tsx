@@ -8,6 +8,7 @@ import { getLenormandCardImagePath } from "@/lib/lenormand-cards";
 import { useCardSpreadLongPressSave } from "@/lib/use-card-spread-save";
 import {
   DeepProject,
+  DeepQuota,
   FollowUpMessage,
   ReadingWithCards,
   SpreadType,
@@ -16,6 +17,8 @@ import {
   deleteProject,
   formatProjectDate,
   generateDeepReading,
+  getDeepReadingQuota,
+  getFollowUpQuota,
   getFollowUpMessages,
   getProject,
   getProjects,
@@ -492,6 +495,23 @@ function ProjectMemory({ project, onSaved }: { project: DeepProject; onSaved: ()
   );
 }
 
+function QuotaNotice({ quota, message }: { quota: DeepQuota; message?: string }) {
+  return (
+    <section className="border-b border-ink/10 py-3">
+      <div className="rounded-[6px] border border-ink/8 bg-[#FFFDF8]/72 px-4 py-3">
+        <div className="flex items-center justify-between gap-3">
+          <div>
+            <p className="text-[12px] uppercase tracking-[0.17em] text-clay/64">Free Trial</p>
+            <p className="mt-1 text-[13px] leading-5 text-ink/50">深度占卜免费剩余 {quota.remaining}/{quota.limit} 次。</p>
+          </div>
+          <span className="shrink-0 rounded-full border border-ink/10 bg-ivory/70 px-3 py-1 text-[12px] text-ink/46">{quota.used}/{quota.limit}</span>
+        </div>
+        {message ? <p className="mt-3 text-[13px] leading-5 text-[#8E4D4A]">{message}</p> : null}
+      </div>
+    </section>
+  );
+}
+
 function CardBackMini({ className = "", style }: { className?: string; style?: CSSProperties }) {
   return (
     <span style={style} className={`relative block overflow-hidden rounded-[3px] border border-ink/12 bg-[#FFFDF8] shadow-sm ${className}`}>
@@ -788,12 +808,14 @@ function ReadingChapter({ reading }: { reading: ReadingWithCards }) {
 
 function FollowUpChat({ reading }: { reading: ReadingWithCards }) {
   const [messages, setMessages] = useState<FollowUpMessage[]>([]);
+  const [quota, setQuota] = useState(() => getFollowUpQuota(reading.id));
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
 
   function refreshMessages() {
     setMessages(getFollowUpMessages(reading.id));
+    setQuota(getFollowUpQuota(reading.id));
   }
 
   useEffect(() => {
@@ -809,14 +831,21 @@ function FollowUpChat({ reading }: { reading: ReadingWithCards }) {
       return;
     }
 
+    const currentQuota = getFollowUpQuota(reading.id);
+    if (currentQuota.remaining <= 0) {
+      setQuota(currentQuota);
+      setError("这次解读的 5 次免费追问已用完，充值功能即将开放。");
+      return;
+    }
+
     setDraft("");
     setError("");
     setSending(true);
 
     try {
       await sendFollowUpMessage({ readingId: reading.id, content });
-    } catch {
-      setError("这次回复没有生成成功，你的问题已保留。");
+    } catch (submitError) {
+      setError(submitError instanceof Error && submitError.name === "QuotaExceededError" ? submitError.message : "这次回复没有生成成功，你的问题已保留。");
     } finally {
       setSending(false);
       refreshMessages();
@@ -829,7 +858,7 @@ function FollowUpChat({ reading }: { reading: ReadingWithCards }) {
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-[12px] uppercase tracking-[0.17em] text-clay/64">Follow-up Chat</p>
-            <p className="mt-1 text-[13px] leading-5 text-ink/48">围绕这次牌面继续追问，不会重新抽牌。</p>
+            <p className="mt-1 text-[13px] leading-5 text-ink/48">围绕这次牌面继续追问，免费剩余 {quota.remaining}/{quota.limit} 次。</p>
           </div>
           <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-clay/16 bg-[#F5F1E8] text-clay/70">
             <Send size={15} aria-hidden="true" />
@@ -869,11 +898,12 @@ function FollowUpChat({ reading }: { reading: ReadingWithCards }) {
               setError("");
             }}
             placeholder="继续追问这次解读..."
-            className="min-h-[48px] flex-1 resize-none rounded-[5px] border border-ink/12 bg-white/72 px-3 py-3 text-[14px] leading-5 outline-none focus:border-ink/35"
+            disabled={quota.remaining <= 0}
+            className="min-h-[48px] flex-1 resize-none rounded-[5px] border border-ink/12 bg-white/72 px-3 py-3 text-[14px] leading-5 outline-none focus:border-ink/35 disabled:opacity-55"
           />
           <button
             type="submit"
-            disabled={sending}
+            disabled={sending || quota.remaining <= 0}
             className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#6E2638] text-[#FFF9F2] shadow-soft disabled:opacity-50"
           >
             <Send size={17} aria-hidden="true" />
@@ -930,8 +960,10 @@ function ReadingWorkspace({
   const [spreadType, setSpreadType] = useState<SpreadType>("three_card");
   const [question, setQuestion] = useState("");
   const [error, setError] = useState("");
+  const [quotaMessage, setQuotaMessage] = useState("");
   const [generatingReadingId, setGeneratingReadingId] = useState<string | null>(null);
   const [drawingReading, setDrawingReading] = useState<ReadingWithCards | null>(null);
+  const quota = getDeepReadingQuota();
 
   async function generateAndRefresh(readingId: string) {
     setGeneratingReadingId(readingId);
@@ -946,8 +978,15 @@ function ReadingWorkspace({
   }
 
   function startReading() {
+    const currentQuota = getDeepReadingQuota();
+    if (currentQuota.remaining <= 0) {
+      setQuotaMessage("免费深度占卜次数已用完，充值功能即将开放。");
+      return;
+    }
+
     setStep("spread");
     setError("");
+    setQuotaMessage("");
   }
 
   function submitQuestion() {
@@ -958,7 +997,14 @@ function ReadingWorkspace({
 
     setStep("drawing");
     setTimeout(() => {
-      const reading = createReading({ projectId: project.id, spreadType, question });
+      let reading: ReadingWithCards;
+      try {
+        reading = createReading({ projectId: project.id, spreadType, question });
+      } catch (createError) {
+        setError(createError instanceof Error ? createError.message : "免费额度已用完，充值功能即将开放。");
+        setStep("question");
+        return;
+      }
       setQuestion("");
       setError("");
       setStep("idle");
@@ -975,7 +1021,13 @@ function ReadingWorkspace({
       return;
     }
 
-    const reading = createReading({ projectId: project.id, spreadType, question: submittedQuestion });
+    let reading: ReadingWithCards;
+    try {
+      reading = createReading({ projectId: project.id, spreadType, question: submittedQuestion });
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : "免费额度已用完，充值功能即将开放。");
+      return;
+    }
     const minimumAnimation = wait(5400);
 
     setDrawingReading(reading);
@@ -1026,6 +1078,7 @@ function ReadingWorkspace({
     return (
       <>
         <ProjectMemory project={project} onSaved={onReadingsChange} />
+        <QuotaNotice quota={quota} message={quotaMessage} />
         <EmptyState project={project} onStartReading={startReading} />
       </>
     );
@@ -1034,6 +1087,7 @@ function ReadingWorkspace({
   return (
     <>
       <ProjectMemory project={project} onSaved={onReadingsChange} />
+      <QuotaNotice quota={quota} message={quotaMessage} />
       <Timeline readings={readings} generatingReadingId={generatingReadingId} onNewReading={startReading} onRetryReading={(readingId) => void generateAndRefresh(readingId)} />
     </>
   );

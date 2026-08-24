@@ -61,11 +61,34 @@ export type FollowUpMessage = {
   createdAt: string;
 };
 
+export type DeepQuota = {
+  used: number;
+  limit: number;
+  remaining: number;
+};
+
+type UserQuotaUsage = {
+  userEmail: string;
+  deepReadingsUsed: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
 const SESSION_KEY = "ai-lenormand:auth-session";
 const PROJECTS_KEY = "ai-lenormand:deep-projects";
 const READINGS_KEY = "ai-lenormand:deep-readings";
 const READING_CARDS_KEY = "ai-lenormand:deep-reading-cards";
 const FOLLOW_UP_MESSAGES_KEY = "ai-lenormand:deep-follow-up-messages";
+const QUOTA_USAGE_KEY = "ai-lenormand:quota-usage";
+export const FREE_DEEP_READING_LIMIT = 5;
+export const FREE_FOLLOW_UP_LIMIT = 5;
+
+export class QuotaExceededError extends Error {
+  constructor(message = "免费额度已用完，充值功能即将开放。") {
+    super(message);
+    this.name = "QuotaExceededError";
+  }
+}
 
 function canUseStorage() {
   return typeof window !== "undefined" && Boolean(window.localStorage);
@@ -148,9 +171,81 @@ function writeAllFollowUpMessages(messages: FollowUpMessage[]) {
   window.localStorage.setItem(FOLLOW_UP_MESSAGES_KEY, JSON.stringify(messages));
 }
 
+function readAllQuotaUsage(): UserQuotaUsage[] {
+  if (!canUseStorage()) return [];
+
+  try {
+    const raw = window.localStorage.getItem(QUOTA_USAGE_KEY);
+    return raw ? (JSON.parse(raw) as UserQuotaUsage[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeAllQuotaUsage(usages: UserQuotaUsage[]) {
+  if (!canUseStorage()) return;
+  window.localStorage.setItem(QUOTA_USAGE_KEY, JSON.stringify(usages));
+}
+
 function writeAllProjects(projects: DeepProject[]) {
   if (!canUseStorage()) return;
   window.localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects));
+}
+
+function getOrCreateQuotaUsage(userEmail: string) {
+  const usages = readAllQuotaUsage();
+  const existing = usages.find((usage) => usage.userEmail === userEmail);
+  if (existing) return existing;
+
+  const timestamp = now();
+  const usage: UserQuotaUsage = {
+    userEmail,
+    deepReadingsUsed: 0,
+    createdAt: timestamp,
+    updatedAt: timestamp
+  };
+
+  writeAllQuotaUsage([...usages, usage]);
+  return usage;
+}
+
+function consumeDeepReadingQuota(userEmail: string) {
+  const usage = getOrCreateQuotaUsage(userEmail);
+  if (usage.deepReadingsUsed >= FREE_DEEP_READING_LIMIT) {
+    throw new QuotaExceededError("免费深度占卜次数已用完，充值功能即将开放。");
+  }
+
+  const timestamp = now();
+  writeAllQuotaUsage(
+    readAllQuotaUsage().map((item) =>
+      item.userEmail === userEmail ? { ...item, deepReadingsUsed: item.deepReadingsUsed + 1, updatedAt: timestamp } : item
+    )
+  );
+}
+
+export function getDeepReadingQuota(): DeepQuota {
+  const session = getSession();
+  if (!session) return { used: 0, limit: FREE_DEEP_READING_LIMIT, remaining: 0 };
+
+  const usage = getOrCreateQuotaUsage(session.email);
+  const used = Math.min(usage.deepReadingsUsed, FREE_DEEP_READING_LIMIT);
+  return {
+    used,
+    limit: FREE_DEEP_READING_LIMIT,
+    remaining: Math.max(FREE_DEEP_READING_LIMIT - used, 0)
+  };
+}
+
+export function getFollowUpQuota(readingId: string): DeepQuota {
+  const session = getSession();
+  if (!session) return { used: 0, limit: FREE_FOLLOW_UP_LIMIT, remaining: 0 };
+
+  const used = readAllFollowUpMessages().filter((message) => message.userEmail === session.email && message.readingId === readingId && message.role === "user").length;
+  return {
+    used,
+    limit: FREE_FOLLOW_UP_LIMIT,
+    remaining: Math.max(FREE_FOLLOW_UP_LIMIT - used, 0)
+  };
 }
 
 export function getSession(): AuthSession | null {
@@ -399,6 +494,7 @@ export function createReading(input: { projectId: string; spreadType: SpreadType
 
   const project = getProject(input.projectId);
   if (!project) throw new Error("Project not found");
+  consumeDeepReadingQuota(session.email);
 
   const timestamp = now();
   const reading: DeepReading = {
@@ -507,6 +603,10 @@ export async function sendFollowUpMessage(input: { readingId: string; content: s
 
   const trimmed = input.content.trim().slice(0, 500);
   if (!trimmed) throw new Error("Message is empty");
+  const followUpQuota = getFollowUpQuota(reading.id);
+  if (followUpQuota.remaining <= 0) {
+    throw new QuotaExceededError("这次解读的 5 次免费追问已用完，充值功能即将开放。");
+  }
 
   const userMessage: FollowUpMessage = {
     id: newId(),
