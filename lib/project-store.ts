@@ -68,11 +68,23 @@ export type DeepQuota = {
   resetLabel: string;
 };
 
+type DailyQuotaKind = "deep_reading" | "follow_up";
+
+type DailyQuotaEvent = {
+  id: string;
+  userEmail: string;
+  kind: DailyQuotaKind;
+  sourceId: string;
+  dateKey: string;
+  createdAt: string;
+};
+
 const SESSION_KEY = "ai-lenormand:auth-session";
 const PROJECTS_KEY = "ai-lenormand:deep-projects";
 const READINGS_KEY = "ai-lenormand:deep-readings";
 const READING_CARDS_KEY = "ai-lenormand:deep-reading-cards";
 const FOLLOW_UP_MESSAGES_KEY = "ai-lenormand:deep-follow-up-messages";
+const DAILY_QUOTA_EVENTS_KEY = "ai-lenormand:daily-quota-events";
 export const FREE_DEEP_READING_LIMIT = 5;
 export const FREE_FOLLOW_UP_LIMIT = 10;
 const FOLLOW_UP_FAILURE_MESSAGE = "这次追问暂时没有生成成功。你的问题已经保留，可以稍后再问一次。";
@@ -184,6 +196,95 @@ function writeAllFollowUpMessages(messages: FollowUpMessage[]) {
   window.localStorage.setItem(FOLLOW_UP_MESSAGES_KEY, JSON.stringify(messages));
 }
 
+function readAllDailyQuotaEvents(): DailyQuotaEvent[] {
+  if (!canUseStorage()) return [];
+
+  try {
+    const raw = window.localStorage.getItem(DAILY_QUOTA_EVENTS_KEY);
+    return raw ? (JSON.parse(raw) as DailyQuotaEvent[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeAllDailyQuotaEvents(events: DailyQuotaEvent[]) {
+  if (!canUseStorage()) return;
+  window.localStorage.setItem(DAILY_QUOTA_EVENTS_KEY, JSON.stringify(events));
+}
+
+function recordDailyQuotaEvent(input: { userEmail: string; kind: DailyQuotaKind; sourceId: string }) {
+  const events = readAllDailyQuotaEvents();
+  const dateKey = getBeijingDateKey();
+  const exists = events.some(
+    (event) => event.userEmail === input.userEmail && event.kind === input.kind && event.sourceId === input.sourceId && event.dateKey === dateKey
+  );
+
+  if (exists) return;
+
+  writeAllDailyQuotaEvents([
+    ...events,
+    {
+      id: newId(),
+      userEmail: input.userEmail,
+      kind: input.kind,
+      sourceId: input.sourceId,
+      dateKey,
+      createdAt: now()
+    }
+  ]);
+}
+
+function syncDailyQuotaEventsFromVisibleHistory(userEmail: string) {
+  const todayKey = getBeijingDateKey();
+  const events = readAllDailyQuotaEvents();
+  const existingKeys = new Set(events.map((event) => `${event.userEmail}:${event.kind}:${event.sourceId}:${event.dateKey}`));
+  const nextEvents = [...events];
+
+  readAllReadings()
+    .filter((reading) => reading.userEmail === userEmail && reading.status === "completed" && reading.completedAt && getBeijingDateKey(reading.completedAt) === todayKey)
+    .forEach((reading) => {
+      const key = `${userEmail}:deep_reading:${reading.id}:${todayKey}`;
+      if (existingKeys.has(key)) return;
+
+      existingKeys.add(key);
+      nextEvents.push({
+        id: newId(),
+        userEmail,
+        kind: "deep_reading",
+        sourceId: reading.id,
+        dateKey: todayKey,
+        createdAt: reading.completedAt ?? now()
+      });
+    });
+
+  readAllFollowUpMessages()
+    .filter(
+      (message) =>
+        message.userEmail === userEmail &&
+        message.role === "assistant" &&
+        message.content !== FOLLOW_UP_FAILURE_MESSAGE &&
+        getBeijingDateKey(message.createdAt) === todayKey
+    )
+    .forEach((message) => {
+      const key = `${userEmail}:follow_up:${message.id}:${todayKey}`;
+      if (existingKeys.has(key)) return;
+
+      existingKeys.add(key);
+      nextEvents.push({
+        id: newId(),
+        userEmail,
+        kind: "follow_up",
+        sourceId: message.id,
+        dateKey: todayKey,
+        createdAt: message.createdAt
+      });
+    });
+
+  if (nextEvents.length !== events.length) {
+    writeAllDailyQuotaEvents(nextEvents);
+  }
+}
+
 function writeAllProjects(projects: DeepProject[]) {
   if (!canUseStorage()) return;
   window.localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects));
@@ -193,13 +294,15 @@ export function getDeepReadingQuota(): DeepQuota {
   const session = getSession();
   if (!session) return emptyQuota(FREE_DEEP_READING_LIMIT);
 
+  syncDailyQuotaEventsFromVisibleHistory(session.email);
   const todayKey = getBeijingDateKey();
-  const used = Math.min(
-    readAllReadings().filter(
-      (reading) => reading.userEmail === session.email && reading.status === "completed" && reading.completedAt && getBeijingDateKey(reading.completedAt) === todayKey
-    ).length,
-    FREE_DEEP_READING_LIMIT
+  const ledgerUsed = readAllDailyQuotaEvents().filter(
+    (event) => event.userEmail === session.email && event.kind === "deep_reading" && event.dateKey === todayKey
   );
+  const visibleCompletedUsed = readAllReadings().filter(
+    (reading) => reading.userEmail === session.email && reading.status === "completed" && reading.completedAt && getBeijingDateKey(reading.completedAt) === todayKey
+  );
+  const used = Math.min(Math.max(ledgerUsed.length, visibleCompletedUsed.length), FREE_DEEP_READING_LIMIT);
   return {
     used,
     limit: FREE_DEEP_READING_LIMIT,
@@ -208,18 +311,21 @@ export function getDeepReadingQuota(): DeepQuota {
   };
 }
 
-export function getFollowUpQuota(readingId: string): DeepQuota {
+export function getFollowUpQuota(_readingId: string): DeepQuota {
   const session = getSession();
   if (!session) return emptyQuota(FREE_FOLLOW_UP_LIMIT);
 
+  syncDailyQuotaEventsFromVisibleHistory(session.email);
   const todayKey = getBeijingDateKey();
-  const used = readAllFollowUpMessages().filter(
+  const ledgerUsed = readAllDailyQuotaEvents().filter((event) => event.userEmail === session.email && event.kind === "follow_up" && event.dateKey === todayKey);
+  const visibleSuccessfulUsed = readAllFollowUpMessages().filter(
     (message) =>
       message.userEmail === session.email &&
       message.role === "assistant" &&
       message.content !== FOLLOW_UP_FAILURE_MESSAGE &&
       getBeijingDateKey(message.createdAt) === todayKey
   ).length;
+  const used = Math.min(Math.max(ledgerUsed.length, visibleSuccessfulUsed), FREE_FOLLOW_UP_LIMIT);
   return {
     used,
     limit: FREE_FOLLOW_UP_LIMIT,
@@ -397,6 +503,9 @@ function updateReadingStatus(readingId: string, status: ReadingStatus) {
 }
 
 function completeReading(readingId: string, result: DeepReadingResult) {
+  const completedAt = now();
+  const completedReading = readAllReadings().find((reading) => reading.id === readingId);
+
   writeAllReadings(
     readAllReadings().map((reading) =>
       reading.id === readingId
@@ -407,11 +516,19 @@ function completeReading(readingId: string, result: DeepReadingResult) {
             interpretation: result.interpretation,
             timeWindow: result.time_window,
             uncertainty: result.uncertainty,
-            completedAt: now()
+            completedAt
           }
         : reading
     )
   );
+
+  if (completedReading) {
+    recordDailyQuotaEvent({
+      userEmail: completedReading.userEmail,
+      kind: "deep_reading",
+      sourceId: readingId
+    });
+  }
 }
 
 function failReading(readingId: string) {
@@ -635,6 +752,11 @@ export async function sendFollowUpMessage(input: { readingId: string; content: s
     };
 
     writeAllFollowUpMessages([...readAllFollowUpMessages(), assistantMessage]);
+    recordDailyQuotaEvent({
+      userEmail: session.email,
+      kind: "follow_up",
+      sourceId: assistantMessage.id
+    });
     return assistantMessage;
   } catch (error) {
     const fallbackMessage: FollowUpMessage = {
