@@ -123,7 +123,7 @@ async function callDeepSeek(input: DeepReadingRequest) {
       Authorization: `Bearer ${apiKey}`
     },
     body: JSON.stringify({
-      model: process.env.DEEPSEEK_MODEL || "deepseek-chat",
+      model: process.env.DEEPSEEK_MODEL || "deepseek-v4-flash",
       response_format: { type: "json_object" },
       temperature: 0.7,
       messages: [
