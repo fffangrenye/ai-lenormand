@@ -1,0 +1,99 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: #f5f1e8;
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  color: #211f1b;
+  background: #f5f1e8;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+body::before {
+  pointer-events: none;
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  opacity: 0.32;
+  background-image:
+    linear-gradient(rgba(33, 31, 27, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(33, 31, 27, 0.03) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+body > * {
+  position: relative;
+  z-index: 1;
+}
+
+.reading-card-scroll {
+  scrollbar-color: rgba(122, 104, 90, 0.42) rgba(122, 104, 90, 0.1);
+  scrollbar-width: thin;
+}
+
+.reading-card-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+
+.reading-card-scroll::-webkit-scrollbar-track {
+  border-radius: 999px;
+  background: rgba(122, 104, 90, 0.1);
+}
+
+.reading-card-scroll::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(122, 104, 90, 0.42);
+}
+
+@keyframes cardDraw {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.86) rotate(-7deg);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1) rotate(0);
+  }
+}
+
+@keyframes cardFlip {
+  from {
+    opacity: 0;
+    transform: rotateY(180deg) scale(0.94);
+  }
+
+  to {
+    opacity: 1;
+    transform: rotateY(0) scale(1);
+  }
+}
+
+@keyframes homeCardBreathe {
+  0%,
+  100% {
+    transform: translateY(0) scale(1);
+    box-shadow: 0 16px 28px rgba(33, 31, 27, 0.14), 0 0 24px rgba(241, 232, 211, 0.56);
+  }
+
+  50% {
+    transform: translateY(-3px) scale(1.012);
+    box-shadow: 0 20px 34px rgba(33, 31, 27, 0.18), 0 0 32px rgba(241, 232, 211, 0.7);
+  }
+}
