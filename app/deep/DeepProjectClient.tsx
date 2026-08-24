@@ -834,13 +834,6 @@ function FollowUpChat({ reading }: { reading: ReadingWithCards }) {
       return;
     }
 
-    const currentQuota = getFollowUpQuota(reading.id);
-    if (currentQuota.remaining <= 0) {
-      setQuota(currentQuota);
-      setError("今日 10 次免费追问已用完，明天 00:00 后刷新。");
-      return;
-    }
-
     setDraft("");
     setError("");
     setSending(true);
@@ -902,12 +895,12 @@ function FollowUpChat({ reading }: { reading: ReadingWithCards }) {
               setError("");
             }}
             placeholder="继续追问这次解读..."
-            disabled={quota.remaining <= 0}
+            disabled={sending}
             className="min-h-[48px] flex-1 resize-none rounded-[5px] border border-ink/12 bg-white/72 px-3 py-3 text-[14px] leading-5 outline-none focus:border-ink/35 disabled:opacity-55"
           />
           <button
             type="submit"
-            disabled={sending || quota.remaining <= 0}
+            disabled={sending}
             className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#6E2638] text-[#FFF9F2] shadow-soft disabled:opacity-50"
           >
             <Send size={17} aria-hidden="true" />

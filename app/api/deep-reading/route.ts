@@ -1,9 +1,11 @@
 import { NextResponse } from "next/server";
 import { DeepReadingRequest, assertDeepReadingResult } from "@/lib/deep-reading-result";
+import { refundDailyQuota, requireSupabaseUser, reserveDailyQuota } from "@/lib/supabase-server";
 
 export const runtime = "nodejs";
 
 const DEEPSEEK_URL = "https://api.deepseek.com/chat/completions";
+const FREE_DEEP_READING_LIMIT = 5;
 
 const systemPrompt = `You are a professional Lenormand Reader for AI Lenormand Deep Reading.
 
@@ -151,12 +153,32 @@ async function callDeepSeek(input: DeepReadingRequest) {
 }
 
 export async function POST(request: Request) {
+  let userId = "";
+  let quotaReserved = false;
+
   try {
+    const user = await requireSupabaseUser(request);
+    userId = user.id;
+
     const input = (await request.json()) as DeepReadingRequest;
+    const quota = await reserveDailyQuota(user.id, "deep_reading", FREE_DEEP_READING_LIMIT);
+    if (!quota.allowed) {
+      return NextResponse.json({ error: "今日免费 AI 深度解读次数已用完。你仍可以抽牌和保存牌面，明天 00:00 后刷新。", quota }, { status: 429 });
+    }
+
+    quotaReserved = true;
     const result = await callDeepSeek(input);
     return NextResponse.json(result);
   } catch (error) {
+    if (quotaReserved && userId) {
+      await refundDailyQuota(userId, "deep_reading").catch((refundError) => console.error(refundError));
+    }
+
     console.error(error);
+    if (error instanceof Error && error.message === "Unauthorized") {
+      return NextResponse.json({ error: "请重新登录后再生成 AI 解读。" }, { status: 401 });
+    }
+
     return NextResponse.json({ error: error instanceof Error ? error.message : "Deep Reading generation failed." }, { status: 500 });
   }
 }

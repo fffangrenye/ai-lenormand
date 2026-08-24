@@ -5,6 +5,10 @@ import { DeepFollowUpResult, DeepReadingResult, assertDeepFollowUpResult, assert
 
 export type AuthSession = {
   email: string;
+  userId?: string;
+  accessToken?: string;
+  refreshToken?: string;
+  expiresAt?: number;
 };
 
 export type DeepProject = {
@@ -196,6 +200,71 @@ function writeAllFollowUpMessages(messages: FollowUpMessage[]) {
   window.localStorage.setItem(FOLLOW_UP_MESSAGES_KEY, JSON.stringify(messages));
 }
 
+function getSupabaseBrowserConfig() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!url || !anonKey) {
+    throw new Error("Supabase 登录还没有配置。请先设置 NEXT_PUBLIC_SUPABASE_URL 和 NEXT_PUBLIC_SUPABASE_ANON_KEY。");
+  }
+
+  return { url: url.replace(/\/$/, ""), anonKey };
+}
+
+async function requestSupabaseAuth(path: string, body: Record<string, unknown>) {
+  const { url, anonKey } = getSupabaseBrowserConfig();
+  const response = await fetch(`${url}${path}`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      apikey: anonKey
+    },
+    body: JSON.stringify(body)
+  });
+
+  const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!response.ok) {
+    const message =
+      typeof payload.msg === "string"
+        ? payload.msg
+        : typeof payload.message === "string"
+          ? payload.message
+          : typeof payload.error_description === "string"
+            ? payload.error_description
+            : "Supabase 登录失败。";
+    throw new Error(message);
+  }
+
+  return payload;
+}
+
+function saveSupabaseAuthSession(payload: Record<string, unknown>, fallbackEmail: string) {
+  const user = payload.user && typeof payload.user === "object" ? (payload.user as Record<string, unknown>) : null;
+  const accessToken = typeof payload.access_token === "string" ? payload.access_token : "";
+  const refreshToken = typeof payload.refresh_token === "string" ? payload.refresh_token : "";
+  const expiresIn = typeof payload.expires_in === "number" ? payload.expires_in : 3600;
+  const email = typeof user?.email === "string" ? user.email : fallbackEmail;
+  const userId = typeof user?.id === "string" ? user.id : "";
+
+  if (!accessToken || !userId) {
+    throw new Error("账号已创建，请先按 Supabase 邮件要求完成确认后再登录。");
+  }
+
+  const session: AuthSession = {
+    email: email.trim().toLowerCase(),
+    userId,
+    accessToken,
+    refreshToken,
+    expiresAt: Date.now() + expiresIn * 1000
+  };
+
+  if (canUseStorage()) {
+    window.localStorage.setItem(SESSION_KEY, JSON.stringify(session));
+  }
+
+  return session;
+}
+
 function readAllDailyQuotaEvents(): DailyQuotaEvent[] {
   if (!canUseStorage()) return [];
 
@@ -339,18 +408,30 @@ export function getSession(): AuthSession | null {
 
   try {
     const raw = window.localStorage.getItem(SESSION_KEY);
-    return raw ? (JSON.parse(raw) as AuthSession) : null;
+    const session = raw ? (JSON.parse(raw) as AuthSession) : null;
+    if (!session?.email || !session.userId || !session.accessToken) return null;
+    return session;
   } catch {
     return null;
   }
 }
 
-export function signIn(email: string) {
-  const session = { email: email.trim().toLowerCase() };
-  if (canUseStorage()) {
-    window.localStorage.setItem(SESSION_KEY, JSON.stringify(session));
-  }
-  return session;
+export async function signIn(email: string, password: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+  const payload = await requestSupabaseAuth("/auth/v1/token?grant_type=password", {
+    email: normalizedEmail,
+    password
+  });
+  return saveSupabaseAuthSession(payload, normalizedEmail);
+}
+
+export async function signUp(email: string, password: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+  const payload = await requestSupabaseAuth("/auth/v1/signup", {
+    email: normalizedEmail,
+    password
+  });
+  return saveSupabaseAuthSession(payload, normalizedEmail);
 }
 
 export function signOut() {
@@ -531,6 +612,11 @@ function completeReading(readingId: string, result: DeepReadingResult) {
   }
 }
 
+function authHeaders(): HeadersInit {
+  const session = getSession();
+  return session?.accessToken ? { Authorization: `Bearer ${session.accessToken}` } : {};
+}
+
 function failReading(readingId: string) {
   updateReadingStatus(readingId, "failed");
 }
@@ -638,23 +724,25 @@ export function createReading(input: { projectId: string; spreadType: SpreadType
 }
 
 export async function generateDeepReading(readingId: string) {
-  const quota = getDeepReadingQuota();
-  if (quota.remaining <= 0) {
-    limitReadingToCardsOnly(readingId);
-    throw new QuotaExceededError("今日免费 AI 深度解读次数已用完。你仍可以抽牌和保存牌面，明天 00:00 后刷新。");
-  }
-
   updateReadingStatus(readingId, "generating");
 
   try {
     const response = await fetch("/api/deep-reading", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        ...authHeaders()
       },
       body: JSON.stringify(buildGenerationPayload(readingId))
     });
 
+    if (response.status === 401) {
+      throw new Error("请重新登录后再生成 AI 解读。");
+    }
+    if (response.status === 429) {
+      limitReadingToCardsOnly(readingId);
+      throw new QuotaExceededError("今日免费 AI 深度解读次数已用完。你仍可以抽牌和保存牌面，明天 00:00 后刷新。");
+    }
     if (!response.ok) {
       throw new Error(`Deep Reading generation failed: ${response.status}`);
     }
@@ -709,10 +797,6 @@ export async function sendFollowUpMessage(input: { readingId: string; content: s
 
   const trimmed = input.content.trim().slice(0, 500);
   if (!trimmed) throw new Error("Message is empty");
-  const followUpQuota = getFollowUpQuota(reading.id);
-  if (followUpQuota.remaining <= 0) {
-    throw new QuotaExceededError("今日 10 次免费追问已用完，明天 00:00 后刷新。");
-  }
 
   const userMessage: FollowUpMessage = {
     id: newId(),
@@ -731,11 +815,18 @@ export async function sendFollowUpMessage(input: { readingId: string; content: s
     const response = await fetch("/api/deep-reading/follow-up", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        ...authHeaders()
       },
       body: JSON.stringify(buildFollowUpPayload(reading.id))
     });
 
+    if (response.status === 401) {
+      throw new Error("请重新登录后再追问。");
+    }
+    if (response.status === 429) {
+      throw new QuotaExceededError("今日 10 次免费追问已用完，明天 00:00 后刷新。");
+    }
     if (!response.ok) {
       throw new Error(`Follow-up generation failed: ${response.status}`);
     }
