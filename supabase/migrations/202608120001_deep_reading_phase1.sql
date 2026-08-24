@@ -2,6 +2,16 @@
 -- DATABASE.md is currently empty in the provided docs, so this migration follows
 -- PROJECT_SPEC.md / DEEP_READING_SPEC.md field requirements conservatively.
 
+create table if not exists public.projects (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users(id) on delete cascade,
+  name text not null,
+  type text not null default 'deep',
+  summary text not null default '',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
 create table if not exists public.readings (
   id uuid primary key default gen_random_uuid(),
   project_id uuid not null references public.projects(id) on delete cascade,

@@ -12,22 +12,22 @@ import {
   FollowUpMessage,
   ReadingWithCards,
   SpreadType,
-  createReading,
-  createProject,
-  deleteProject,
   formatProjectDate,
   generateDeepReading,
   getDeepReadingQuota,
   getFollowUpQuota,
-  getFollowUpMessages,
-  getProject,
-  getProjects,
-  getReadings,
   getSession,
+  loadFollowUpMessages,
+  loadProject,
+  loadProjects,
+  loadReadings,
+  removeProject,
+  saveProject,
+  saveProjectTouch,
+  saveProjectUpdate,
+  saveReading,
   sendFollowUpMessage,
   signOut,
-  touchProject,
-  updateProject
 } from "@/lib/project-store";
 
 type SheetMode = "create" | "edit";
@@ -268,7 +268,7 @@ function ProjectSheet({
     }
   }, [initialProject, open]);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
     if (!form.title.trim()) {
@@ -276,13 +276,17 @@ function ProjectSheet({
       return;
     }
 
-    const project =
-      mode === "create"
-        ? createProject({ title: form.title, background: form.background })
-        : updateProject(initialProject?.id ?? "", { title: form.title, background: form.background });
+    try {
+      const project =
+        mode === "create"
+          ? await saveProject({ title: form.title, background: form.background })
+          : await saveProjectUpdate(initialProject?.id ?? "", { title: form.title, background: form.background });
 
-    if (!project) return;
-    onSaved(project);
+      if (!project) return;
+      onSaved(project);
+    } catch (submitError) {
+      setError(submitError instanceof Error ? submitError.message : "保存失败，请稍后再试。");
+    }
   }
 
   return (
@@ -435,14 +439,19 @@ function ProjectMemory({ project, onSaved }: { project: DeepProject; onSaved: ()
     setSaved(false);
   }, [project.id, project.memorySummary]);
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const updatedProject = updateProject(project.id, { memorySummary: draft });
-    if (!updatedProject) return;
 
-    setDraft(updatedProject.memorySummary);
-    setSaved(true);
-    onSaved();
+    try {
+      const updatedProject = await saveProjectUpdate(project.id, { memorySummary: draft });
+      if (!updatedProject) return;
+
+      setDraft(updatedProject.memorySummary);
+      setSaved(true);
+      onSaved();
+    } catch {
+      setSaved(false);
+    }
   }
 
   return (
@@ -816,13 +825,13 @@ function FollowUpChat({ reading }: { reading: ReadingWithCards }) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
 
-  function refreshMessages() {
-    setMessages(getFollowUpMessages(reading.id));
+  async function refreshMessages() {
+    setMessages(await loadFollowUpMessages(reading.id));
     setQuota(getFollowUpQuota(reading.id));
   }
 
   useEffect(() => {
-    refreshMessages();
+    void refreshMessages();
   }, [reading.id]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
@@ -844,7 +853,7 @@ function FollowUpChat({ reading }: { reading: ReadingWithCards }) {
       setError(submitError instanceof Error && submitError.name === "QuotaExceededError" ? submitError.message : "这次回复没有生成成功，你的问题已保留。");
     } finally {
       setSending(false);
-      refreshMessages();
+      void refreshMessages();
     }
   }
 
@@ -988,9 +997,10 @@ function ReadingWorkspace({
 
     setStep("drawing");
     setTimeout(() => {
+      void (async () => {
       let reading: ReadingWithCards;
       try {
-        reading = createReading({ projectId: project.id, spreadType, question });
+        reading = await saveReading({ projectId: project.id, spreadType, question });
       } catch (createError) {
         setError(createError instanceof Error ? createError.message : "今日免费额度已用完，明天 00:00 后刷新。");
         setStep("question");
@@ -1001,10 +1011,11 @@ function ReadingWorkspace({
       setStep("idle");
       onReadingsChange();
       void generateAndRefresh(reading.id);
+      })();
     }, 900);
   }
 
-  function submitQuestionWithAnimation() {
+  async function submitQuestionWithAnimation() {
     const submittedQuestion = question.trim();
 
     if (!submittedQuestion) {
@@ -1014,7 +1025,7 @@ function ReadingWorkspace({
 
     let reading: ReadingWithCards;
     try {
-      reading = createReading({ projectId: project.id, spreadType, question: submittedQuestion });
+      reading = await saveReading({ projectId: project.id, spreadType, question: submittedQuestion });
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : "今日免费额度已用完，明天 00:00 后刷新。");
       return;
@@ -1056,7 +1067,7 @@ function ReadingWorkspace({
           setError("");
         }}
         onBack={() => setStep("spread")}
-        onSubmit={submitQuestionWithAnimation}
+        onSubmit={() => void submitQuestionWithAnimation()}
       />
     );
   }
@@ -1131,8 +1142,8 @@ function Shell({
     router.replace(`/deep/project/${project.id}`);
   }
 
-  function handleDelete(project: DeepProject) {
-    const nextProject = deleteProject(project.id);
+  async function handleDelete(project: DeepProject) {
+    const nextProject = await removeProject(project.id);
     setPendingDeleteProject(null);
     setDrawerOpen(false);
     onProjectsChange();
@@ -1191,7 +1202,7 @@ function Shell({
             <button
               type="button"
               onClick={() => {
-                if (pendingDeleteProject) handleDelete(pendingDeleteProject);
+                if (pendingDeleteProject) void handleDelete(pendingDeleteProject);
               }}
               className="h-12 flex-1 rounded-full bg-[#8E4D4A] text-[13px] uppercase tracking-[0.12em] text-[#FFF9F2]"
             >
@@ -1211,17 +1222,19 @@ export function DeepLandingClient() {
   const [projects, setProjects] = useState<DeepProject[]>([]);
 
   function refresh() {
-    setProjects(getProjects());
+    void loadProjects().then(setProjects);
   }
 
   useEffect(() => {
     if (!ready) return;
-    const loadedProjects = getProjects();
-    setProjects(loadedProjects);
+    void (async () => {
+      const loadedProjects = await loadProjects();
+      setProjects(loadedProjects);
 
-    if (loadedProjects[0]) {
-      router.replace(`/deep/project/${loadedProjects[0].id}`);
-    }
+      if (loadedProjects[0]) {
+        router.replace(`/deep/project/${loadedProjects[0].id}`);
+      }
+    })();
   }, [ready, router]);
 
   const currentTitle = useMemo(() => "Deep Reading", []);
@@ -1247,25 +1260,33 @@ export function DeepProjectPageClient({ projectId }: { projectId: string }) {
   const [notFound, setNotFound] = useState(false);
 
   function refresh() {
-    setProjects(getProjects());
-    setProject(getProject(projectId));
-    setReadings(getReadings(projectId));
+    void (async () => {
+      const [loadedProjects, loadedProject, loadedReadings] = await Promise.all([loadProjects(), loadProject(projectId), loadReadings(projectId)]);
+      setProjects(loadedProjects);
+      setProject(loadedProject);
+      setReadings(loadedReadings);
+      setNotFound(!loadedProject);
+    })();
   }
 
   useEffect(() => {
     if (!ready) return;
-    const loadedProject = getProject(projectId);
+    void (async () => {
+      const loadedProject = await loadProject(projectId);
 
-    if (!loadedProject) {
-      setNotFound(true);
-      setProjects(getProjects());
-      return;
-    }
+      if (!loadedProject) {
+        setNotFound(true);
+        setProjects(await loadProjects());
+        return;
+      }
 
-    touchProject(projectId);
-    setProject(getProject(projectId));
-    setProjects(getProjects());
-    setReadings(getReadings(projectId));
+      await saveProjectTouch(projectId);
+      const [refreshedProject, loadedProjects, loadedReadings] = await Promise.all([loadProject(projectId), loadProjects(), loadReadings(projectId)]);
+      setProject(refreshedProject);
+      setProjects(loadedProjects);
+      setReadings(loadedReadings);
+      setNotFound(false);
+    })();
   }, [projectId, ready]);
 
   if (!ready) {

@@ -211,6 +211,38 @@ function getSupabaseBrowserConfig() {
   return { url: url.replace(/\/$/, ""), anonKey };
 }
 
+function canUseRemoteStore() {
+  const session = getSession();
+  return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY && session?.accessToken && session.userId);
+}
+
+async function supabaseRest<T>(path: string, init?: RequestInit): Promise<T> {
+  const session = getSession();
+  const { url, anonKey } = getSupabaseBrowserConfig();
+
+  if (!session?.accessToken) {
+    throw new Error("Not signed in");
+  }
+
+  const response = await fetch(`${url}/rest/v1${path}`, {
+    ...init,
+    headers: {
+      apikey: anonKey,
+      Authorization: `Bearer ${session.accessToken}`,
+      "Content-Type": "application/json",
+      ...(init?.headers ?? {})
+    }
+  });
+
+  if (!response.ok) {
+    const message = await response.text().catch(() => "");
+    throw new Error(`Supabase request failed: ${response.status} ${message.slice(0, 300)}`);
+  }
+
+  if (response.status === 204) return null as T;
+  return (await response.json()) as T;
+}
+
 async function requestSupabaseAuth(path: string, body: Record<string, unknown>) {
   const { url, anonKey } = getSupabaseBrowserConfig();
   const response = await fetch(`${url}${path}`, {
@@ -236,6 +268,109 @@ async function requestSupabaseAuth(path: string, body: Record<string, unknown>) 
   }
 
   return payload;
+}
+
+type RemoteProjectRow = {
+  id: string;
+  user_id: string;
+  title: string;
+  background: string | null;
+  memory_summary: string | null;
+  created_at: string;
+  updated_at: string;
+  last_opened_at: string;
+};
+
+type RemoteReadingRow = {
+  id: string;
+  user_id: string;
+  project_id: string;
+  question: string;
+  spread_type: SpreadType;
+  status: ReadingStatus;
+  core_conclusion: string | null;
+  interpretation: string | null;
+  time_window: string | null;
+  uncertainty: string | null;
+  created_at: string;
+  completed_at: string | null;
+};
+
+type RemoteReadingCardRow = {
+  id: string;
+  reading_id: string;
+  card_number: number;
+  card_slug: string;
+  position: string;
+  name_en: string;
+  name_zh: string;
+};
+
+type RemoteFollowUpMessageRow = {
+  id: string;
+  user_id: string;
+  project_id: string;
+  reading_id: string;
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+};
+
+function mapRemoteProject(row: RemoteProjectRow): DeepProject {
+  const session = getSession();
+  return {
+    id: row.id,
+    userEmail: session?.email ?? "",
+    title: row.title,
+    background: row.background ?? "",
+    memorySummary: row.memory_summary ?? "",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    lastOpenedAt: row.last_opened_at
+  };
+}
+
+function mapRemoteReading(row: RemoteReadingRow): DeepReading {
+  const session = getSession();
+  return {
+    id: row.id,
+    userEmail: session?.email ?? "",
+    projectId: row.project_id,
+    question: row.question,
+    spreadType: row.spread_type,
+    status: row.status,
+    coreConclusion: row.core_conclusion ?? "",
+    interpretation: row.interpretation ?? "",
+    timeWindow: row.time_window,
+    uncertainty: row.uncertainty ?? "",
+    createdAt: row.created_at,
+    completedAt: row.completed_at
+  };
+}
+
+function mapRemoteReadingCard(row: RemoteReadingCardRow): DeepReadingCard {
+  return {
+    id: row.id,
+    readingId: row.reading_id,
+    cardNumber: row.card_number,
+    cardSlug: row.card_slug,
+    position: row.position,
+    nameEn: row.name_en,
+    nameZh: row.name_zh
+  };
+}
+
+function mapRemoteFollowUpMessage(row: RemoteFollowUpMessageRow): FollowUpMessage {
+  const session = getSession();
+  return {
+    id: row.id,
+    userEmail: session?.email ?? "",
+    projectId: row.project_id,
+    readingId: row.reading_id,
+    role: row.role,
+    content: row.content,
+    createdAt: row.created_at
+  };
 }
 
 function saveSupabaseAuthSession(payload: Record<string, unknown>, fallbackEmail: string) {
@@ -449,11 +584,25 @@ export function getProjects() {
     .sort((a, b) => Date.parse(b.lastOpenedAt) - Date.parse(a.lastOpenedAt));
 }
 
+export async function loadProjects() {
+  if (!canUseRemoteStore()) return getProjects();
+
+  const rows = await supabaseRest<RemoteProjectRow[]>("/deep_projects?select=*&order=last_opened_at.desc");
+  return rows.map(mapRemoteProject);
+}
+
 export function getProject(projectId: string) {
   const session = getSession();
   if (!session) return null;
 
   return readAllProjects().find((project) => project.id === projectId && project.userEmail === session.email) ?? null;
+}
+
+export async function loadProject(projectId: string) {
+  if (!canUseRemoteStore()) return getProject(projectId);
+
+  const rows = await supabaseRest<RemoteProjectRow[]>(`/deep_projects?select=*&id=eq.${encodeURIComponent(projectId)}&limit=1`);
+  return rows[0] ? mapRemoteProject(rows[0]) : null;
 }
 
 export function createProject(input: { title: string; background?: string }) {
@@ -474,6 +623,30 @@ export function createProject(input: { title: string; background?: string }) {
 
   writeAllProjects([project, ...readAllProjects()]);
   return project;
+}
+
+export async function saveProject(input: { title: string; background?: string }) {
+  if (!canUseRemoteStore()) return createProject(input);
+
+  const session = getSession();
+  if (!session?.userId) throw new Error("Not signed in");
+
+  const timestamp = now();
+  const rows = await supabaseRest<RemoteProjectRow[]>("/deep_projects?select=*", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      user_id: session.userId,
+      title: input.title.trim().slice(0, 100),
+      background: (input.background ?? "").trim(),
+      memory_summary: "",
+      created_at: timestamp,
+      updated_at: timestamp,
+      last_opened_at: timestamp
+    })
+  });
+
+  return mapRemoteProject(rows[0]);
 }
 
 export function updateProject(projectId: string, input: { title?: string; background?: string; memorySummary?: string }): DeepProject | null {
@@ -500,6 +673,25 @@ export function updateProject(projectId: string, input: { title?: string; backgr
   return updatedProject;
 }
 
+export async function saveProjectUpdate(projectId: string, input: { title?: string; background?: string; memorySummary?: string }): Promise<DeepProject | null> {
+  if (!canUseRemoteStore()) return updateProject(projectId, input);
+
+  const patch: Record<string, string> = {
+    updated_at: now()
+  };
+  if (input.title !== undefined) patch.title = input.title.trim().slice(0, 100);
+  if (input.background !== undefined) patch.background = input.background.trim();
+  if (input.memorySummary !== undefined) patch.memory_summary = input.memorySummary.trim().slice(0, 2000);
+
+  const rows = await supabaseRest<RemoteProjectRow[]>(`/deep_projects?id=eq.${encodeURIComponent(projectId)}&select=*`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify(patch)
+  });
+
+  return rows[0] ? mapRemoteProject(rows[0]) : null;
+}
+
 export function touchProject(projectId: string) {
   const session = getSession();
   if (!session) return;
@@ -510,6 +702,19 @@ export function touchProject(projectId: string) {
       project.id === projectId && project.userEmail === session.email ? { ...project, lastOpenedAt: timestamp } : project
     )
   );
+}
+
+export async function saveProjectTouch(projectId: string) {
+  if (!canUseRemoteStore()) {
+    touchProject(projectId);
+    return;
+  }
+
+  await supabaseRest<null>(`/deep_projects?id=eq.${encodeURIComponent(projectId)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=minimal" },
+    body: JSON.stringify({ last_opened_at: now() })
+  });
 }
 
 export function deleteProject(projectId: string) {
@@ -525,6 +730,18 @@ export function deleteProject(projectId: string) {
   writeAllReadingCards(readAllReadingCards().filter((card) => !ownedReadingIds.includes(card.readingId)));
   writeAllFollowUpMessages(readAllFollowUpMessages().filter((message) => message.projectId !== projectId || message.userEmail !== session.email));
   return getProjects()[0] ?? null;
+}
+
+export async function removeProject(projectId: string) {
+  if (!canUseRemoteStore()) return deleteProject(projectId);
+
+  await supabaseRest<null>(`/deep_projects?id=eq.${encodeURIComponent(projectId)}`, {
+    method: "DELETE",
+    headers: { Prefer: "return=minimal" }
+  });
+
+  const projects = await loadProjects();
+  return projects[0] ?? null;
 }
 
 function spreadPositions(spreadType: SpreadType) {
@@ -557,6 +774,25 @@ export function getReadings(projectId: string): ReadingWithCards[] {
     }));
 }
 
+export async function loadReadings(projectId: string): Promise<ReadingWithCards[]> {
+  if (!canUseRemoteStore()) return getReadings(projectId);
+
+  const readingRows = await supabaseRest<RemoteReadingRow[]>(
+    `/deep_readings?select=*&project_id=eq.${encodeURIComponent(projectId)}&order=created_at.desc`
+  );
+  if (!readingRows.length) return [];
+
+  const readingIds = readingRows.map((reading) => reading.id);
+  const cardRows = await supabaseRest<RemoteReadingCardRow[]>(
+    `/deep_reading_cards?select=*&reading_id=in.(${readingIds.join(",")})&order=card_number.asc`
+  );
+
+  return readingRows.map((readingRow) => ({
+    ...mapRemoteReading(readingRow),
+    cards: cardRows.filter((card) => card.reading_id === readingRow.id).map(mapRemoteReadingCard)
+  }));
+}
+
 export function getFollowUpMessages(readingId: string): FollowUpMessage[] {
   const session = getSession();
   if (!session) return [];
@@ -564,6 +800,15 @@ export function getFollowUpMessages(readingId: string): FollowUpMessage[] {
   return readAllFollowUpMessages()
     .filter((message) => message.userEmail === session.email && message.readingId === readingId)
     .sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+}
+
+export async function loadFollowUpMessages(readingId: string): Promise<FollowUpMessage[]> {
+  if (!canUseRemoteStore()) return getFollowUpMessages(readingId);
+
+  const rows = await supabaseRest<RemoteFollowUpMessageRow[]>(
+    `/deep_follow_up_messages?select=*&reading_id=eq.${encodeURIComponent(readingId)}&order=created_at.asc`
+  );
+  return rows.map(mapRemoteFollowUpMessage);
 }
 
 function getReadingWithCards(readingId: string): ReadingWithCards | null {
@@ -579,8 +824,37 @@ function getReadingWithCards(readingId: string): ReadingWithCards | null {
   };
 }
 
+async function loadReadingWithCards(readingId: string): Promise<ReadingWithCards | null> {
+  if (!canUseRemoteStore()) return getReadingWithCards(readingId);
+
+  const readingRows = await supabaseRest<RemoteReadingRow[]>(`/deep_readings?select=*&id=eq.${encodeURIComponent(readingId)}&limit=1`);
+  if (!readingRows[0]) return null;
+
+  const cardRows = await supabaseRest<RemoteReadingCardRow[]>(
+    `/deep_reading_cards?select=*&reading_id=eq.${encodeURIComponent(readingId)}&order=card_number.asc`
+  );
+
+  return {
+    ...mapRemoteReading(readingRows[0]),
+    cards: cardRows.map(mapRemoteReadingCard)
+  };
+}
+
 function updateReadingStatus(readingId: string, status: ReadingStatus) {
   writeAllReadings(readAllReadings().map((reading) => (reading.id === readingId ? { ...reading, status } : reading)));
+}
+
+async function saveReadingStatus(readingId: string, status: ReadingStatus) {
+  if (!canUseRemoteStore()) {
+    updateReadingStatus(readingId, status);
+    return;
+  }
+
+  await supabaseRest<null>(`/deep_readings?id=eq.${encodeURIComponent(readingId)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=minimal" },
+    body: JSON.stringify({ status })
+  });
 }
 
 function completeReading(readingId: string, result: DeepReadingResult) {
@@ -612,6 +886,36 @@ function completeReading(readingId: string, result: DeepReadingResult) {
   }
 }
 
+async function saveCompletedReading(readingId: string, result: DeepReadingResult) {
+  if (!canUseRemoteStore()) {
+    completeReading(readingId, result);
+    return;
+  }
+
+  const completedReading = await loadReadingWithCards(readingId);
+
+  await supabaseRest<null>(`/deep_readings?id=eq.${encodeURIComponent(readingId)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=minimal" },
+    body: JSON.stringify({
+      status: "completed",
+      core_conclusion: result.core_conclusion,
+      interpretation: result.interpretation,
+      time_window: result.time_window,
+      uncertainty: result.uncertainty,
+      completed_at: now()
+    })
+  });
+
+  if (completedReading) {
+    recordDailyQuotaEvent({
+      userEmail: completedReading.userEmail,
+      kind: "deep_reading",
+      sourceId: readingId
+    });
+  }
+}
+
 function authHeaders(): HeadersInit {
   const session = getSession();
   return session?.accessToken ? { Authorization: `Bearer ${session.accessToken}` } : {};
@@ -621,18 +925,27 @@ function failReading(readingId: string) {
   updateReadingStatus(readingId, "failed");
 }
 
+async function saveFailedReading(readingId: string) {
+  await saveReadingStatus(readingId, "failed");
+}
+
 function limitReadingToCardsOnly(readingId: string) {
   updateReadingStatus(readingId, "quota_limited");
 }
 
-function buildGenerationPayload(readingId: string) {
-  const reading = getReadingWithCards(readingId);
+async function saveLimitedReading(readingId: string) {
+  await saveReadingStatus(readingId, "quota_limited");
+}
+
+async function buildGenerationPayload(readingId: string) {
+  const reading = await loadReadingWithCards(readingId);
   if (!reading) throw new Error("Reading not found");
 
-  const project = getProject(reading.projectId);
+  const project = await loadProject(reading.projectId);
   if (!project) throw new Error("Project not found");
 
-  const recentReadings = getReadings(reading.projectId)
+  const projectReadings = await loadReadings(reading.projectId);
+  const recentReadings = projectReadings
     .filter((item) => item.id !== reading.id && item.status === "completed")
     .slice(0, 3)
     .map((item) => ({
@@ -643,7 +956,13 @@ function buildGenerationPayload(readingId: string) {
       coreConclusion: item.coreConclusion
     }));
 
-  const recentProjectMessages = readAllFollowUpMessages()
+  const allProjectMessages = canUseRemoteStore()
+    ? await supabaseRest<RemoteFollowUpMessageRow[]>(
+        `/deep_follow_up_messages?select=*&project_id=eq.${encodeURIComponent(reading.projectId)}&order=created_at.desc&limit=8`
+      ).then((rows) => rows.reverse().map(mapRemoteFollowUpMessage))
+    : readAllFollowUpMessages().filter((message) => message.userEmail === reading.userEmail && message.projectId === reading.projectId);
+
+  const recentProjectMessages = allProjectMessages
     .filter((message) => message.userEmail === reading.userEmail && message.projectId === reading.projectId)
     .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
     .slice(0, 8)
@@ -723,24 +1042,101 @@ export function createReading(input: { projectId: string; spreadType: SpreadType
   };
 }
 
+export async function saveReading(input: { projectId: string; spreadType: SpreadType; question: string }) {
+  if (!canUseRemoteStore()) return createReading(input);
+
+  const session = getSession();
+  if (!session?.userId) throw new Error("Not signed in");
+
+  const project = await loadProject(input.projectId);
+  if (!project) throw new Error("Project not found");
+
+  const timestamp = now();
+  const reading: DeepReading = {
+    id: newId(),
+    userEmail: session.email,
+    projectId: input.projectId,
+    question: input.question.trim().slice(0, 300),
+    spreadType: input.spreadType,
+    status: "generating",
+    coreConclusion: "",
+    interpretation: "",
+    timeWindow: null,
+    uncertainty: "",
+    createdAt: timestamp,
+    completedAt: null
+  };
+
+  await supabaseRest<RemoteReadingRow[]>("/deep_readings?select=*", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify({
+      id: reading.id,
+      user_id: session.userId,
+      project_id: input.projectId,
+      question: reading.question,
+      spread_type: input.spreadType,
+      status: "generating",
+      core_conclusion: "",
+      interpretation: "",
+      uncertainty: "",
+      created_at: timestamp
+    })
+  });
+
+  const positions = spreadPositions(input.spreadType);
+  const drawnCards = drawUniqueCards(input.spreadType === "three_card" ? 3 : 5).map((card, index) => ({
+    id: newId(),
+    readingId: reading.id,
+    cardNumber: index + 1,
+    cardSlug: card.slug,
+    position: positions[index],
+    nameEn: card.nameEn,
+    nameZh: card.nameZh
+  }));
+
+  await supabaseRest<RemoteReadingCardRow[]>("/deep_reading_cards?select=*", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify(
+      drawnCards.map((card) => ({
+        id: card.id,
+        reading_id: card.readingId,
+        card_number: card.cardNumber,
+        card_slug: card.cardSlug,
+        position: card.position,
+        name_en: card.nameEn,
+        name_zh: card.nameZh
+      }))
+    )
+  });
+  await saveProjectTouch(input.projectId);
+
+  return {
+    ...reading,
+    cards: drawnCards
+  };
+}
+
 export async function generateDeepReading(readingId: string) {
-  updateReadingStatus(readingId, "generating");
+  await saveReadingStatus(readingId, "generating");
 
   try {
+    const payload = await buildGenerationPayload(readingId);
     const response = await fetch("/api/deep-reading", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         ...authHeaders()
       },
-      body: JSON.stringify(buildGenerationPayload(readingId))
+      body: JSON.stringify(payload)
     });
 
     if (response.status === 401) {
       throw new Error("请重新登录后再生成 AI 解读。");
     }
     if (response.status === 429) {
-      limitReadingToCardsOnly(readingId);
+      await saveLimitedReading(readingId);
       throw new QuotaExceededError("今日免费 AI 深度解读次数已用完。你仍可以抽牌和保存牌面，明天 00:00 后刷新。");
     }
     if (!response.ok) {
@@ -748,19 +1144,21 @@ export async function generateDeepReading(readingId: string) {
     }
 
     const result = assertDeepReadingResult(await response.json());
-    completeReading(readingId, result);
+    await saveCompletedReading(readingId, result);
   } catch (error) {
-    failReading(readingId);
+    if (error instanceof Error && error.name !== "QuotaExceededError") {
+      await saveFailedReading(readingId);
+    }
     throw error;
   }
 }
 
-function buildFollowUpPayload(readingId: string) {
-  const reading = getReadingWithCards(readingId);
+async function buildFollowUpPayload(readingId: string) {
+  const reading = await loadReadingWithCards(readingId);
   if (!reading) throw new Error("Reading not found");
   if (reading.status !== "completed") throw new Error("Reading is not completed");
 
-  const project = getProject(reading.projectId);
+  const project = await loadProject(reading.projectId);
   if (!project) throw new Error("Project not found");
 
   return {
@@ -779,7 +1177,7 @@ function buildFollowUpPayload(readingId: string) {
       uncertainty: reading.uncertainty
     },
     cards: reading.cards,
-    messages: getFollowUpMessages(readingId).map((message) => ({
+    messages: (await loadFollowUpMessages(readingId)).map((message) => ({
       role: message.role,
       content: message.content,
       createdAt: message.createdAt
@@ -791,7 +1189,7 @@ export async function sendFollowUpMessage(input: { readingId: string; content: s
   const session = getSession();
   if (!session) throw new Error("Not signed in");
 
-  const reading = getReadingWithCards(input.readingId);
+  const reading = await loadReadingWithCards(input.readingId);
   if (!reading) throw new Error("Reading not found");
   if (reading.status !== "completed") throw new Error("Reading is not completed");
 
@@ -808,17 +1206,35 @@ export async function sendFollowUpMessage(input: { readingId: string; content: s
     createdAt: now()
   };
 
-  writeAllFollowUpMessages([...readAllFollowUpMessages(), userMessage]);
-  touchProject(reading.projectId);
+  if (canUseRemoteStore()) {
+    await supabaseRest<RemoteFollowUpMessageRow[]>("/deep_follow_up_messages?select=*", {
+      method: "POST",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify({
+        id: userMessage.id,
+        user_id: session.userId,
+        project_id: userMessage.projectId,
+        reading_id: userMessage.readingId,
+        role: userMessage.role,
+        content: userMessage.content,
+        created_at: userMessage.createdAt
+      })
+    });
+    await saveProjectTouch(reading.projectId);
+  } else {
+    writeAllFollowUpMessages([...readAllFollowUpMessages(), userMessage]);
+    touchProject(reading.projectId);
+  }
 
   try {
+    const payload = await buildFollowUpPayload(reading.id);
     const response = await fetch("/api/deep-reading/follow-up", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         ...authHeaders()
       },
-      body: JSON.stringify(buildFollowUpPayload(reading.id))
+      body: JSON.stringify(payload)
     });
 
     if (response.status === 401) {
@@ -842,14 +1258,39 @@ export async function sendFollowUpMessage(input: { readingId: string; content: s
       createdAt: now()
     };
 
-    writeAllFollowUpMessages([...readAllFollowUpMessages(), assistantMessage]);
-    recordDailyQuotaEvent({
-      userEmail: session.email,
-      kind: "follow_up",
-      sourceId: assistantMessage.id
-    });
+    if (canUseRemoteStore()) {
+      await supabaseRest<RemoteFollowUpMessageRow[]>("/deep_follow_up_messages?select=*", {
+        method: "POST",
+        headers: { Prefer: "return=representation" },
+        body: JSON.stringify({
+          id: assistantMessage.id,
+          user_id: session.userId,
+          project_id: assistantMessage.projectId,
+          reading_id: assistantMessage.readingId,
+          role: assistantMessage.role,
+          content: assistantMessage.content,
+          created_at: assistantMessage.createdAt
+        })
+      });
+      recordDailyQuotaEvent({
+        userEmail: session.email,
+        kind: "follow_up",
+        sourceId: assistantMessage.id
+      });
+    } else {
+      writeAllFollowUpMessages([...readAllFollowUpMessages(), assistantMessage]);
+      recordDailyQuotaEvent({
+        userEmail: session.email,
+        kind: "follow_up",
+        sourceId: assistantMessage.id
+      });
+    }
     return assistantMessage;
   } catch (error) {
+    if (error instanceof Error && error.name === "QuotaExceededError") {
+      throw error;
+    }
+
     const fallbackMessage: FollowUpMessage = {
       id: newId(),
       userEmail: session.email,
@@ -860,7 +1301,23 @@ export async function sendFollowUpMessage(input: { readingId: string; content: s
       createdAt: now()
     };
 
-    writeAllFollowUpMessages([...readAllFollowUpMessages(), fallbackMessage]);
+    if (canUseRemoteStore()) {
+      await supabaseRest<RemoteFollowUpMessageRow[]>("/deep_follow_up_messages?select=*", {
+        method: "POST",
+        headers: { Prefer: "return=representation" },
+        body: JSON.stringify({
+          id: fallbackMessage.id,
+          user_id: session.userId,
+          project_id: fallbackMessage.projectId,
+          reading_id: fallbackMessage.readingId,
+          role: fallbackMessage.role,
+          content: fallbackMessage.content,
+          created_at: fallbackMessage.createdAt
+        })
+      });
+    } else {
+      writeAllFollowUpMessages([...readAllFollowUpMessages(), fallbackMessage]);
+    }
     throw error;
   }
 }
