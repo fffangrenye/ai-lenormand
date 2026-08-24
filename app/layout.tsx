@@ -1,5 +1,13 @@
 import type { Metadata } from "next";
+import { Noto_Serif_SC } from "next/font/google";
 import "./globals.css";
+
+const titleSerif = Noto_Serif_SC({
+  weight: "500",
+  display: "swap",
+  preload: false,
+  variable: "--font-title-serif"
+});
 
 export const metadata: Metadata = {
   title: "AI Lenormand",
@@ -9,7 +17,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="zh-CN">
-      <body>{children}</body>
+      <body className={titleSerif.variable}>{children}</body>
     </html>
   );
 }

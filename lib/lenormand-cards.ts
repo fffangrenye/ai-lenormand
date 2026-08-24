@@ -48,5 +48,19 @@ export function getLenormandCardImagePath(number: number, slug?: string) {
   const card = slug ? lenormandCards.find((item) => item.slug === slug) : lenormandCards.find((item) => item.number === number);
   const cardNumber = card?.number ?? number;
   const cardSlug = card?.slug ?? slug ?? "card";
-  return `/cards/lenormand/${String(cardNumber).padStart(2, "0")}-${cardSlug}.png`;
+  return `/cards/lenormand/${String(cardNumber).padStart(2, "0")}-${cardSlug}.webp`;
+}
+
+export function getAllLenormandCardImagePaths() {
+  return lenormandCards.map((card) => getLenormandCardImagePath(card.number, card.slug));
+}
+
+export function preloadLenormandCardImages() {
+  if (typeof window === "undefined") return;
+
+  getAllLenormandCardImagePaths().forEach((src) => {
+    const image = new Image();
+    image.decoding = "async";
+    image.src = src;
+  });
 }

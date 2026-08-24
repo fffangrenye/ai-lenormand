@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { CSSProperties, FormEvent, ReactNode, TouchEvent, useEffect, useMemo, useState } from "react";
 import { BookOpen, Check, ChevronDown, Menu, Pencil, Plus, Send, Sparkles, Trash2, X } from "lucide-react";
-import { getLenormandCardImagePath } from "@/lib/lenormand-cards";
+import { getLenormandCardImagePath, preloadLenormandCardImages } from "@/lib/lenormand-cards";
 import { useCardSpreadLongPressSave } from "@/lib/use-card-spread-save";
 import {
   DeepProject,
@@ -1258,6 +1258,10 @@ export function DeepProjectPageClient({ projectId }: { projectId: string }) {
   const [project, setProject] = useState<DeepProject | null>(null);
   const [readings, setReadings] = useState<ReadingWithCards[]>([]);
   const [notFound, setNotFound] = useState(false);
+
+  useEffect(() => {
+    preloadLenormandCardImages();
+  }, []);
 
   function refresh() {
     void (async () => {

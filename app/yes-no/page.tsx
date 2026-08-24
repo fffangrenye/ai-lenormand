@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { getLenormandCardImagePath } from "@/lib/lenormand-cards";
+import { getLenormandCardImagePath, preloadLenormandCardImages } from "@/lib/lenormand-cards";
 import { useCardSpreadLongPressSave } from "@/lib/use-card-spread-save";
 
 type CardTone = "positive" | "negative" | "neutral";
@@ -145,6 +145,10 @@ export default function YesNoPage() {
   const [revealed, setRevealed] = useState(false);
   const [interpretation, setInterpretation] = useState("");
   const [unsuitable, setUnsuitable] = useState(false);
+
+  useEffect(() => {
+    preloadLenormandCardImages();
+  }, []);
 
   const remaining = useMemo(() => 200 - question.length, [question]);
   const cardSaveHandlers = useCardSpreadLongPressSave(

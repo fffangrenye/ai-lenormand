@@ -60,16 +60,25 @@ const toneStyle = {
   sage: {
     card: "bg-[#eaebe3] border-[#CDD0C6]",
     ink: "text-[#8B9484]",
+    title: "text-[#687764]",
+    number: "text-[#687764]/58",
+    english: "text-[#687764]/74",
     wash: "bg-[#E8ECE1]"
   },
   rose: {
     card: "bg-[#f5e9e3] border-[#E0C7C2]",
     ink: "text-[#BD918A]",
+    title: "text-[#A87670]",
+    number: "text-[#A87670]/58",
+    english: "text-[#A87670]/74",
     wash: "bg-[#F0D8D3]"
   },
   blue: {
     card: "bg-[#dde3ea] border-[#BFCBD5]",
     ink: "text-[#758999]",
+    title: "text-[#687E90]",
+    number: "text-[#687E90]/58",
+    english: "text-[#687E90]/74",
     wash: "bg-[#D3E0EA]"
   }
 };
@@ -152,15 +161,15 @@ function CardFront({ card, active }: { card: HomeCard; active: boolean }) {
       <PaperTexture />
       <div className="relative flex h-full w-full flex-col items-center rounded-[4px] border border-ink/10 px-2.5 py-3">
         <div>
-          <p className="font-sans text-[12px] leading-none text-ink/38">{card.number}</p>
-          <p className="mt-3 whitespace-nowrap font-serif text-[22px] leading-none text-ink">{card.titleZh}</p>
+          <p className={`font-sans text-[12px] leading-none ${tone.number}`}>{card.number}</p>
+          <p className={`home-card-title mt-3 whitespace-nowrap text-[23px] leading-none ${tone.title}`}>{card.titleZh}</p>
         </div>
 
         <div className={`mt-5 grid h-[106px] w-[126px] place-items-center ${tone.ink}`}>
           <LenormandLineArt icon={card.icon} />
         </div>
 
-        <p className="mt-1 font-serif text-[12px] italic leading-none text-ink/68">{card.titleEn}</p>
+        <p className={`mt-1 font-serif text-[12px] italic leading-none ${tone.english}`}>{card.titleEn}</p>
         <p className="mt-auto max-w-none whitespace-nowrap font-sans text-[10px] leading-none text-[#817C72]">{card.body}</p>
       </div>
     </Link>

@@ -61,6 +61,13 @@ body > * {
   background: rgba(122, 104, 90, 0.42);
 }
 
+.home-card-title {
+  font-family: var(--font-title-serif), Georgia, "Times New Roman", serif;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  text-rendering: geometricPrecision;
+}
+
 @keyframes cardDraw {
   from {
     opacity: 0;
