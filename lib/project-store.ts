@@ -82,6 +82,7 @@ const FOLLOW_UP_MESSAGES_KEY = "ai-lenormand:deep-follow-up-messages";
 const QUOTA_USAGE_KEY = "ai-lenormand:quota-usage";
 export const FREE_DEEP_READING_LIMIT = 5;
 export const FREE_FOLLOW_UP_LIMIT = 5;
+const FOLLOW_UP_FAILURE_MESSAGE = "这次追问暂时没有生成成功。你的问题已经保留，可以稍后再问一次。";
 
 export class QuotaExceededError extends Error {
   constructor(message = "免费额度已用完，充值功能即将开放。") {
@@ -240,7 +241,9 @@ export function getFollowUpQuota(readingId: string): DeepQuota {
   const session = getSession();
   if (!session) return { used: 0, limit: FREE_FOLLOW_UP_LIMIT, remaining: 0 };
 
-  const used = readAllFollowUpMessages().filter((message) => message.userEmail === session.email && message.readingId === readingId && message.role === "user").length;
+  const used = readAllFollowUpMessages().filter(
+    (message) => message.userEmail === session.email && message.readingId === readingId && message.role === "assistant" && message.content !== FOLLOW_UP_FAILURE_MESSAGE
+  ).length;
   return {
     used,
     limit: FREE_FOLLOW_UP_LIMIT,
@@ -654,7 +657,7 @@ export async function sendFollowUpMessage(input: { readingId: string; content: s
       projectId: reading.projectId,
       readingId: reading.id,
       role: "assistant",
-      content: "这次追问暂时没有生成成功。你的问题已经保留，可以稍后再问一次。",
+      content: FOLLOW_UP_FAILURE_MESSAGE,
       createdAt: now()
     };
 
