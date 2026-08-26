@@ -167,6 +167,12 @@ export async function GET(request: Request) {
         todayVisitors: countUniqueVisitors(todayEvents),
         todayDeepStarts: countEvents(todayEvents, "deep_start"),
         todayDeepSubmits: countEvents(todayEvents, "deep_submit"),
+        todayAiSuccess: countEvents(todayEvents, "ai_success"),
+        todayAiFailed: countEvents(todayEvents, "ai_failed"),
+        todayQuotaExceeded: countEvents(todayEvents, "quota_exceeded"),
+        todayBalanceInsufficient: todayEvents.filter((row) => row.event_name === "ai_failed" && row.properties?.failure_reason === "insufficient_balance").length,
+        todayProviderRateLimited: todayEvents.filter((row) => row.event_name === "ai_failed" && row.properties?.failure_reason === "rate_limited").length,
+        todayInvalidResponse: todayEvents.filter((row) => row.event_name === "ai_failed" && row.properties?.failure_reason === "invalid_response").length,
         totalPageViews: countEvents(analyticsRows, "page_view")
       },
       recentUsers

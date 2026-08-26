@@ -4,6 +4,14 @@ export type SupabaseUser = {
 };
 
 export type ServerQuotaKind = "deep_reading" | "follow_up";
+export type AiFailureReason =
+  | "insufficient_balance"
+  | "rate_limited"
+  | "timeout"
+  | "provider_error"
+  | "invalid_response"
+  | "network_error"
+  | "unknown";
 
 const RESET_LABEL = "北京时间 00:00";
 
@@ -133,4 +141,62 @@ export async function refundDailyQuota(userId: string, kind: ServerQuotaKind) {
     p_date_key: getBeijingDateKey(),
     p_kind: kind
   });
+}
+
+export async function checkDailyQuota(userId: string, kind: ServerQuotaKind, limit: number) {
+  return callQuotaRpc("check_daily_ai_quota", {
+    p_user_id: userId,
+    p_date_key: getBeijingDateKey(),
+    p_kind: kind,
+    p_limit: limit
+  });
+}
+
+export async function consumeDailyQuota(userId: string, kind: ServerQuotaKind, limit: number) {
+  return callQuotaRpc("consume_daily_ai_quota", {
+    p_user_id: userId,
+    p_date_key: getBeijingDateKey(),
+    p_kind: kind,
+    p_limit: limit
+  });
+}
+
+export async function trackServerAnalyticsEvent(input: {
+  eventName: "ai_success" | "ai_failed" | "quota_exceeded";
+  userId?: string | null;
+  visitorId?: string | null;
+  readingId?: string | null;
+  spreadType?: string | null;
+  path: string;
+  request?: Request;
+  properties?: Record<string, unknown>;
+}) {
+  try {
+    const { url } = getSupabaseServiceConfig();
+    await fetch(`${url}/rest/v1/analytics_events`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...getSupabaseServiceHeaders(),
+        Prefer: "return=minimal"
+      },
+      body: JSON.stringify({
+        user_id: input.userId ?? null,
+        visitor_id: input.visitorId ?? input.userId ?? "server",
+        session_id: input.visitorId ?? input.userId ?? "server",
+        event_name: input.eventName,
+        reading_id: input.readingId ?? null,
+        spread_type: input.spreadType ?? null,
+        referrer: input.request?.headers.get("referer") ?? null,
+        properties: {
+          ...(input.properties ?? {}),
+          path: input.path,
+          dateKey: getBeijingDateKey(),
+          userAgent: input.request?.headers.get("user-agent") ?? null
+        }
+      })
+    });
+  } catch (error) {
+    console.error(error);
+  }
 }

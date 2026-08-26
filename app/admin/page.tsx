@@ -23,6 +23,12 @@ type AdminOverview = {
     todayVisitors: number;
     todayDeepStarts: number;
     todayDeepSubmits: number;
+    todayAiSuccess: number;
+    todayAiFailed: number;
+    todayQuotaExceeded: number;
+    todayBalanceInsufficient: number;
+    todayProviderRateLimited: number;
+    todayInvalidResponse: number;
     totalPageViews: number;
   };
   recentUsers: Array<{
@@ -140,6 +146,12 @@ export default function AdminPage() {
               <StatCard label="今日追问" value={overview.summary.todayFollowUp} hint="Follow-up" />
               <StatCard label="开始深占" value={overview.summary.todayDeepStarts} hint="今日点击" />
               <StatCard label="提交深占" value={overview.summary.todayDeepSubmits} hint="今日抽牌" />
+              <StatCard label="AI 成功" value={overview.summary.todayAiSuccess} hint="模型返回成功" />
+              <StatCard label="AI 失败" value={overview.summary.todayAiFailed} hint="已调用模型但失败" />
+              <StatCard label="额度触达" value={overview.summary.todayQuotaExceeded} hint="未调用模型" />
+              <StatCard label="余额不足" value={overview.summary.todayBalanceInsufficient} hint="DeepSeek / 402" />
+              <StatCard label="模型限流" value={overview.summary.todayProviderRateLimited} hint="Provider 429" />
+              <StatCard label="格式失败" value={overview.summary.todayInvalidResponse} hint="JSON / Schema" />
               <StatCard label="总项目" value={overview.summary.projectCount} />
               <StatCard label="总解读" value={overview.summary.readingCount} hint={`${overview.summary.completedReadingCount} 已完成`} />
               <StatCard label="累计解读" value={overview.summary.totalDeepReading} hint="AI 次数" />

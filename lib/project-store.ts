@@ -37,6 +37,7 @@ export type DeepReading = {
   interpretation: string;
   timeWindow: string | null;
   uncertainty: string;
+  failureReason?: string | null;
   createdAt: string;
   completedAt: string | null;
 };
@@ -105,6 +106,34 @@ export class QuotaExceededError extends Error {
     super(message);
     this.name = "QuotaExceededError";
   }
+}
+
+type ApiErrorPayload = {
+  code?: string;
+  message?: string;
+  error?: string;
+  reason?: string;
+  quota?: unknown;
+};
+
+async function readApiErrorPayload(response: Response): Promise<ApiErrorPayload> {
+  return (await response.json().catch(() => ({}))) as ApiErrorPayload;
+}
+
+function getFriendlyAiFailureMessage(payload: ApiErrorPayload) {
+  if (payload.code === "QUOTA_EXCEEDED") {
+    return payload.message || "今日解读次数已用完，请明日再试。";
+  }
+
+  if (
+    payload.code === "AI_PROVIDER_BALANCE_INSUFFICIENT" ||
+    payload.code === "AI_PROVIDER_RATE_LIMITED" ||
+    payload.code === "AI_GENERATION_FAILED"
+  ) {
+    return payload.message || "解读服务暂时不可用，本次不会消耗解读次数，请点击下方复制移步其他AI进行解读。";
+  }
+
+  return payload.message || payload.error || "解读服务暂时不可用，本次不会消耗解读次数，请点击下方复制移步其他AI进行解读。";
 }
 
 function canUseStorage() {
@@ -343,6 +372,7 @@ type RemoteReadingRow = {
   interpretation: string | null;
   time_window: string | null;
   uncertainty: string | null;
+  failure_reason?: string | null;
   created_at: string;
   completed_at: string | null;
 };
@@ -394,6 +424,7 @@ function mapRemoteReading(row: RemoteReadingRow): DeepReading {
     interpretation: row.interpretation ?? "",
     timeWindow: row.time_window,
     uncertainty: row.uncertainty ?? "",
+    failureReason: row.failure_reason ?? null,
     createdAt: row.created_at,
     completedAt: row.completed_at
   };
@@ -1020,6 +1051,7 @@ function completeReading(readingId: string, result: DeepReadingResult) {
             interpretation: result.interpretation,
             timeWindow: result.time_window,
             uncertainty: result.uncertainty,
+            failureReason: null,
             completedAt
           }
         : reading
@@ -1052,6 +1084,7 @@ async function saveCompletedReading(readingId: string, result: DeepReadingResult
       interpretation: result.interpretation,
       time_window: result.time_window,
       uncertainty: result.uncertainty,
+      failure_reason: null,
       completed_at: now()
     })
   });
@@ -1070,12 +1103,25 @@ async function authHeaders(): Promise<HeadersInit> {
   return { Authorization: `Bearer ${session.accessToken}` };
 }
 
-function failReading(readingId: string) {
-  updateReadingStatus(readingId, "failed");
+function failReading(readingId: string, failureReason?: string) {
+  writeAllReadings(
+    readAllReadings().map((reading) =>
+      reading.id === readingId ? { ...reading, status: "failed", failureReason: failureReason ?? reading.failureReason ?? null } : reading
+    )
+  );
 }
 
-async function saveFailedReading(readingId: string) {
-  await saveReadingStatus(readingId, "failed");
+async function saveFailedReading(readingId: string, failureReason?: string) {
+  if (!canUseRemoteStore()) {
+    failReading(readingId, failureReason);
+    return;
+  }
+
+  await supabaseRest<null>(`/deep_readings?id=eq.${encodeURIComponent(readingId)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=minimal" },
+    body: JSON.stringify({ status: "failed", ...(failureReason ? { failure_reason: failureReason } : {}) })
+  });
 }
 
 function limitReadingToCardsOnly(readingId: string) {
@@ -1163,6 +1209,7 @@ export function createReading(input: { projectId: string; spreadType: SpreadType
     interpretation: "",
     timeWindow: null,
     uncertainty: "",
+    failureReason: null,
     createdAt: timestamp,
     completedAt: null
   };
@@ -1213,6 +1260,7 @@ export async function saveReading(input: { projectId: string; spreadType: Spread
     interpretation: "",
     timeWindow: null,
     uncertainty: "",
+    failureReason: null,
     createdAt: timestamp,
     completedAt: null
   };
@@ -1230,6 +1278,7 @@ export async function saveReading(input: { projectId: string; spreadType: Spread
       core_conclusion: "",
       interpretation: "",
       uncertainty: "",
+      failure_reason: null,
       created_at: timestamp
     })
   });
@@ -1288,12 +1337,14 @@ export async function generateDeepReading(readingId: string) {
     if (response.status === 401) {
       throw new Error("请重新登录后再生成 AI 解读。");
     }
-    if (response.status === 429) {
-      await saveLimitedReading(readingId);
-      throw new QuotaExceededError("今日免费 AI 深度解读次数已用完。你仍可以抽牌和保存牌面，明天 00:00 后刷新。");
-    }
     if (!response.ok) {
-      throw new Error(`Deep Reading generation failed: ${response.status}`);
+      const payload = await readApiErrorPayload(response);
+      if (payload.code === "QUOTA_EXCEEDED") {
+        await saveLimitedReading(readingId);
+        throw new QuotaExceededError(getFriendlyAiFailureMessage(payload));
+      }
+      await saveFailedReading(readingId, payload.reason);
+      throw new Error(getFriendlyAiFailureMessage(payload));
     }
 
     const result = assertDeepReadingResult(await response.json());
@@ -1400,11 +1451,12 @@ export async function sendFollowUpMessage(input: { readingId: string; content: s
     if (response.status === 401) {
       throw new Error("请重新登录后再追问。");
     }
-    if (response.status === 429) {
-      throw new QuotaExceededError("今日 10 次免费追问已用完，明天 00:00 后刷新。");
-    }
     if (!response.ok) {
-      throw new Error(`Follow-up generation failed: ${response.status}`);
+      const payload = await readApiErrorPayload(response);
+      if (payload.code === "QUOTA_EXCEEDED") {
+        throw new QuotaExceededError(getFriendlyAiFailureMessage(payload));
+      }
+      throw new Error(getFriendlyAiFailureMessage(payload));
     }
 
     const result: DeepFollowUpResult = assertDeepFollowUpResult(await response.json());

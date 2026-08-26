@@ -1,11 +1,63 @@
 import { NextResponse } from "next/server";
 import { DeepReadingRequest, assertDeepReadingResult } from "@/lib/deep-reading-result";
-import { isAdminEmail, refundDailyQuota, requireSupabaseUser, reserveDailyQuota } from "@/lib/supabase-server";
+import {
+  AiFailureReason,
+  checkDailyQuota,
+  consumeDailyQuota,
+  isAdminEmail,
+  requireSupabaseUser,
+  trackServerAnalyticsEvent
+} from "@/lib/supabase-server";
 
 export const runtime = "nodejs";
 
 const DEEPSEEK_URL = "https://api.deepseek.com/chat/completions";
 const FREE_DEEP_READING_LIMIT = 3;
+
+class AiProviderError extends Error {
+  status: number;
+  body: string;
+
+  constructor(status: number, body: string) {
+    super(`DeepSeek API error ${status}: ${body.slice(0, 500)}`);
+    this.name = "AiProviderError";
+    this.status = status;
+    this.body = body;
+  }
+}
+
+function classifyAIError(error: unknown): AiFailureReason {
+  const record = error && typeof error === "object" ? (error as Record<string, unknown>) : {};
+  const status = typeof record.status === "number" ? record.status : undefined;
+  const message = String(record.message ?? "").toLowerCase();
+  const body = String(record.body ?? "").toLowerCase();
+  const text = `${message} ${body}`;
+
+  if (status === 402 || text.includes("insufficient balance") || text.includes("balance insufficient") || text.includes("余额不足")) {
+    return "insufficient_balance";
+  }
+  if (status === 429) return "rate_limited";
+  if (record.name === "AbortError" || text.includes("timeout")) return "timeout";
+  if (text.includes("json") || text.includes("schema") || text.includes("parse")) return "invalid_response";
+  if (status && status >= 500 && status <= 599) return "provider_error";
+  if (text.includes("network") || text.includes("fetch failed")) return "network_error";
+  return "unknown";
+}
+
+function getPublicErrorCode(reason: AiFailureReason) {
+  switch (reason) {
+    case "insufficient_balance":
+      return "AI_PROVIDER_BALANCE_INSUFFICIENT";
+    case "rate_limited":
+      return "AI_PROVIDER_RATE_LIMITED";
+    default:
+      return "AI_GENERATION_FAILED";
+  }
+}
+
+function getProviderStatus(error: unknown) {
+  return error && typeof error === "object" && typeof (error as { status?: unknown }).status === "number" ? (error as { status: number }).status : null;
+}
 
 const systemPrompt = `You are a professional Lenormand Reader for AI Lenormand Deep Reading.
 
@@ -143,7 +195,7 @@ async function callDeepSeek(input: DeepReadingRequest) {
 
   if (!response.ok) {
     const errorText = await response.text();
-    throw new Error(`DeepSeek API error ${response.status}: ${errorText.slice(0, 500)}`);
+    throw new AiProviderError(response.status, errorText);
   }
 
   const payload = (await response.json()) as {
@@ -160,34 +212,111 @@ async function callDeepSeek(input: DeepReadingRequest) {
 }
 
 export async function POST(request: Request) {
-  let userId = "";
-  let quotaReserved = false;
-
   try {
     const user = await requireSupabaseUser(request);
-    userId = user.id;
-
     const input = (await request.json()) as DeepReadingRequest;
+
     if (!isAdminEmail(user.email)) {
-      const quota = await reserveDailyQuota(user.id, "deep_reading", FREE_DEEP_READING_LIMIT);
+      const quota = await checkDailyQuota(user.id, "deep_reading", FREE_DEEP_READING_LIMIT);
       if (!quota.allowed) {
-        return NextResponse.json({ error: "今日免费 AI 深度解读次数已用完。你仍可以抽牌和保存牌面，明天 00:00 后刷新。", quota }, { status: 429 });
+        await trackServerAnalyticsEvent({
+          eventName: "quota_exceeded",
+          userId: user.id,
+          readingId: input.reading.id,
+          spreadType: input.reading.spreadType,
+          path: "/api/deep-reading",
+          request,
+          properties: { kind: "deep_reading", quota }
+        });
+
+        return NextResponse.json(
+          {
+            code: "QUOTA_EXCEEDED",
+            error: "quota_exceeded",
+            message: "今日解读次数已用完，请明日再试。",
+            quota
+          },
+          { status: 429 }
+        );
       }
-      quotaReserved = true;
     }
 
-    const result = await callDeepSeek(input);
+    let result;
+    try {
+      result = await callDeepSeek(input);
+    } catch (error) {
+      const reason = classifyAIError(error);
+      await trackServerAnalyticsEvent({
+        eventName: "ai_failed",
+        userId: user.id,
+        readingId: input.reading.id,
+        spreadType: input.reading.spreadType,
+        path: "/api/deep-reading",
+        request,
+        properties: {
+          failure_reason: reason,
+          provider: "deepseek",
+          model: process.env.DEEPSEEK_MODEL || "deepseek-v4-flash",
+          provider_status: getProviderStatus(error)
+        }
+      });
+
+      return NextResponse.json(
+        {
+          code: getPublicErrorCode(reason),
+          error: "ai_failed",
+          reason,
+          message: "解读服务暂时不可用，本次不会消耗解读次数，请点击下方复制移步其他AI进行解读。"
+        },
+        { status: 503 }
+      );
+    }
+
+    if (!isAdminEmail(user.email)) {
+      const consumed = await consumeDailyQuota(user.id, "deep_reading", FREE_DEEP_READING_LIMIT);
+      if (!consumed.allowed) {
+        await trackServerAnalyticsEvent({
+          eventName: "quota_exceeded",
+          userId: user.id,
+          readingId: input.reading.id,
+          spreadType: input.reading.spreadType,
+          path: "/api/deep-reading",
+          request,
+          properties: { kind: "deep_reading", quota: consumed, after_ai_success: true }
+        });
+
+        return NextResponse.json(
+          {
+            code: "QUOTA_EXCEEDED",
+            error: "quota_exceeded",
+            message: "今日解读次数已用完，请明日再试。",
+            quota: consumed
+          },
+          { status: 429 }
+        );
+      }
+    }
+
+    await trackServerAnalyticsEvent({
+      eventName: "ai_success",
+      userId: user.id,
+      readingId: input.reading.id,
+      spreadType: input.reading.spreadType,
+      path: "/api/deep-reading",
+      request,
+      properties: {
+        provider: "deepseek",
+        model: process.env.DEEPSEEK_MODEL || "deepseek-v4-flash"
+      }
+    });
+
     return NextResponse.json(result);
   } catch (error) {
-    if (quotaReserved && userId) {
-      await refundDailyQuota(userId, "deep_reading").catch((refundError) => console.error(refundError));
-    }
-
     console.error(error);
     if (error instanceof Error && error.message === "Unauthorized") {
-      return NextResponse.json({ error: "请重新登录后再生成 AI 解读。" }, { status: 401 });
+      return NextResponse.json({ code: "UNAUTHORIZED", error: "请重新登录后再生成 AI 解读。" }, { status: 401 });
     }
 
-    return NextResponse.json({ error: error instanceof Error ? error.message : "Deep Reading generation failed." }, { status: 500 });
+    return NextResponse.json({ code: "SERVER_ERROR", error: "Deep Reading generation failed." }, { status: 500 });
   }
 }

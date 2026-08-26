@@ -1,7 +1,18 @@
 import { NextResponse } from "next/server";
 import { getBeijingDateKey, getSupabaseServiceConfig, getSupabaseServiceHeaders } from "@/lib/supabase-server";
 
-const ALLOWED_EVENTS = new Set(["page_view", "signup_clicked", "referral_landed", "share_clicked", "deep_start", "deep_submit", "follow_up_submit"]);
+const ALLOWED_EVENTS = new Set([
+  "page_view",
+  "signup_clicked",
+  "referral_landed",
+  "share_clicked",
+  "deep_start",
+  "deep_submit",
+  "follow_up_submit",
+  "ai_success",
+  "ai_failed",
+  "quota_exceeded"
+]);
 
 type AnalyticsPayload = {
   eventName?: string;
