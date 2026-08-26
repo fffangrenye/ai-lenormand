@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { CSSProperties, FormEvent, ReactNode, TouchEvent, useEffect, useMemo, useState } from "react";
 import { BookOpen, Check, ChevronDown, Copy, Menu, Pencil, Plus, Send, Sparkles, Trash2, X } from "lucide-react";
+import { trackAnalyticsEvent } from "@/components/AnalyticsTracker";
 import { getLenormandCardImagePath, preloadLenormandCardImages } from "@/lib/lenormand-cards";
 import { useCardSpreadLongPressSave } from "@/lib/use-card-spread-save";
 import {
@@ -626,7 +627,8 @@ function QuestionStep({
   error,
   onQuestionChange,
   onBack,
-  onSubmit
+  onSubmit,
+  submitting
 }: {
   spreadType: SpreadType;
   question: string;
@@ -634,6 +636,7 @@ function QuestionStep({
   onQuestionChange: (question: string) => void;
   onBack: () => void;
   onSubmit: () => void;
+  submitting: boolean;
 }) {
   return (
     <div className="py-6">
@@ -655,11 +658,11 @@ function QuestionStep({
       </div>
 
       <div className="mt-8 flex gap-3">
-        <button type="button" onClick={onBack} className="h-12 flex-1 rounded-full border border-ink/12 text-[13px] uppercase tracking-[0.12em] text-ink/58">
+        <button type="button" onClick={onBack} disabled={submitting} className="h-12 flex-1 rounded-full border border-ink/12 text-[13px] uppercase tracking-[0.12em] text-ink/58 disabled:opacity-50">
           返回
         </button>
-        <button type="button" onClick={onSubmit} className="h-12 flex-1 rounded-full bg-[#6E2638] text-[13px] uppercase tracking-[0.12em] text-[#FFF9F2] shadow-soft">
-          开始占卜
+        <button type="button" onClick={onSubmit} disabled={submitting} className="h-12 flex-1 rounded-full bg-[#6E2638] text-[13px] uppercase tracking-[0.12em] text-[#FFF9F2] shadow-soft disabled:opacity-50">
+          {submitting ? "正在抽牌" : "开始占卜"}
         </button>
       </div>
     </div>
@@ -891,6 +894,11 @@ function FollowUpChat({ reading }: { reading: ReadingWithCards }) {
     setDraft("");
     setError("");
     setSending(true);
+    trackAnalyticsEvent("follow_up_submit", {
+      readingId: reading.id,
+      projectId: reading.projectId,
+      contentLength: content.length
+    });
 
     try {
       await sendFollowUpMessage({ readingId: reading.id, content });
@@ -1017,6 +1025,7 @@ function ReadingWorkspace({
   const [quotaMessage, setQuotaMessage] = useState("");
   const [generatingReadingId, setGeneratingReadingId] = useState<string | null>(null);
   const [drawingReading, setDrawingReading] = useState<ReadingWithCards | null>(null);
+  const [submittingQuestion, setSubmittingQuestion] = useState(false);
   const quota = getDeepReadingQuota();
 
   async function generateAndRefresh(readingId: string) {
@@ -1035,6 +1044,10 @@ function ReadingWorkspace({
     setStep("spread");
     setError("");
     setQuotaMessage(quota.remaining <= 0 ? "今天的免费 AI 解读次数已经用完。你仍然可以抽牌、长按保存牌面，并在结果里复制专业 Prompt 自行解读。" : "");
+    trackAnalyticsEvent("deep_start", {
+      projectId: project.id,
+      quotaRemaining: quota.remaining
+    });
   }
 
   function submitQuestion() {
@@ -1046,10 +1059,16 @@ function ReadingWorkspace({
     setStep("drawing");
     setTimeout(() => {
       void (async () => {
-      let reading: ReadingWithCards;
-      try {
-        reading = await saveReading({ projectId: project.id, spreadType, question });
-      } catch (createError) {
+        let reading: ReadingWithCards;
+        try {
+          reading = await saveReading({ projectId: project.id, spreadType, question });
+          trackAnalyticsEvent("deep_submit", {
+            projectId: project.id,
+            readingId: reading.id,
+            spreadType,
+            questionLength: question.trim().length
+          });
+        } catch (createError) {
         setError(createError instanceof Error ? createError.message : "今日免费额度已用完，明天 00:00 后刷新。");
         setStep("question");
         return;
@@ -1064,6 +1083,8 @@ function ReadingWorkspace({
   }
 
   async function submitQuestionWithAnimation() {
+    if (submittingQuestion) return;
+
     const submittedQuestion = question.trim();
 
     if (!submittedQuestion) {
@@ -1071,11 +1092,19 @@ function ReadingWorkspace({
       return;
     }
 
+    setSubmittingQuestion(true);
     let reading: ReadingWithCards;
     try {
       reading = await saveReading({ projectId: project.id, spreadType, question: submittedQuestion });
+      trackAnalyticsEvent("deep_submit", {
+        projectId: project.id,
+        readingId: reading.id,
+        spreadType,
+        questionLength: submittedQuestion.length
+      });
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : "今日免费额度已用完，明天 00:00 后刷新。");
+      setSubmittingQuestion(false);
       return;
     }
     const minimumAnimation = wait(5400);
@@ -1095,6 +1124,7 @@ function ReadingWorkspace({
         setGeneratingReadingId(null);
         setDrawingReading(null);
         setStep("idle");
+        setSubmittingQuestion(false);
         onReadingsChange();
       }
     })();
@@ -1116,6 +1146,7 @@ function ReadingWorkspace({
         }}
         onBack={() => setStep("spread")}
         onSubmit={() => void submitQuestionWithAnimation()}
+        submitting={submittingQuestion}
       />
     );
   }

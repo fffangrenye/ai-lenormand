@@ -22,6 +22,7 @@ Core rules:
 - Fox is not automatically cheating. Snake is not automatically a third party. Ring is not automatically marriage.
 - Avoid absolute predictions. Give clear but probabilistic conclusions.
 - If time is not supported, set time_window to null.
+- Keep the response compact enough to fit safely in JSON: core_conclusion 40-90 Chinese characters, interpretation 360-620 Chinese characters, uncertainty 60-120 Chinese characters.
 
 Return exactly one JSON object and nothing else:
 {
@@ -132,6 +133,7 @@ async function callDeepSeek(input: DeepReadingRequest) {
       model: process.env.DEEPSEEK_MODEL || "deepseek-v4-flash",
       response_format: { type: "json_object" },
       temperature: 0.7,
+      max_tokens: 1100,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: buildUserPrompt(input) }
@@ -145,12 +147,13 @@ async function callDeepSeek(input: DeepReadingRequest) {
   }
 
   const payload = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
+    choices?: Array<{ finish_reason?: string; message?: { content?: string; reasoning_content?: string } }>;
   };
-  const content = payload.choices?.[0]?.message?.content;
+  const choice = payload.choices?.[0];
+  const content = choice?.message?.content || choice?.message?.reasoning_content;
 
   if (!content) {
-    throw new Error("DeepSeek response did not include message content.");
+    throw new Error(`DeepSeek response did not include message content. finish_reason=${choice?.finish_reason ?? "unknown"}`);
   }
 
   return assertDeepReadingResult(extractJsonObject(content));

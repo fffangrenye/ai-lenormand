@@ -19,6 +19,7 @@ Core rules:
 - Reality facts explicitly provided by the user have priority over divination.
 - Avoid absolute predictions. Give clear but probabilistic conclusions.
 - Be concise, warm, and specific.
+- Keep answer within 260 Chinese characters.
 
 Return exactly one JSON object and nothing else:
 {
@@ -119,6 +120,7 @@ async function callDeepSeek(input: DeepFollowUpRequest) {
       model: process.env.DEEPSEEK_MODEL || "deepseek-v4-flash",
       response_format: { type: "json_object" },
       temperature: 0.68,
+      max_tokens: 420,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: buildUserPrompt(input) }
@@ -132,12 +134,13 @@ async function callDeepSeek(input: DeepFollowUpRequest) {
   }
 
   const payload = (await response.json()) as {
-    choices?: Array<{ message?: { content?: string } }>;
+    choices?: Array<{ finish_reason?: string; message?: { content?: string; reasoning_content?: string } }>;
   };
-  const content = payload.choices?.[0]?.message?.content;
+  const choice = payload.choices?.[0];
+  const content = choice?.message?.content || choice?.message?.reasoning_content;
 
   if (!content) {
-    throw new Error("DeepSeek response did not include message content.");
+    throw new Error(`DeepSeek response did not include message content. finish_reason=${choice?.finish_reason ?? "unknown"}`);
   }
 
   return assertDeepFollowUpResult(extractJsonObject(content));

@@ -40,6 +40,20 @@ export function getSupabaseServiceConfig() {
   return { url, serviceRoleKey };
 }
 
+export function getSupabaseServiceHeaders(extra?: Record<string, string>): Record<string, string> {
+  const { serviceRoleKey } = getServerSupabaseConfig();
+  const headers: Record<string, string> = {
+    apikey: serviceRoleKey,
+    ...extra
+  };
+
+  if (!serviceRoleKey.startsWith("sb_secret_")) {
+    headers.Authorization = `Bearer ${serviceRoleKey}`;
+  }
+
+  return headers;
+}
+
 export function getBeijingDateKey(value: string | Date = new Date()) {
   const date = typeof value === "string" ? new Date(value) : value;
   return new Intl.DateTimeFormat("en-CA", {
@@ -86,8 +100,7 @@ async function callQuotaRpc(name: string, body: Record<string, unknown>) {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      apikey: serviceRoleKey,
-      Authorization: `Bearer ${serviceRoleKey}`
+      ...getSupabaseServiceHeaders()
     },
     body: JSON.stringify(body)
   });

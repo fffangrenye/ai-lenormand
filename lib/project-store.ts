@@ -92,7 +92,12 @@ const DAILY_QUOTA_EVENTS_KEY = "ai-lenormand:daily-quota-events";
 export const FREE_DEEP_READING_LIMIT = 3;
 export const FREE_FOLLOW_UP_LIMIT = 1;
 const FOLLOW_UP_FAILURE_MESSAGE = "这次追问暂时没有生成成功。你的问题已经保留，可以稍后再问一次。";
-const DUPLICATE_SUBMIT_WINDOW_MS = 3 * 60 * 1000;
+const DUPLICATE_SUBMIT_WINDOW_MS = 10 * 60 * 1000;
+const AI_PROJECT_BACKGROUND_LIMIT = 500;
+const AI_PROJECT_MEMORY_LIMIT = 700;
+const AI_RECENT_READING_LIMIT = 1;
+const AI_RECENT_MESSAGE_LIMIT = 2;
+const AI_RECENT_TEXT_LIMIT = 260;
 
 export class QuotaExceededError extends Error {
   constructor(message = "今日免费额度已用完，明天 00:00 后刷新。") {
@@ -892,6 +897,11 @@ function getSuccessfulFollowUpCount(messages: FollowUpMessage[]) {
   return messages.filter((message) => message.role === "assistant" && message.content !== FOLLOW_UP_FAILURE_MESSAGE).length;
 }
 
+function trimForAi(value: string, limit: number) {
+  const normalized = value.trim().replace(/\s+/g, " ");
+  return normalized.length > limit ? `${normalized.slice(0, limit)}...` : normalized;
+}
+
 export async function loadReadings(projectId: string): Promise<ReadingWithCards[]> {
   if (!canUseRemoteStore()) return getReadings(projectId);
 
@@ -1065,33 +1075,33 @@ async function buildGenerationPayload(readingId: string) {
   const projectReadings = await loadReadings(reading.projectId);
   const recentReadings = projectReadings
     .filter((item) => item.id !== reading.id && item.status === "completed")
-    .slice(0, 3)
+    .slice(0, AI_RECENT_READING_LIMIT)
     .map((item) => ({
       createdAt: item.createdAt,
-      question: item.question,
+      question: trimForAi(item.question, AI_RECENT_TEXT_LIMIT),
       spreadType: item.spreadType,
       cards: item.cards,
-      coreConclusion: item.coreConclusion
+      coreConclusion: trimForAi(item.coreConclusion, AI_RECENT_TEXT_LIMIT)
     }));
 
   const allProjectMessages = canUseRemoteStore()
     ? await supabaseRest<RemoteFollowUpMessageRow[]>(
-        `/deep_follow_up_messages?select=*&project_id=eq.${encodeURIComponent(reading.projectId)}&order=created_at.desc&limit=8`
+        `/deep_follow_up_messages?select=*&project_id=eq.${encodeURIComponent(reading.projectId)}&order=created_at.desc&limit=${AI_RECENT_MESSAGE_LIMIT}`
       ).then((rows) => rows.reverse().map(mapRemoteFollowUpMessage))
     : readAllFollowUpMessages().filter((message) => message.userEmail === reading.userEmail && message.projectId === reading.projectId);
 
   const recentProjectMessages = allProjectMessages
     .filter((message) => message.userEmail === reading.userEmail && message.projectId === reading.projectId)
     .sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt))
-    .slice(0, 8)
+    .slice(0, AI_RECENT_MESSAGE_LIMIT)
     .reverse()
     .map((message) => {
       const sourceReading = getReadingWithCards(message.readingId);
       return {
         createdAt: message.createdAt,
-        readingQuestion: sourceReading?.question ?? "Unknown reading",
+        readingQuestion: sourceReading?.question ? trimForAi(sourceReading.question, AI_RECENT_TEXT_LIMIT) : "Unknown reading",
         role: message.role,
-        content: message.content
+        content: trimForAi(message.content, AI_RECENT_TEXT_LIMIT)
       };
     });
 
@@ -1099,8 +1109,8 @@ async function buildGenerationPayload(readingId: string) {
     currentDate: new Date().toISOString().slice(0, 10),
     project: {
       title: project.title,
-      background: project.background,
-      memorySummary: project.memorySummary
+      background: trimForAi(project.background, AI_PROJECT_BACKGROUND_LIMIT),
+      memorySummary: trimForAi(project.memorySummary, AI_PROJECT_MEMORY_LIMIT)
     },
     reading: {
       id: reading.id,
@@ -1240,11 +1250,6 @@ export async function saveReading(input: { projectId: string; spreadType: Spread
 export async function generateDeepReading(readingId: string) {
   const existingReading = await loadReadingWithCards(readingId);
   if (!existingReading || existingReading.status !== "drawing") return;
-
-  if (getDeepReadingQuota().remaining <= 0) {
-    await saveLimitedReading(readingId);
-    throw new QuotaExceededError("今天的免费 AI 解读次数已经用完。你仍然可以抽牌、保存牌面，并复制专业 Prompt 自行解读。");
-  }
 
   await saveReadingStatus(readingId, "generating");
 
@@ -1461,11 +1466,16 @@ export function formatProjectDate(value: string) {
   const today = new Date();
   const yesterday = new Date();
   yesterday.setDate(today.getDate() - 1);
+  const time = date.toLocaleTimeString("zh-CN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false
+  });
 
-  if (date.toDateString() === today.toDateString()) return "今天";
-  if (date.toDateString() === yesterday.toDateString()) return "昨天";
+  if (date.toDateString() === today.toDateString()) return `今天 ${time}`;
+  if (date.toDateString() === yesterday.toDateString()) return `昨天 ${time}`;
 
-  return `${date.getMonth() + 1}月${date.getDate()}日`;
+  return `${date.getMonth() + 1}月${date.getDate()}日 ${time}`;
 }
 
 function formatPromptCards(cards: DeepReadingCard[]) {
