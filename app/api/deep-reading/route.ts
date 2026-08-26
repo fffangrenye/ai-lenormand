@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { DeepReadingRequest, assertDeepReadingResult } from "@/lib/deep-reading-result";
-import { refundDailyQuota, requireSupabaseUser, reserveDailyQuota } from "@/lib/supabase-server";
+import { isAdminEmail, refundDailyQuota, requireSupabaseUser, reserveDailyQuota } from "@/lib/supabase-server";
 
 export const runtime = "nodejs";
 
@@ -168,12 +168,14 @@ export async function POST(request: Request) {
     userId = user.id;
 
     const input = (await request.json()) as DeepReadingRequest;
-    const quota = await reserveDailyQuota(user.id, "deep_reading", FREE_DEEP_READING_LIMIT);
-    if (!quota.allowed) {
-      return NextResponse.json({ error: "今日免费 AI 深度解读次数已用完。你仍可以抽牌和保存牌面，明天 00:00 后刷新。", quota }, { status: 429 });
+    if (!isAdminEmail(user.email)) {
+      const quota = await reserveDailyQuota(user.id, "deep_reading", FREE_DEEP_READING_LIMIT);
+      if (!quota.allowed) {
+        return NextResponse.json({ error: "今日免费 AI 深度解读次数已用完。你仍可以抽牌和保存牌面，明天 00:00 后刷新。", quota }, { status: 429 });
+      }
+      quotaReserved = true;
     }
 
-    quotaReserved = true;
     const result = await callDeepSeek(input);
     return NextResponse.json(result);
   } catch (error) {

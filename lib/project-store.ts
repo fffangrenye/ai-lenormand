@@ -91,6 +91,7 @@ const FOLLOW_UP_MESSAGES_KEY = "ai-lenormand:deep-follow-up-messages";
 const DAILY_QUOTA_EVENTS_KEY = "ai-lenormand:daily-quota-events";
 export const FREE_DEEP_READING_LIMIT = 3;
 export const FREE_FOLLOW_UP_LIMIT = 1;
+const UNLIMITED_AI_EMAILS = ["1041871342@qq.com"];
 const FOLLOW_UP_FAILURE_MESSAGE = "这次追问暂时没有生成成功。你的问题已经保留，可以稍后再问一次。";
 const DUPLICATE_SUBMIT_WINDOW_MS = 10 * 60 * 1000;
 const AI_PROJECT_BACKGROUND_LIMIT = 500;
@@ -567,6 +568,14 @@ function writeAllProjects(projects: DeepProject[]) {
 export function getDeepReadingQuota(): DeepQuota {
   const session = getSession();
   if (!session) return emptyQuota(FREE_DEEP_READING_LIMIT);
+  if (hasUnlimitedAiAccess(session)) {
+    return {
+      used: 0,
+      limit: 999,
+      remaining: 999,
+      resetLabel: "管理员无限额度"
+    };
+  }
 
   syncDailyQuotaEventsFromVisibleHistory(session.email);
   const todayKey = getBeijingDateKey();
@@ -588,6 +597,14 @@ export function getDeepReadingQuota(): DeepQuota {
 export function getFollowUpQuota(readingId: string): DeepQuota {
   const session = getSession();
   if (!session) return emptyQuota(FREE_FOLLOW_UP_LIMIT);
+  if (hasUnlimitedAiAccess(session)) {
+    return {
+      used: 0,
+      limit: 999,
+      remaining: 999,
+      resetLabel: "管理员无限额度"
+    };
+  }
 
   const visibleSuccessfulUsed = readAllFollowUpMessages().filter(
     (message) =>
@@ -616,6 +633,10 @@ export function getSession(): AuthSession | null {
   } catch {
     return null;
   }
+}
+
+export function hasUnlimitedAiAccess(session = getSession()) {
+  return Boolean(session?.email && UNLIMITED_AI_EMAILS.includes(session.email.trim().toLowerCase()));
 }
 
 export async function signIn(email: string, password: string) {
@@ -1331,7 +1352,7 @@ export async function sendFollowUpMessage(input: { readingId: string; content: s
 
   await assertNotDuplicateFollowUp({ readingId: reading.id, content: trimmed });
   const existingMessages = await loadFollowUpMessages(reading.id);
-  if (getSuccessfulFollowUpCount(existingMessages) >= FREE_FOLLOW_UP_LIMIT) {
+  if (!hasUnlimitedAiAccess(session) && getSuccessfulFollowUpCount(existingMessages) >= FREE_FOLLOW_UP_LIMIT) {
     throw new QuotaExceededError("这次解读的 1 次免费 AI 追问已经用完。你可以明天再开启新的免费解读，或复制牌面 Prompt 自行解读。");
   }
 

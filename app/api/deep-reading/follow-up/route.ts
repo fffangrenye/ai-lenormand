@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { DeepFollowUpRequest, assertDeepFollowUpResult } from "@/lib/deep-reading-result";
-import { requireSupabaseUser } from "@/lib/supabase-server";
+import { isAdminEmail, requireSupabaseUser } from "@/lib/supabase-server";
 
 export const runtime = "nodejs";
 
@@ -148,11 +148,11 @@ async function callDeepSeek(input: DeepFollowUpRequest) {
 
 export async function POST(request: Request) {
   try {
-    await requireSupabaseUser(request);
+    const user = await requireSupabaseUser(request);
 
     const input = (await request.json()) as DeepFollowUpRequest;
     const successfulFollowUps = input.messages.filter((message) => message.role === "assistant" && message.content !== FOLLOW_UP_FAILURE_MESSAGE).length;
-    if (successfulFollowUps >= FREE_FOLLOW_UP_LIMIT) {
+    if (!isAdminEmail(user.email) && successfulFollowUps >= FREE_FOLLOW_UP_LIMIT) {
       return NextResponse.json({ error: "这次解读的 1 次免费 AI 追问已经用完。", quota: { allowed: false, limit: FREE_FOLLOW_UP_LIMIT } }, { status: 429 });
     }
 
