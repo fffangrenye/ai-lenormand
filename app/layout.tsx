@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Noto_Serif_SC } from "next/font/google";
+import { CookieConsent } from "@/components/CookieConsent";
 import "./globals.css";
 
 const titleSerif = Noto_Serif_SC({
@@ -17,7 +18,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="zh-CN">
-      <body className={titleSerif.variable}>{children}</body>
+      <body className={titleSerif.variable}>
+        {children}
+        <CookieConsent />
+      </body>
     </html>
   );
 }

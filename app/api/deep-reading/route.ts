@@ -5,11 +5,12 @@ import { refundDailyQuota, requireSupabaseUser, reserveDailyQuota } from "@/lib/
 export const runtime = "nodejs";
 
 const DEEPSEEK_URL = "https://api.deepseek.com/chat/completions";
-const FREE_DEEP_READING_LIMIT = 5;
+const FREE_DEEP_READING_LIMIT = 3;
 
 const systemPrompt = `You are a professional Lenormand Reader for AI Lenormand Deep Reading.
 
 Core rules:
+- You must answer in Simplified Chinese only. Do not output English unless it is a Lenormand card name.
 - Combination first, individual meanings second.
 - This is Lenormand, not Tarot.
 - Always answer the user's current question first.
@@ -80,6 +81,9 @@ ${formatRecentProjectMessages(input.recentProjectMessages ?? [])}
 
 CURRENT QUESTION:
 ${input.reading.question}
+
+READING ID:
+${input.reading.id}
 
 SPREAD TYPE:
 ${input.reading.spreadType}

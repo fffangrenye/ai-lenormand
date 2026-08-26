@@ -1,15 +1,17 @@
 import { NextResponse } from "next/server";
 import { DeepFollowUpRequest, assertDeepFollowUpResult } from "@/lib/deep-reading-result";
-import { refundDailyQuota, requireSupabaseUser, reserveDailyQuota } from "@/lib/supabase-server";
+import { requireSupabaseUser } from "@/lib/supabase-server";
 
 export const runtime = "nodejs";
 
 const DEEPSEEK_URL = "https://api.deepseek.com/chat/completions";
-const FREE_FOLLOW_UP_LIMIT = 10;
+const FREE_FOLLOW_UP_LIMIT = 1;
+const FOLLOW_UP_FAILURE_MESSAGE = "这次追问暂时没有生成成功。你的问题已经保留，可以稍后再问一次。";
 
 const systemPrompt = `You are a professional Lenormand Reader answering follow-up questions for an existing AI Lenormand Deep Reading.
 
 Core rules:
+- You must answer in Simplified Chinese only. Do not output English unless it is a Lenormand card name.
 - The cards are already drawn. Do not draw, ask for, or invent new cards.
 - Answer only from the existing project context, original question, cards, and generated interpretation.
 - This is Lenormand, not Tarot.
@@ -52,6 +54,9 @@ ${input.project.memorySummary || "None"}
 
 ORIGINAL QUESTION:
 ${input.reading.question}
+
+READING ID:
+${input.reading.id}
 
 SPREAD TYPE:
 ${input.reading.spreadType}
@@ -139,27 +144,18 @@ async function callDeepSeek(input: DeepFollowUpRequest) {
 }
 
 export async function POST(request: Request) {
-  let userId = "";
-  let quotaReserved = false;
-
   try {
-    const user = await requireSupabaseUser(request);
-    userId = user.id;
+    await requireSupabaseUser(request);
 
     const input = (await request.json()) as DeepFollowUpRequest;
-    const quota = await reserveDailyQuota(user.id, "follow_up", FREE_FOLLOW_UP_LIMIT);
-    if (!quota.allowed) {
-      return NextResponse.json({ error: "今日 10 次免费追问已用完，明天 00:00 后刷新。", quota }, { status: 429 });
+    const successfulFollowUps = input.messages.filter((message) => message.role === "assistant" && message.content !== FOLLOW_UP_FAILURE_MESSAGE).length;
+    if (successfulFollowUps >= FREE_FOLLOW_UP_LIMIT) {
+      return NextResponse.json({ error: "这次解读的 1 次免费 AI 追问已经用完。", quota: { allowed: false, limit: FREE_FOLLOW_UP_LIMIT } }, { status: 429 });
     }
 
-    quotaReserved = true;
     const result = await callDeepSeek(input);
     return NextResponse.json(result);
   } catch (error) {
-    if (quotaReserved && userId) {
-      await refundDailyQuota(userId, "follow_up").catch((refundError) => console.error(refundError));
-    }
-
     console.error(error);
     if (error instanceof Error && error.message === "Unauthorized") {
       return NextResponse.json({ error: "请重新登录后再追问。" }, { status: 401 });

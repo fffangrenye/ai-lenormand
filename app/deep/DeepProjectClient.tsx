@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { CSSProperties, FormEvent, ReactNode, TouchEvent, useEffect, useMemo, useState } from "react";
-import { BookOpen, Check, ChevronDown, Menu, Pencil, Plus, Send, Sparkles, Trash2, X } from "lucide-react";
+import { BookOpen, Check, ChevronDown, Copy, Menu, Pencil, Plus, Send, Sparkles, Trash2, X } from "lucide-react";
 import { getLenormandCardImagePath, preloadLenormandCardImages } from "@/lib/lenormand-cards";
 import { useCardSpreadLongPressSave } from "@/lib/use-card-spread-save";
 import {
@@ -12,6 +12,7 @@ import {
   FollowUpMessage,
   ReadingWithCards,
   SpreadType,
+  buildExternalReadingPrompt,
   formatProjectDate,
   generateDeepReading,
   getDeepReadingQuota,
@@ -511,7 +512,7 @@ function QuotaNotice({ quota, message }: { quota: DeepQuota; message?: string })
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-[12px] uppercase tracking-[0.17em] text-clay/64">Daily Free</p>
-            <p className="mt-1 text-[13px] leading-5 text-ink/50">今日 AI 深度解读剩余 {quota.remaining}/{quota.limit} 次。用完后仍可抽牌和保存牌面。</p>
+            <p className="mt-1 text-[13px] leading-5 text-ink/50">今日 AI 深度解读剩余 {quota.remaining}/{quota.limit} 次。用完后仍可抽牌、保存牌面和复制解读 Prompt。</p>
             <p className="mt-1 text-[12px] leading-5 text-ink/36">每日 {quota.resetLabel} 后刷新。</p>
           </div>
           <span className="shrink-0 rounded-full border border-ink/10 bg-ivory/70 px-3 py-1 text-[12px] text-ink/46">{quota.used}/{quota.limit}</span>
@@ -764,6 +765,7 @@ function ReadingCardFace({ card, compact = false }: { card: ReadingWithCards["ca
 
 function ReadingChapter({ reading }: { reading: ReadingWithCards }) {
   const paragraphs = reading.interpretation.split("\n\n").filter(Boolean);
+  const [copyState, setCopyState] = useState<"idle" | "current" | "recent" | "failed">("idle");
   const cardSaveHandlers = useCardSpreadLongPressSave(
     () =>
       reading.cards.map((card) => ({
@@ -772,6 +774,18 @@ function ReadingChapter({ reading }: { reading: ReadingWithCards }) {
       })),
     `deep-reading-${reading.id}.png`
   );
+
+  async function copyExternalPrompt(includeRecentContext: boolean) {
+    try {
+      const prompt = await buildExternalReadingPrompt(reading.id, includeRecentContext);
+      await navigator.clipboard.writeText(prompt);
+      setCopyState(includeRecentContext ? "recent" : "current");
+      window.setTimeout(() => setCopyState("idle"), 2200);
+    } catch {
+      setCopyState("failed");
+      window.setTimeout(() => setCopyState("idle"), 2200);
+    }
+  }
 
   return (
     <article className="border-b border-ink/10 py-8">
@@ -793,7 +807,7 @@ function ReadingChapter({ reading }: { reading: ReadingWithCards }) {
           {reading.status === "failed"
             ? "这次解读暂时没有生成成功，但你的问题和抽到的牌已经保留。"
             : reading.status === "quota_limited"
-              ? "已为你抽出牌面。今日免费 AI 深度解读次数已用完，明天 00:00 后刷新。你仍可以长按保存牌面。"
+              ? "已为你抽出牌面。今天的免费 AI 解读次数已经休息了，但牌面仍然完整保留。"
             : reading.status === "generating"
               ? "正在生成真实 Deep Reading 解读，请稍候。"
               : reading.coreConclusion}
@@ -805,6 +819,34 @@ function ReadingChapter({ reading }: { reading: ReadingWithCards }) {
           {paragraphs.map((paragraph) => (
             <p key={paragraph}>{paragraph}</p>
           ))}
+          <p className="rounded-[5px] border border-ink/8 bg-ivory/58 p-4 text-[12px] leading-6 text-ink/42">
+            本次解读由 AI 根据你提供的上下文与牌面生成，仅供娱乐和自我梳理，不构成心理、医疗、法律、财务等专业建议。
+          </p>
+        </section>
+      ) : null}
+
+      {reading.status === "quota_limited" || reading.status === "failed" ? (
+        <section className="mt-7 rounded-[6px] border border-clay/14 bg-[#FFFDF8]/72 p-4">
+          <p className="font-serif text-[20px] leading-7 text-ink">{reading.status === "quota_limited" ? "你还可以这样继续" : "这次 AI 没有成功回复"}</p>
+          <p className="mt-3 text-[14px] leading-6 text-ink/58">明天北京时间 00:00 后会获得新的免费 AI 解读次数。现在也可以复制 Prompt，去 ChatGPT / Claude / DeepSeek 等模型自行解读。</p>
+          <div className="mt-4 grid gap-2">
+            <button
+              type="button"
+              onClick={() => void copyExternalPrompt(false)}
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-full border border-ink/12 bg-ivory/76 px-4 text-[13px] uppercase tracking-[0.1em] text-ink/62"
+            >
+              <Copy size={15} aria-hidden="true" />
+              {copyState === "current" ? "已复制本次结果" : copyState === "failed" ? "复制失败，请稍后再试" : "复制本次结果与 Prompt"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void copyExternalPrompt(true)}
+              className="flex h-11 w-full items-center justify-center gap-2 rounded-full border border-ink/12 bg-[#6E2638]/5 px-4 text-[13px] uppercase tracking-[0.1em] text-ink/62"
+            >
+              <Copy size={15} aria-hidden="true" />
+              {copyState === "recent" ? "已复制近三次上下文" : copyState === "failed" ? "复制失败，请稍后再试" : "复制近三次与 Prompt"}
+            </button>
+          </div>
         </section>
       ) : null}
 
@@ -820,14 +862,12 @@ function ReadingChapter({ reading }: { reading: ReadingWithCards }) {
 
 function FollowUpChat({ reading }: { reading: ReadingWithCards }) {
   const [messages, setMessages] = useState<FollowUpMessage[]>([]);
-  const [quota, setQuota] = useState(() => getFollowUpQuota(reading.id));
   const [draft, setDraft] = useState("");
   const [sending, setSending] = useState(false);
   const [error, setError] = useState("");
 
   async function refreshMessages() {
     setMessages(await loadFollowUpMessages(reading.id));
-    setQuota(getFollowUpQuota(reading.id));
   }
 
   useEffect(() => {
@@ -840,6 +880,11 @@ function FollowUpChat({ reading }: { reading: ReadingWithCards }) {
     const content = draft.trim();
     if (!content) {
       setError("先写下你想追问的内容。");
+      return;
+    }
+
+    if (quota.remaining <= 0) {
+      setError("这次解读的 1 次免费 AI 追问已经用完。你可以复制牌面 Prompt 自行继续解读。");
       return;
     }
 
@@ -857,14 +902,24 @@ function FollowUpChat({ reading }: { reading: ReadingWithCards }) {
     }
   }
 
+  const successfulReplies = messages.filter(
+    (message) => message.role === "assistant" && message.content !== "这次追问暂时没有生成成功。你的问题已经保留，可以稍后再问一次。"
+  ).length;
+  const quota = {
+    used: Math.min(successfulReplies, getFollowUpQuota(reading.id).limit),
+    limit: getFollowUpQuota(reading.id).limit,
+    remaining: Math.max(getFollowUpQuota(reading.id).limit - successfulReplies, 0),
+    resetLabel: "每次解读"
+  };
+
   return (
     <section className="border-b border-ink/10 pb-8 pt-1">
       <div className="rounded-[6px] border border-ink/8 bg-[#FFFDF8]/72 p-4">
         <div className="flex items-center justify-between gap-3">
           <div>
             <p className="text-[12px] uppercase tracking-[0.17em] text-clay/64">Follow-up Chat</p>
-            <p className="mt-1 text-[13px] leading-5 text-ink/48">围绕这次牌面继续追问，今日免费剩余 {quota.remaining}/{quota.limit} 次。</p>
-            <p className="mt-1 text-[12px] leading-5 text-ink/36">每日 {quota.resetLabel} 后刷新。</p>
+            <p className="mt-1 text-[13px] leading-5 text-ink/48">围绕这次牌面继续追问，本次免费剩余 {quota.remaining}/{quota.limit} 次。</p>
+            <p className="mt-1 text-[12px] leading-5 text-ink/36">每次 Deep Reading 最多 1 次 AI 追问。</p>
           </div>
           <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-clay/16 bg-[#F5F1E8] text-clay/70">
             <Send size={15} aria-hidden="true" />
@@ -881,6 +936,9 @@ function FollowUpChat({ reading }: { reading: ReadingWithCards }) {
                   }`}
                 >
                   {message.content}
+                  {message.role === "assistant" && message.content !== "这次追问暂时没有生成成功。你的问题已经保留，可以稍后再问一次。" ? (
+                    <span className="mt-2 block text-[11px] leading-5 opacity-60">AI 生成，仅供娱乐和自我梳理。</span>
+                  ) : null}
                 </p>
               </div>
             ))
@@ -904,12 +962,12 @@ function FollowUpChat({ reading }: { reading: ReadingWithCards }) {
               setError("");
             }}
             placeholder="继续追问这次解读..."
-            disabled={sending}
+            disabled={sending || quota.remaining <= 0}
             className="min-h-[48px] flex-1 resize-none rounded-[5px] border border-ink/12 bg-white/72 px-3 py-3 text-[14px] leading-5 outline-none focus:border-ink/35 disabled:opacity-55"
           />
           <button
             type="submit"
-            disabled={sending}
+            disabled={sending || quota.remaining <= 0}
             className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#6E2638] text-[#FFF9F2] shadow-soft disabled:opacity-50"
           >
             <Send size={17} aria-hidden="true" />
@@ -921,7 +979,7 @@ function FollowUpChat({ reading }: { reading: ReadingWithCards }) {
   );
 }
 
-function Timeline({ readings, generatingReadingId, onNewReading, onRetryReading }: { readings: ReadingWithCards[]; generatingReadingId: string | null; onNewReading: () => void; onRetryReading: (readingId: string) => void }) {
+function Timeline({ readings, onNewReading }: { readings: ReadingWithCards[]; generatingReadingId: string | null; onNewReading: () => void; onRetryReading: (readingId: string) => void }) {
   return (
     <div className="pb-28 pt-3">
       <button
@@ -937,16 +995,6 @@ function Timeline({ readings, generatingReadingId, onNewReading, onRetryReading 
         <div key={reading.id}>
           <ReadingChapter reading={reading} />
           {reading.status === "completed" ? <FollowUpChat reading={reading} /> : null}
-          {reading.status === "failed" ? (
-            <button
-              type="button"
-              onClick={() => onRetryReading(reading.id)}
-              disabled={generatingReadingId === reading.id}
-              className="mt-4 flex h-12 w-full items-center justify-center rounded-full border border-ink/12 bg-[#FFFDF8]/70 text-[13px] uppercase tracking-[0.12em] text-ink/64 disabled:opacity-50"
-            >
-              {generatingReadingId === reading.id ? "正在重新生成" : "重试生成解读"}
-            </button>
-          ) : null}
         </div>
       ))}
     </div>
@@ -986,7 +1034,7 @@ function ReadingWorkspace({
   function startReading() {
     setStep("spread");
     setError("");
-    setQuotaMessage(quota.remaining <= 0 ? "今日免费 AI 深度解读次数已用完。你仍然可以抽牌和保存牌面，明天 00:00 后刷新。" : "");
+    setQuotaMessage(quota.remaining <= 0 ? "今天的免费 AI 解读次数已经用完。你仍然可以抽牌、长按保存牌面，并在结果里复制专业 Prompt 自行解读。" : "");
   }
 
   function submitQuestion() {

@@ -19,6 +19,7 @@ export type DeepReadingRequest = {
     memorySummary: string;
   };
   reading: {
+    id: string;
     question: string;
     spreadType: ReadingWithCards["spreadType"];
   };
@@ -46,6 +47,7 @@ export type DeepFollowUpRequest = {
     memorySummary: string;
   };
   reading: {
+    id: string;
     question: string;
     spreadType: ReadingWithCards["spreadType"];
     coreConclusion: string;

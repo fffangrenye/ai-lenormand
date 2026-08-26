@@ -23,6 +23,23 @@ function getServerSupabaseConfig() {
   };
 }
 
+export function getAdminEmails() {
+  return (process.env.ADMIN_EMAILS ?? "")
+    .split(",")
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+export function isAdminEmail(email: string) {
+  const adminEmails = getAdminEmails();
+  return adminEmails.includes(email.trim().toLowerCase());
+}
+
+export function getSupabaseServiceConfig() {
+  const { url, serviceRoleKey } = getServerSupabaseConfig();
+  return { url, serviceRoleKey };
+}
+
 export function getBeijingDateKey(value: string | Date = new Date()) {
   const date = typeof value === "string" ? new Date(value) : value;
   return new Intl.DateTimeFormat("en-CA", {

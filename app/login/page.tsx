@@ -14,6 +14,8 @@ function LoginClient() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState<"signin" | "signup" | null>(null);
+  const [privacyAccepted, setPrivacyAccepted] = useState(false);
+  const [entertainmentAccepted, setEntertainmentAccepted] = useState(false);
   const returnTo = searchParams.get("returnTo") || "/deep";
 
   useEffect(() => {
@@ -32,6 +34,11 @@ function LoginClient() {
 
     if (password.length < 6) {
       setError("密码至少需要 6 位。");
+      return;
+    }
+
+    if (mode === "signup" && (!privacyAccepted || !entertainmentAccepted)) {
+      setError("创建账号前，请先勾选隐私与娱乐用途说明。");
       return;
     }
 
@@ -109,6 +116,33 @@ function LoginClient() {
 
             {error ? <p className="mt-3 text-[13px] text-[#8E4D4A]">{error}</p> : null}
             {message ? <p className="mt-3 text-[13px] text-ink/48">{message}</p> : null}
+
+            <div className="mt-5 space-y-3 rounded-[5px] border border-ink/8 bg-ivory/48 p-4">
+              <label className="flex gap-3 text-[12px] leading-5 text-ink/54">
+                <input
+                  type="checkbox"
+                  checked={privacyAccepted}
+                  onChange={(event) => {
+                    setPrivacyAccepted(event.target.checked);
+                    setError("");
+                  }}
+                  className="mt-1 h-4 w-4 shrink-0 accent-[#6E2638]"
+                />
+                <span>我同意本工具保存账号邮箱、项目、长期记忆、抽牌与追问内容，用于提供连续的上下文解读体验。</span>
+              </label>
+              <label className="flex gap-3 text-[12px] leading-5 text-ink/54">
+                <input
+                  type="checkbox"
+                  checked={entertainmentAccepted}
+                  onChange={(event) => {
+                    setEntertainmentAccepted(event.target.checked);
+                    setError("");
+                  }}
+                  className="mt-1 h-4 w-4 shrink-0 accent-[#6E2638]"
+                />
+                <span>我理解 AI 解读仅供娱乐和自我探索，不构成心理、医疗、法律、财务或其他专业建议。</span>
+              </label>
+            </div>
 
             <button
               type="submit"

@@ -89,9 +89,10 @@ const READINGS_KEY = "ai-lenormand:deep-readings";
 const READING_CARDS_KEY = "ai-lenormand:deep-reading-cards";
 const FOLLOW_UP_MESSAGES_KEY = "ai-lenormand:deep-follow-up-messages";
 const DAILY_QUOTA_EVENTS_KEY = "ai-lenormand:daily-quota-events";
-export const FREE_DEEP_READING_LIMIT = 5;
-export const FREE_FOLLOW_UP_LIMIT = 10;
+export const FREE_DEEP_READING_LIMIT = 3;
+export const FREE_FOLLOW_UP_LIMIT = 1;
 const FOLLOW_UP_FAILURE_MESSAGE = "这次追问暂时没有生成成功。你的问题已经保留，可以稍后再问一次。";
+const DUPLICATE_SUBMIT_WINDOW_MS = 3 * 60 * 1000;
 
 export class QuotaExceededError extends Error {
   constructor(message = "今日免费额度已用完，明天 00:00 后刷新。") {
@@ -216,25 +217,69 @@ function canUseRemoteStore() {
   return Boolean(process.env.NEXT_PUBLIC_SUPABASE_URL && process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY && session?.accessToken && session.userId);
 }
 
-async function supabaseRest<T>(path: string, init?: RequestInit): Promise<T> {
+function isSessionExpiring(session: AuthSession) {
+  return Boolean(session.expiresAt && Date.now() > session.expiresAt - 60_000);
+}
+
+async function refreshSupabaseAuthSession(session: AuthSession) {
+  if (!session.refreshToken) {
+    throw new Error("登录已过期，请重新登录。");
+  }
+
+  try {
+    const payload = await requestSupabaseAuth("/auth/v1/token?grant_type=refresh_token", {
+      refresh_token: session.refreshToken
+    });
+    return saveSupabaseAuthSession(payload, session.email);
+  } catch {
+    signOut();
+    throw new Error("登录已过期，请重新登录。");
+  }
+}
+
+async function getValidSession() {
   const session = getSession();
-  const { url, anonKey } = getSupabaseBrowserConfig();
 
   if (!session?.accessToken) {
     throw new Error("Not signed in");
   }
 
-  const response = await fetch(`${url}/rest/v1${path}`, {
-    ...init,
-    headers: {
-      apikey: anonKey,
-      Authorization: `Bearer ${session.accessToken}`,
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {})
-    }
-  });
+  if (!isSessionExpiring(session)) {
+    return session;
+  }
+
+  return refreshSupabaseAuthSession(session);
+}
+
+async function supabaseRest<T>(path: string, init?: RequestInit): Promise<T> {
+  let session = await getValidSession();
+  const { url, anonKey } = getSupabaseBrowserConfig();
+
+  async function requestWithSession(activeSession: AuthSession) {
+    return fetch(`${url}/rest/v1${path}`, {
+      ...init,
+      headers: {
+        apikey: anonKey,
+        Authorization: `Bearer ${activeSession.accessToken}`,
+        "Content-Type": "application/json",
+        ...(init?.headers ?? {})
+      }
+    });
+  }
+
+  let response = await requestWithSession(session);
+
+  if (response.status === 401 && session.refreshToken) {
+    session = await refreshSupabaseAuthSession(session);
+    response = await requestWithSession(session);
+  }
 
   if (!response.ok) {
+    if (response.status === 401) {
+      signOut();
+      throw new Error("登录已过期，请重新登录。");
+    }
+
     const message = await response.text().catch(() => "");
     throw new Error(`Supabase request failed: ${response.status} ${message.slice(0, 300)}`);
   }
@@ -400,6 +445,26 @@ function saveSupabaseAuthSession(payload: Record<string, unknown>, fallbackEmail
   return session;
 }
 
+async function syncUserProfile(session: AuthSession) {
+  if (!session.userId || !session.accessToken) return;
+
+  try {
+    await supabaseRest<null>("/user_profiles?on_conflict=user_id", {
+      method: "POST",
+      headers: {
+        Prefer: "resolution=merge-duplicates"
+      },
+      body: JSON.stringify({
+        user_id: session.userId,
+        email: session.email,
+        last_seen_at: now()
+      })
+    });
+  } catch {
+    // Profile sync is for admin analytics; login should still work if analytics is unavailable.
+  }
+}
+
 function readAllDailyQuotaEvents(): DailyQuotaEvent[] {
   if (!canUseStorage()) return [];
 
@@ -515,21 +580,18 @@ export function getDeepReadingQuota(): DeepQuota {
   };
 }
 
-export function getFollowUpQuota(_readingId: string): DeepQuota {
+export function getFollowUpQuota(readingId: string): DeepQuota {
   const session = getSession();
   if (!session) return emptyQuota(FREE_FOLLOW_UP_LIMIT);
 
-  syncDailyQuotaEventsFromVisibleHistory(session.email);
-  const todayKey = getBeijingDateKey();
-  const ledgerUsed = readAllDailyQuotaEvents().filter((event) => event.userEmail === session.email && event.kind === "follow_up" && event.dateKey === todayKey);
   const visibleSuccessfulUsed = readAllFollowUpMessages().filter(
     (message) =>
       message.userEmail === session.email &&
+      message.readingId === readingId &&
       message.role === "assistant" &&
-      message.content !== FOLLOW_UP_FAILURE_MESSAGE &&
-      getBeijingDateKey(message.createdAt) === todayKey
+      message.content !== FOLLOW_UP_FAILURE_MESSAGE
   ).length;
-  const used = Math.min(Math.max(ledgerUsed.length, visibleSuccessfulUsed), FREE_FOLLOW_UP_LIMIT);
+  const used = Math.min(visibleSuccessfulUsed, FREE_FOLLOW_UP_LIMIT);
   return {
     used,
     limit: FREE_FOLLOW_UP_LIMIT,
@@ -557,7 +619,9 @@ export async function signIn(email: string, password: string) {
     email: normalizedEmail,
     password
   });
-  return saveSupabaseAuthSession(payload, normalizedEmail);
+  const session = saveSupabaseAuthSession(payload, normalizedEmail);
+  await syncUserProfile(session);
+  return session;
 }
 
 export async function signUp(email: string, password: string) {
@@ -566,7 +630,9 @@ export async function signUp(email: string, password: string) {
     email: normalizedEmail,
     password
   });
-  return saveSupabaseAuthSession(payload, normalizedEmail);
+  const session = saveSupabaseAuthSession(payload, normalizedEmail);
+  await syncUserProfile(session);
+  return session;
 }
 
 export function signOut() {
@@ -774,6 +840,58 @@ export function getReadings(projectId: string): ReadingWithCards[] {
     }));
 }
 
+function normalizeQuestion(value: string) {
+  return value.trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+async function assertNotDuplicateReading(input: { projectId: string; spreadType: SpreadType; question: string }) {
+  const session = getSession();
+  if (!session) return;
+
+  const normalizedQuestion = normalizeQuestion(input.question);
+  if (!normalizedQuestion) return;
+
+  const readings = canUseRemoteStore() ? await loadReadings(input.projectId) : getReadings(input.projectId);
+  const duplicate = readings.find(
+    (reading) =>
+      reading.userEmail === session.email &&
+      reading.projectId === input.projectId &&
+      reading.spreadType === input.spreadType &&
+      normalizeQuestion(reading.question) === normalizedQuestion &&
+      Date.now() - Date.parse(reading.createdAt) < DUPLICATE_SUBMIT_WINDOW_MS
+  );
+
+  if (duplicate) {
+    throw new Error("这个问题刚刚已经提交过了，先看看刚抽出的牌面，避免重复消耗解读次数。");
+  }
+}
+
+async function assertNotDuplicateFollowUp(input: { readingId: string; content: string }) {
+  const session = getSession();
+  if (!session) return;
+
+  const normalizedContent = normalizeQuestion(input.content);
+  if (!normalizedContent) return;
+
+  const messages = await loadFollowUpMessages(input.readingId);
+  const duplicate = messages.find(
+    (message) =>
+      message.userEmail === session.email &&
+      message.readingId === input.readingId &&
+      message.role === "user" &&
+      normalizeQuestion(message.content) === normalizedContent &&
+      Date.now() - Date.parse(message.createdAt) < DUPLICATE_SUBMIT_WINDOW_MS
+  );
+
+  if (duplicate) {
+    throw new Error("这个追问刚刚已经提交过了，先等等当前回复，避免重复消耗 AI 次数。");
+  }
+}
+
+function getSuccessfulFollowUpCount(messages: FollowUpMessage[]) {
+  return messages.filter((message) => message.role === "assistant" && message.content !== FOLLOW_UP_FAILURE_MESSAGE).length;
+}
+
 export async function loadReadings(projectId: string): Promise<ReadingWithCards[]> {
   if (!canUseRemoteStore()) return getReadings(projectId);
 
@@ -916,9 +1034,9 @@ async function saveCompletedReading(readingId: string, result: DeepReadingResult
   }
 }
 
-function authHeaders(): HeadersInit {
-  const session = getSession();
-  return session?.accessToken ? { Authorization: `Bearer ${session.accessToken}` } : {};
+async function authHeaders(): Promise<HeadersInit> {
+  const session = await getValidSession();
+  return { Authorization: `Bearer ${session.accessToken}` };
 }
 
 function failReading(readingId: string) {
@@ -985,6 +1103,7 @@ async function buildGenerationPayload(readingId: string) {
       memorySummary: project.memorySummary
     },
     reading: {
+      id: reading.id,
       question: reading.question,
       spreadType: reading.spreadType
     },
@@ -1032,17 +1151,17 @@ export function createReading(input: { projectId: string; spreadType: SpreadType
 
   writeAllReadingCards([...readAllReadingCards(), ...drawnCards]);
 
-  const generatingReading = { ...reading, status: "generating" as ReadingStatus };
-  writeAllReadings(readAllReadings().map((item) => (item.id === reading.id ? generatingReading : item)));
   touchProject(input.projectId);
 
   return {
-    ...generatingReading,
+    ...reading,
     cards: drawnCards
   };
 }
 
 export async function saveReading(input: { projectId: string; spreadType: SpreadType; question: string }) {
+  await assertNotDuplicateReading(input);
+
   if (!canUseRemoteStore()) return createReading(input);
 
   const session = getSession();
@@ -1058,7 +1177,7 @@ export async function saveReading(input: { projectId: string; spreadType: Spread
     projectId: input.projectId,
     question: input.question.trim().slice(0, 300),
     spreadType: input.spreadType,
-    status: "generating",
+    status: "drawing",
     coreConclusion: "",
     interpretation: "",
     timeWindow: null,
@@ -1076,7 +1195,7 @@ export async function saveReading(input: { projectId: string; spreadType: Spread
       project_id: input.projectId,
       question: reading.question,
       spread_type: input.spreadType,
-      status: "generating",
+      status: "drawing",
       core_conclusion: "",
       interpretation: "",
       uncertainty: "",
@@ -1119,6 +1238,14 @@ export async function saveReading(input: { projectId: string; spreadType: Spread
 }
 
 export async function generateDeepReading(readingId: string) {
+  const existingReading = await loadReadingWithCards(readingId);
+  if (!existingReading || existingReading.status !== "drawing") return;
+
+  if (getDeepReadingQuota().remaining <= 0) {
+    await saveLimitedReading(readingId);
+    throw new QuotaExceededError("今天的免费 AI 解读次数已经用完。你仍然可以抽牌、保存牌面，并复制专业 Prompt 自行解读。");
+  }
+
   await saveReadingStatus(readingId, "generating");
 
   try {
@@ -1127,7 +1254,7 @@ export async function generateDeepReading(readingId: string) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...authHeaders()
+        ...(await authHeaders())
       },
       body: JSON.stringify(payload)
     });
@@ -1169,6 +1296,7 @@ async function buildFollowUpPayload(readingId: string) {
       memorySummary: project.memorySummary
     },
     reading: {
+      id: reading.id,
       question: reading.question,
       spreadType: reading.spreadType,
       coreConclusion: reading.coreConclusion,
@@ -1195,6 +1323,12 @@ export async function sendFollowUpMessage(input: { readingId: string; content: s
 
   const trimmed = input.content.trim().slice(0, 500);
   if (!trimmed) throw new Error("Message is empty");
+
+  await assertNotDuplicateFollowUp({ readingId: reading.id, content: trimmed });
+  const existingMessages = await loadFollowUpMessages(reading.id);
+  if (getSuccessfulFollowUpCount(existingMessages) >= FREE_FOLLOW_UP_LIMIT) {
+    throw new QuotaExceededError("这次解读的 1 次免费 AI 追问已经用完。你可以明天再开启新的免费解读，或复制牌面 Prompt 自行解读。");
+  }
 
   const userMessage: FollowUpMessage = {
     id: newId(),
@@ -1232,7 +1366,7 @@ export async function sendFollowUpMessage(input: { readingId: string; content: s
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        ...authHeaders()
+        ...(await authHeaders())
       },
       body: JSON.stringify(payload)
     });
@@ -1332,4 +1466,92 @@ export function formatProjectDate(value: string) {
   if (date.toDateString() === yesterday.toDateString()) return "昨天";
 
   return `${date.getMonth() + 1}月${date.getDate()}日`;
+}
+
+function formatPromptCards(cards: DeepReadingCard[]) {
+  return cards.map((card) => `${card.position}：${card.cardNumber}. ${card.nameEn} / ${card.nameZh}`).join("\n");
+}
+
+function formatPromptMessages(messages: FollowUpMessage[]) {
+  if (!messages.length) return "暂无";
+  return messages
+    .slice(-6)
+    .map((message) => `${message.role === "user" ? "用户" : "AI"}：${message.content}`)
+    .join("\n");
+}
+
+export async function buildExternalReadingPrompt(readingId: string, includeRecentContext = true) {
+  const reading = await loadReadingWithCards(readingId);
+  if (!reading) throw new Error("Reading not found");
+
+  const project = await loadProject(reading.projectId);
+  if (!project) throw new Error("Project not found");
+
+  const recentReadings = (await loadReadings(reading.projectId))
+    .filter((item) => item.id !== reading.id && item.status === "completed")
+    .slice(0, 3);
+  const messages = await loadFollowUpMessages(reading.id);
+
+  const recentContext =
+    includeRecentContext && recentReadings.length
+    ? recentReadings
+        .map(
+          (item, index) =>
+            `近${index + 1}次问题：${item.question}\n牌面：\n${formatPromptCards(item.cards)}\n结论：${item.coreConclusion || "暂无"}`
+        )
+        .join("\n\n")
+    : "暂无";
+
+  return `You are a professional Lenormand Reader for AI Lenormand Deep Reading.
+
+Core rules:
+- You must answer in Simplified Chinese only. Do not output English unless it is a Lenormand card name.
+- Combination first, individual meanings second.
+- This is Lenormand, not Tarot.
+- Always answer the user's current question first.
+- Never invent missing project history or real-world facts.
+- Reality facts explicitly provided by the user have priority over divination.
+- For three_card, read 1+2, 2+3, then 1+2+3 as a continuous development.
+- For five_card_linear, Card 3 is the core theme. Read 1+2, 2+3, 3+4, 4+5, then the whole five-card process.
+- Do not mechanically explain each card as an encyclopedia entry.
+- Fox is not automatically cheating. Snake is not automatically a third party. Ring is not automatically marriage.
+- Avoid absolute predictions. Give clear but probabilistic conclusions.
+- If the cards do not support a clear time window, say so directly.
+- This reading is for entertainment and self-reflection only. It is not psychological, medical, legal, financial, or other professional advice.
+
+Answer format:
+1. 核心结论
+2. 组合解读
+3. 时间与不确定性
+4. 给我的温柔提醒
+
+CURRENT DATE:
+${new Date().toISOString().slice(0, 10)}
+
+PROJECT:
+${project.title}
+
+PROJECT BACKGROUND:
+${project.background || "None"}
+
+PROJECT MEMORY:
+${project.memorySummary || "None"}
+
+CURRENT QUESTION:
+${reading.question}
+
+READING ID:
+${reading.id}
+
+SPREAD TYPE:
+${reading.spreadType}
+
+CARDS IN ORDER:
+${formatPromptCards(reading.cards)}
+
+CURRENT CONVERSATION:
+${formatPromptMessages(messages)}
+
+RELEVANT PREVIOUS READINGS:
+${recentContext}`;
 }
