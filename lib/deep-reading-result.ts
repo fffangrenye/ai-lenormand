@@ -63,48 +63,59 @@ export type DeepFollowUpRequest = {
   }>;
 };
 
-export function assertDeepReadingResult(value: unknown): DeepReadingResult {
+function asRecord(value: unknown, label: string) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("Deep Reading response is not a JSON object.");
+    throw new Error(`${label} response is not a JSON object.`);
   }
+  return value as Record<string, unknown>;
+}
 
-  const record = value as Record<string, unknown>;
-  const allowedKeys = ["core_conclusion", "interpretation", "time_window", "uncertainty"];
-  const keys = Object.keys(record);
-
-  const hasOnlyExpectedKeys = keys.every((key) => allowedKeys.includes(key)) && allowedKeys.every((key) => key in record);
-  if (!hasOnlyExpectedKeys) {
-    throw new Error("Deep Reading response does not match the required schema.");
+function pickString(record: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
   }
+  return "";
+}
 
-  if (
-    typeof record.core_conclusion !== "string" ||
-    typeof record.interpretation !== "string" ||
-    !(typeof record.time_window === "string" || record.time_window === null) ||
-    typeof record.uncertainty !== "string"
-  ) {
-    throw new Error("Deep Reading response has invalid field types.");
+function pickNullableString(record: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = record[key];
+    if (value === null) return null;
+    if (typeof value === "string") return value.trim() || null;
+  }
+  return null;
+}
+
+export function assertDeepReadingResult(value: unknown): DeepReadingResult {
+  const record = asRecord(value, "Deep Reading");
+
+  // DeepSeek occasionally returns harmless extra fields or camelCase aliases even
+  // when JSON mode is enabled. Recover those instead of throwing away a paid result.
+  const coreConclusion = pickString(record, ["core_conclusion", "coreConclusion", "conclusion", "summary"]);
+  const interpretation = pickString(record, ["interpretation", "analysis", "reading", "content"]);
+  const timeWindow = pickNullableString(record, ["time_window", "timeWindow", "timing", "time"]);
+  const uncertainty = pickString(record, ["uncertainty", "caveat", "boundary", "limitations"]);
+
+  if (!coreConclusion || !interpretation) {
+    throw new Error("Deep Reading response does not contain the required conclusion and interpretation fields.");
   }
 
   return {
-    core_conclusion: record.core_conclusion.trim(),
-    interpretation: record.interpretation.trim(),
-    time_window: typeof record.time_window === "string" ? record.time_window.trim() || null : null,
-    uncertainty: record.uncertainty.trim()
+    core_conclusion: coreConclusion,
+    interpretation,
+    time_window: timeWindow,
+    uncertainty: uncertainty || "牌面提供的是趋势判断，现实发展仍会受到后续选择与外部条件影响。"
   };
 }
 
 export function assertDeepFollowUpResult(value: unknown): DeepFollowUpResult {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("Follow-up response is not a JSON object.");
+  const record = asRecord(value, "Follow-up");
+  const answer = pickString(record, ["answer", "reply", "response", "content"]);
+
+  if (!answer) {
+    throw new Error("Follow-up response does not contain a usable answer field.");
   }
 
-  const record = value as Record<string, unknown>;
-  if (Object.keys(record).length !== 1 || typeof record.answer !== "string") {
-    throw new Error("Follow-up response does not match the required schema.");
-  }
-
-  return {
-    answer: record.answer.trim()
-  };
+  return { answer };
 }
