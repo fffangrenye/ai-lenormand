@@ -23,7 +23,7 @@ function extractLabels(content: string) {
     labels.add(match[1]);
   }
 
-  return [...labels];
+  return Array.from(labels);
 }
 
 export function buildAiResponseDiagnostic(payload: unknown, content?: string | null) {
