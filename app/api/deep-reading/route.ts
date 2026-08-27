@@ -41,7 +41,7 @@ function classifyAIError(error: unknown): AiFailureReason {
   }
   if (status === 429) return "rate_limited";
   if (record.name === "AbortError" || text.includes("timeout")) return "timeout";
-  if (text.includes("json") || text.includes("schema") || text.includes("parse")) return "invalid_response";
+  if (text.includes("json") || text.includes("schema") || text.includes("parse") || text.includes("message content")) return "invalid_response";
   if (status && status >= 500 && status <= 599) return "provider_error";
   if (text.includes("network") || text.includes("fetch failed")) return "network_error";
   return "unknown";
@@ -166,8 +166,8 @@ async function callDeepSeek(input: DeepReadingRequest) {
     body: JSON.stringify({
       model: process.env.DEEPSEEK_MODEL || "deepseek-v4-flash",
       response_format: { type: "json_object" },
-      temperature: 0.7,
-      max_tokens: 1100,
+      temperature: 0.35,
+      max_tokens: 1400,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: buildUserPrompt(input) }
@@ -184,17 +184,19 @@ async function callDeepSeek(input: DeepReadingRequest) {
     choices?: Array<{ finish_reason?: string; message?: { content?: string; reasoning_content?: string } }>;
   };
   const choice = payload.choices?.[0];
-  const content = choice?.message?.content || choice?.message?.reasoning_content;
+  const content = choice?.message?.content?.trim();
 
+  // reasoning_content is private model reasoning and must never be surfaced or
+  // salvaged into a user-facing reading. Only message.content may be parsed.
   if (!content) {
-    console.warn("[deepseek-diagnostic] missing-content", buildAiResponseDiagnostic(payload, null));
-    throw new Error(`DeepSeek response did not include message content. finish_reason=${choice?.finish_reason ?? "unknown"}`);
+    console.warn("[deepseek-diagnostic] missing-final-content", buildAiResponseDiagnostic(payload, null));
+    throw new Error(`DeepSeek response did not include final message content. finish_reason=${choice?.finish_reason ?? "unknown"}`);
   }
 
   try {
     return assertDeepReadingResult(extractJsonObject(content));
   } catch (error) {
-    console.warn("[deepseek-diagnostic] invalid-response", {
+    console.warn("[deepseek-diagnostic] invalid-final-response", {
       error: error instanceof Error ? error.message : String(error),
       ...buildAiResponseDiagnostic(payload, content)
     });
