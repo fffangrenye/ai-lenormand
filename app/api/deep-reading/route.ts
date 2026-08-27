@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { extractJsonObject } from "@/lib/ai-json";
+import { buildAiResponseDiagnostic } from "@/lib/ai-response-diagnostics";
 import { DeepReadingRequest, assertDeepReadingResult } from "@/lib/deep-reading-result";
 import {
   AiFailureReason,
@@ -186,10 +187,19 @@ async function callDeepSeek(input: DeepReadingRequest) {
   const content = choice?.message?.content || choice?.message?.reasoning_content;
 
   if (!content) {
+    console.warn("[deepseek-diagnostic] missing-content", buildAiResponseDiagnostic(payload, null));
     throw new Error(`DeepSeek response did not include message content. finish_reason=${choice?.finish_reason ?? "unknown"}`);
   }
 
-  return assertDeepReadingResult(extractJsonObject(content));
+  try {
+    return assertDeepReadingResult(extractJsonObject(content));
+  } catch (error) {
+    console.warn("[deepseek-diagnostic] invalid-response", {
+      error: error instanceof Error ? error.message : String(error),
+      ...buildAiResponseDiagnostic(payload, content)
+    });
+    throw error;
+  }
 }
 
 export async function POST(request: Request) {
