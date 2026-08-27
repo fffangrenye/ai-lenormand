@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { extractJsonObject } from "@/lib/ai-json";
 import { DeepFollowUpRequest, assertDeepFollowUpResult } from "@/lib/deep-reading-result";
 import { AiFailureReason, consumeDailyQuota, isAdminEmail, requireSupabaseUser, trackServerAnalyticsEvent } from "@/lib/supabase-server";
 
@@ -8,6 +9,7 @@ const DEEPSEEK_URL = "https://api.deepseek.com/chat/completions";
 const FREE_FOLLOW_UP_LIMIT = 1;
 const FOLLOW_UP_USAGE_TRACKING_LIMIT = 1000000;
 const FOLLOW_UP_FAILURE_MESSAGE = "这次追问暂时没有生成成功。你的问题已经保留，可以稍后再问一次。";
+const AI_UNAVAILABLE_MESSAGE = "AI 服务暂时不可用，请复制prompt后移步其他AI";
 
 class AiProviderError extends Error {
   status: number;
@@ -129,27 +131,6 @@ ${formatMessages(input.messages)}
 Use only the existing reading and conversation. Return only the required JSON object.`;
 }
 
-function extractJsonObject(content: string) {
-  const trimmed = content.trim();
-
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
-    if (fenced?.[1]) {
-      return JSON.parse(fenced[1].trim());
-    }
-
-    const start = trimmed.indexOf("{");
-    const end = trimmed.lastIndexOf("}");
-    if (start !== -1 && end !== -1 && end > start) {
-      return JSON.parse(trimmed.slice(start, end + 1));
-    }
-
-    throw new Error("DeepSeek response did not contain parseable JSON.");
-  }
-}
-
 async function callDeepSeek(input: DeepFollowUpRequest) {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
@@ -245,7 +226,7 @@ export async function POST(request: Request) {
           code: getPublicErrorCode(reason),
           error: "ai_failed",
           reason,
-          message: "解读服务暂时不可用，本次不会消耗解读次数，请点击下方复制移步其他AI进行解读。"
+          message: AI_UNAVAILABLE_MESSAGE
         },
         { status: 503 }
       );
