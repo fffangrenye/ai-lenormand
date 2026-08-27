@@ -87,18 +87,28 @@ function pickNullableString(record: Record<string, unknown>, keys: string[]) {
   return null;
 }
 
+function deriveConclusion(text: string) {
+  const cleaned = text
+    .replace(/^\s*[#>*-]+\s*/gm, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!cleaned) return "";
+  const firstSentence = cleaned.split(/(?<=[。！？!?])/)[0]?.trim() || cleaned;
+  return firstSentence.length <= 90 ? firstSentence : `${firstSentence.slice(0, 88)}…`;
+}
+
 export function assertDeepReadingResult(value: unknown): DeepReadingResult {
   const record = asRecord(value, "Deep Reading");
 
-  // DeepSeek occasionally returns harmless extra fields or camelCase aliases even
-  // when JSON mode is enabled. Recover those instead of throwing away a paid result.
-  const coreConclusion = pickString(record, ["core_conclusion", "coreConclusion", "conclusion", "summary"]);
-  const interpretation = pickString(record, ["interpretation", "analysis", "reading", "content"]);
+  const interpretation = pickString(record, ["interpretation", "analysis", "reading", "content", "answer", "response"]);
+  const explicitConclusion = pickString(record, ["core_conclusion", "coreConclusion", "conclusion", "summary"]);
+  const coreConclusion = explicitConclusion || deriveConclusion(interpretation);
   const timeWindow = pickNullableString(record, ["time_window", "timeWindow", "timing", "time"]);
   const uncertainty = pickString(record, ["uncertainty", "caveat", "boundary", "limitations"]);
 
   if (!coreConclusion || !interpretation) {
-    throw new Error("Deep Reading response does not contain the required conclusion and interpretation fields.");
+    throw new Error("Deep Reading response does not contain usable reading content.");
   }
 
   return {
@@ -111,7 +121,7 @@ export function assertDeepReadingResult(value: unknown): DeepReadingResult {
 
 export function assertDeepFollowUpResult(value: unknown): DeepFollowUpResult {
   const record = asRecord(value, "Follow-up");
-  const answer = pickString(record, ["answer", "reply", "response", "content"]);
+  const answer = pickString(record, ["answer", "reply", "response", "content", "interpretation", "analysis"]);
 
   if (!answer) {
     throw new Error("Follow-up response does not contain a usable answer field.");
