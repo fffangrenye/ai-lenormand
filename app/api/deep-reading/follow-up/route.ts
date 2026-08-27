@@ -30,9 +30,7 @@ function classifyAIError(error: unknown): AiFailureReason {
   const body = String(record.body ?? "").toLowerCase();
   const text = `${message} ${body}`;
 
-  if (status === 402 || text.includes("insufficient balance") || text.includes("balance insufficient") || text.includes("余额不足")) {
-    return "insufficient_balance";
-  }
+  if (status === 402 || text.includes("insufficient balance") || text.includes("balance insufficient") || text.includes("余额不足")) return "insufficient_balance";
   if (status === 429) return "rate_limited";
   if (record.name === "AbortError" || text.includes("timeout")) return "timeout";
   if (text.includes("json") || text.includes("schema") || text.includes("parse") || text.includes("message content")) return "invalid_response";
@@ -43,12 +41,9 @@ function classifyAIError(error: unknown): AiFailureReason {
 
 function getPublicErrorCode(reason: AiFailureReason) {
   switch (reason) {
-    case "insufficient_balance":
-      return "AI_PROVIDER_BALANCE_INSUFFICIENT";
-    case "rate_limited":
-      return "AI_PROVIDER_RATE_LIMITED";
-    default:
-      return "AI_GENERATION_FAILED";
+    case "insufficient_balance": return "AI_PROVIDER_BALANCE_INSUFFICIENT";
+    case "rate_limited": return "AI_PROVIDER_RATE_LIMITED";
+    default: return "AI_GENERATION_FAILED";
   }
 }
 
@@ -67,9 +62,10 @@ Core rules:
 - Reality facts explicitly provided by the user have priority over divination.
 - Avoid absolute predictions. Give clear but probabilistic conclusions.
 - Be concise, warm, and specific.
-- Keep answer within 260 Chinese characters.
+- Keep answer within about 220 Chinese characters.
+- The JSON object is transport format only. The answer value must contain only reader-facing Chinese text. Never include JSON keys, braces, schema explanations, drafting notes, counting notes, or meta-commentary in the answer.
 
-Return exactly one JSON object and nothing else:
+Return exactly one valid JSON object and nothing else:
 {
   "answer": "string"
 }
@@ -82,7 +78,6 @@ function formatCards(cards: DeepFollowUpRequest["cards"]) {
 
 function formatMessages(messages: DeepFollowUpRequest["messages"]) {
   if (!messages.length) return "None";
-
   return messages.map((message) => `${message.createdAt}\n${message.role.toUpperCase()}:\n${message.content}`).join("\n\n---\n\n");
 }
 
@@ -133,21 +128,17 @@ Use only the existing reading and conversation. Return only the required JSON ob
 
 async function callDeepSeek(input: DeepFollowUpRequest) {
   const apiKey = process.env.DEEPSEEK_API_KEY;
-  if (!apiKey) {
-    throw new Error("Missing DEEPSEEK_API_KEY on the server.");
-  }
+  if (!apiKey) throw new Error("Missing DEEPSEEK_API_KEY on the server.");
 
   const response = await fetch(DEEPSEEK_URL, {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`
-    },
+    headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
     body: JSON.stringify({
       model: process.env.DEEPSEEK_MODEL || "deepseek-v4-flash",
+      thinking: { type: "disabled" },
       response_format: { type: "json_object" },
       temperature: 0.35,
-      max_tokens: 700,
+      max_tokens: 420,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: buildUserPrompt(input) }
@@ -162,14 +153,20 @@ async function callDeepSeek(input: DeepFollowUpRequest) {
 
   const payload = (await response.json()) as {
     choices?: Array<{ finish_reason?: string; message?: { content?: string; reasoning_content?: string } }>;
+    usage?: Record<string, unknown>;
   };
   const choice = payload.choices?.[0];
   const content = choice?.message?.content?.trim();
 
-  // Never surface reasoning_content. Only the final message.content is user-facing.
-  if (!content) {
-    throw new Error(`DeepSeek response did not include final message content. finish_reason=${choice?.finish_reason ?? "unknown"}`);
-  }
+  console.info("[deepseek-usage]", {
+    model: process.env.DEEPSEEK_MODEL || "deepseek-v4-flash",
+    thinking: "disabled",
+    kind: "follow_up",
+    finish_reason: choice?.finish_reason ?? null,
+    usage: payload.usage ?? null
+  });
+
+  if (!content) throw new Error(`DeepSeek response did not include final message content. finish_reason=${choice?.finish_reason ?? "unknown"}`);
 
   return assertDeepFollowUpResult(extractJsonObject(content));
 }
@@ -177,9 +174,9 @@ async function callDeepSeek(input: DeepFollowUpRequest) {
 export async function POST(request: Request) {
   try {
     const user = await requireSupabaseUser(request);
-
     const input = (await request.json()) as DeepFollowUpRequest;
     const successfulFollowUps = input.messages.filter((message) => message.role === "assistant" && message.content !== FOLLOW_UP_FAILURE_MESSAGE).length;
+
     if (!isAdminEmail(user.email) && successfulFollowUps >= FREE_FOLLOW_UP_LIMIT) {
       await trackServerAnalyticsEvent({
         eventName: "quota_exceeded",
@@ -191,15 +188,12 @@ export async function POST(request: Request) {
         properties: { kind: "follow_up", used: successfulFollowUps, limit: FREE_FOLLOW_UP_LIMIT }
       });
 
-      return NextResponse.json(
-        {
-          code: "QUOTA_EXCEEDED",
-          error: "quota_exceeded",
-          message: "今日解读次数已用完，请明日再试。",
-          quota: { allowed: false, limit: FREE_FOLLOW_UP_LIMIT }
-        },
-        { status: 429 }
-      );
+      return NextResponse.json({
+        code: "QUOTA_EXCEEDED",
+        error: "quota_exceeded",
+        message: "今日解读次数已用完，请明日再试。",
+        quota: { allowed: false, limit: FREE_FOLLOW_UP_LIMIT }
+      }, { status: 429 });
     }
 
     let result;
@@ -222,15 +216,12 @@ export async function POST(request: Request) {
         }
       });
 
-      return NextResponse.json(
-        {
-          code: getPublicErrorCode(reason),
-          error: "ai_failed",
-          reason,
-          message: AI_UNAVAILABLE_MESSAGE
-        },
-        { status: 503 }
-      );
+      return NextResponse.json({
+        code: getPublicErrorCode(reason),
+        error: "ai_failed",
+        reason,
+        message: AI_UNAVAILABLE_MESSAGE
+      }, { status: 503 });
     }
 
     if (!isAdminEmail(user.email)) {
@@ -256,7 +247,6 @@ export async function POST(request: Request) {
     if (error instanceof Error && error.message === "Unauthorized") {
       return NextResponse.json({ code: "UNAUTHORIZED", error: "请重新登录后再追问。" }, { status: 401 });
     }
-
     return NextResponse.json({ code: "SERVER_ERROR", error: "Follow-up generation failed." }, { status: 500 });
   }
 }
