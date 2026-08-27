@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Noto_Serif_SC } from "next/font/google";
 import { AnalyticsTracker } from "@/components/AnalyticsTracker";
 import { CookieConsent } from "@/components/CookieConsent";
+import { DeepReadingFailureCopy } from "@/components/DeepReadingFailureCopy";
 import "./globals.css";
 
 const titleSerif = Noto_Serif_SC({
@@ -21,6 +22,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="zh-CN">
       <body className={titleSerif.variable}>
         <AnalyticsTracker />
+        <DeepReadingFailureCopy />
         {children}
         <CookieConsent />
       </body>
