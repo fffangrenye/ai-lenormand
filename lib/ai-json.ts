@@ -80,6 +80,25 @@ function extractBalancedObjects(text: string) {
   return objects;
 }
 
+function extractLabeledPlainText(text: string) {
+  const cleaned = text.trim();
+  const coreMatch = cleaned.match(/(?:核心结论|结论|core[_ ]?conclusion)\s*[:：]\s*([\s\S]*?)(?=\n\s*(?:解读|详细解读|interpretation|analysis)\s*[:：]|$)/i);
+  const interpretationMatch = cleaned.match(/(?:详细解读|解读|interpretation|analysis)\s*[:：]\s*([\s\S]*?)(?=\n\s*(?:时间|time[_ ]?window|不确定性|uncertainty|边界)\s*[:：]|$)/i);
+  const timeMatch = cleaned.match(/(?:时间|time[_ ]?window)\s*[:：]\s*([^\n]+)/i);
+  const uncertaintyMatch = cleaned.match(/(?:不确定性|uncertainty|边界)\s*[:：]\s*([\s\S]*?)$/i);
+
+  if (coreMatch?.[1] || interpretationMatch?.[1]) {
+    return {
+      core_conclusion: coreMatch?.[1]?.trim() || "",
+      interpretation: interpretationMatch?.[1]?.trim() || cleaned,
+      time_window: timeMatch?.[1]?.trim() || null,
+      uncertainty: uncertaintyMatch?.[1]?.trim() || ""
+    };
+  }
+
+  return null;
+}
+
 export function extractJsonObject(content: string) {
   const normalized = normalizeJsonText(content);
 
@@ -95,5 +114,12 @@ export function extractJsonObject(content: string) {
     }
   }
 
-  throw new Error("DeepSeek response did not contain parseable JSON after local repair.");
+  const labeled = extractLabeledPlainText(normalized);
+  if (labeled) return labeled;
+
+  if (normalized.length >= 20) {
+    return { content: normalized };
+  }
+
+  throw new Error("DeepSeek response did not contain usable content after local repair.");
 }
