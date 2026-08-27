@@ -35,7 +35,7 @@ function classifyAIError(error: unknown): AiFailureReason {
   }
   if (status === 429) return "rate_limited";
   if (record.name === "AbortError" || text.includes("timeout")) return "timeout";
-  if (text.includes("json") || text.includes("schema") || text.includes("parse")) return "invalid_response";
+  if (text.includes("json") || text.includes("schema") || text.includes("parse") || text.includes("message content")) return "invalid_response";
   if (status && status >= 500 && status <= 599) return "provider_error";
   if (text.includes("network") || text.includes("fetch failed")) return "network_error";
   return "unknown";
@@ -146,8 +146,8 @@ async function callDeepSeek(input: DeepFollowUpRequest) {
     body: JSON.stringify({
       model: process.env.DEEPSEEK_MODEL || "deepseek-v4-flash",
       response_format: { type: "json_object" },
-      temperature: 0.68,
-      max_tokens: 420,
+      temperature: 0.35,
+      max_tokens: 700,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: buildUserPrompt(input) }
@@ -164,10 +164,11 @@ async function callDeepSeek(input: DeepFollowUpRequest) {
     choices?: Array<{ finish_reason?: string; message?: { content?: string; reasoning_content?: string } }>;
   };
   const choice = payload.choices?.[0];
-  const content = choice?.message?.content || choice?.message?.reasoning_content;
+  const content = choice?.message?.content?.trim();
 
+  // Never surface reasoning_content. Only the final message.content is user-facing.
   if (!content) {
-    throw new Error(`DeepSeek response did not include message content. finish_reason=${choice?.finish_reason ?? "unknown"}`);
+    throw new Error(`DeepSeek response did not include final message content. finish_reason=${choice?.finish_reason ?? "unknown"}`);
   }
 
   return assertDeepFollowUpResult(extractJsonObject(content));
