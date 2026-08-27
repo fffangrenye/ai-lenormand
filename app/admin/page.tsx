@@ -30,6 +30,16 @@ type AdminOverview = {
     todayProviderRateLimited: number;
     todayInvalidResponse: number;
     totalPageViews: number;
+    todayApiRequests: number;
+    todayApiSuccess: number;
+    todayApiFailed: number;
+    todayApiSuccessRate: number;
+    todayPromptTokens: number;
+    todayCompletionTokens: number;
+    todayTotalTokens: number;
+    todayAvgTokensPerRequest: number;
+    todayCacheHitTokens: number;
+    todayCacheMissTokens: number;
   };
   recentUsers: Array<{
     userId: string;
@@ -52,6 +62,10 @@ function formatDate(value: string | null) {
     hour: "2-digit",
     minute: "2-digit"
   }).format(new Date(value));
+}
+
+function formatNumber(value: number) {
+  return new Intl.NumberFormat("zh-CN").format(value);
 }
 
 function StatCard({ label, value, hint }: { label: string; value: number | string; hint?: string }) {
@@ -125,7 +139,7 @@ export default function AdminPage() {
         <div className="mt-8">
           <p className="text-[12px] uppercase tracking-[0.2em] text-clay/70">Admin</p>
           <h1 className="mt-3 font-serif text-[34px] leading-none text-ink">运营概览</h1>
-          <p className="mt-4 text-[14px] leading-6 text-ink/52">只展示运营必要数据：注册、额度使用和内容数量。</p>
+          <p className="mt-4 text-[14px] leading-6 text-ink/52">注册、使用、AI 成功率与 API Token 消耗监控。</p>
         </div>
 
         {loading ? <p className="mt-10 text-[14px] text-ink/46">正在读取数据...</p> : null}
@@ -137,6 +151,27 @@ export default function AdminPage() {
 
         {overview ? (
           <>
+            <div className="mt-7 rounded-[6px] border border-ink/10 bg-[#FFFDF8]/82 p-4 shadow-entry">
+              <div className="flex items-end justify-between gap-4">
+                <div>
+                  <p className="text-[12px] uppercase tracking-[0.16em] text-clay/70">API Monitor</p>
+                  <h2 className="mt-2 font-serif text-[24px] leading-none text-ink">DeepSeek 今日用量</h2>
+                </div>
+                <p className="text-[12px] text-ink/38">{overview.today}</p>
+              </div>
+              <div className="mt-4 grid grid-cols-2 gap-3">
+                <StatCard label="API 请求" value={formatNumber(overview.summary.todayApiRequests)} hint="真正发往 DeepSeek" />
+                <StatCard label="API 成功" value={formatNumber(overview.summary.todayApiSuccess)} hint={`成功率 ${overview.summary.todayApiSuccessRate}%`} />
+                <StatCard label="API 失败" value={formatNumber(overview.summary.todayApiFailed)} hint="包含余额/格式/限流等" />
+                <StatCard label="平均 Token/次" value={formatNumber(Math.round(overview.summary.todayAvgTokensPerRequest))} hint="总 Token ÷ API 请求" />
+                <StatCard label="总 Token" value={formatNumber(overview.summary.todayTotalTokens)} hint="输入 + 输出" />
+                <StatCard label="输入 Token" value={formatNumber(overview.summary.todayPromptTokens)} hint="Prompt tokens" />
+                <StatCard label="输出 Token" value={formatNumber(overview.summary.todayCompletionTokens)} hint="Completion tokens" />
+                <StatCard label="缓存命中 Token" value={formatNumber(overview.summary.todayCacheHitTokens)} hint={`未命中 ${formatNumber(overview.summary.todayCacheMissTokens)}`} />
+              </div>
+              <p className="mt-4 text-[12px] leading-5 text-ink/42">站内额度拦截不会计入 API 请求；Token 从本次上线监控后开始累计，历史请求没有 usage 数据时不会补算。</p>
+            </div>
+
             <div className="mt-7 grid grid-cols-2 gap-3">
               <StatCard label="注册用户" value={overview.summary.totalUsers} />
               <StatCard label="今日活跃" value={overview.summary.todayActiveUsers} hint={overview.today} />
