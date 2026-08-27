@@ -26,6 +26,23 @@ type AnalyticsEventRow = {
   properties?: Record<string, unknown>;
 };
 
+type ApiUsageRow = {
+  metric_date: string;
+  provider: string;
+  model: string;
+  kind: string;
+  api_requests: number;
+  api_successes: number;
+  api_failures: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  prompt_cache_hit_tokens: number;
+  prompt_cache_miss_tokens: number;
+  avg_tokens_per_request: number;
+  success_rate_pct: number;
+};
+
 type UserActivity = {
   userId: string;
   email: string;
@@ -106,6 +123,12 @@ function countUniqueVisitors(rows: AnalyticsEventRow[]) {
   return new Set(rows.map((row) => row.visitor_id || row.session_id).filter(Boolean)).size;
 }
 
+function sumApiMetric(rows: ApiUsageRow[], key: keyof Pick<ApiUsageRow,
+  "api_requests" | "api_successes" | "api_failures" | "prompt_tokens" | "completion_tokens" | "total_tokens" | "prompt_cache_hit_tokens" | "prompt_cache_miss_tokens"
+>) {
+  return rows.reduce((total, row) => total + Number(row[key] ?? 0), 0);
+}
+
 export async function GET(request: Request) {
   try {
     const user = await requireSupabaseUser(request);
@@ -115,11 +138,12 @@ export async function GET(request: Request) {
     }
 
     const today = getBeijingDateKey();
-    const [users, allUsageRows, todayUsageRows, analyticsRows, projectCount, readingCount, followUpMessageCount, completedReadingCount] = await Promise.all([
+    const [users, allUsageRows, todayUsageRows, analyticsRows, apiUsageRows, projectCount, readingCount, followUpMessageCount, completedReadingCount] = await Promise.all([
       safeSupabaseServiceFetch<AuthUser[]>("/rest/v1/user_profiles?select=*&order=created_at.desc&limit=1000", []),
       safeSupabaseServiceFetch<DailyUsageRow[]>("/rest/v1/daily_ai_usage?select=*&order=updated_at.desc", []),
       safeSupabaseServiceFetch<DailyUsageRow[]>(`/rest/v1/daily_ai_usage?select=*&date_key=eq.${encodeURIComponent(today)}&order=updated_at.desc`, []),
       safeSupabaseServiceFetch<AnalyticsEventRow[]>("/rest/v1/analytics_events?select=*&order=created_at.desc&limit=5000", []),
+      safeSupabaseServiceFetch<ApiUsageRow[]>(`/rest/v1/site_analytics_api_usage_daily?select=*&metric_date=eq.${encodeURIComponent(today)}`, []),
       safeSupabaseCount("deep_projects"),
       safeSupabaseCount("deep_readings"),
       safeSupabaseCount("deep_follow_up_messages", "&role=eq.user"),
@@ -131,6 +155,17 @@ export async function GET(request: Request) {
     const todayFollowUp = todayUsageRows.reduce((total, row) => total + Number(row.follow_up_used ?? 0), 0);
     const totalDeepReading = allUsageRows.reduce((total, row) => total + Number(row.deep_reading_used ?? 0), 0);
     const totalFollowUp = allUsageRows.reduce((total, row) => total + Number(row.follow_up_used ?? 0), 0);
+
+    const todayApiRequests = sumApiMetric(apiUsageRows, "api_requests");
+    const todayApiSuccess = sumApiMetric(apiUsageRows, "api_successes");
+    const todayApiFailed = sumApiMetric(apiUsageRows, "api_failures");
+    const todayPromptTokens = sumApiMetric(apiUsageRows, "prompt_tokens");
+    const todayCompletionTokens = sumApiMetric(apiUsageRows, "completion_tokens");
+    const todayTotalTokens = sumApiMetric(apiUsageRows, "total_tokens");
+    const todayCacheHitTokens = sumApiMetric(apiUsageRows, "prompt_cache_hit_tokens");
+    const todayCacheMissTokens = sumApiMetric(apiUsageRows, "prompt_cache_miss_tokens");
+    const todayApiSuccessRate = todayApiRequests > 0 ? Number(((todayApiSuccess / todayApiRequests) * 100).toFixed(2)) : 0;
+    const todayAvgTokensPerRequest = todayApiRequests > 0 ? Number((todayTotalTokens / todayApiRequests).toFixed(1)) : 0;
 
     const recentUsers: UserActivity[] = users
       .map((authUser) => {
@@ -173,8 +208,19 @@ export async function GET(request: Request) {
         todayBalanceInsufficient: todayEvents.filter((row) => row.event_name === "ai_failed" && row.properties?.failure_reason === "insufficient_balance").length,
         todayProviderRateLimited: todayEvents.filter((row) => row.event_name === "ai_failed" && row.properties?.failure_reason === "rate_limited").length,
         todayInvalidResponse: todayEvents.filter((row) => row.event_name === "ai_failed" && row.properties?.failure_reason === "invalid_response").length,
-        totalPageViews: countEvents(analyticsRows, "page_view")
+        totalPageViews: countEvents(analyticsRows, "page_view"),
+        todayApiRequests,
+        todayApiSuccess,
+        todayApiFailed,
+        todayApiSuccessRate,
+        todayPromptTokens,
+        todayCompletionTokens,
+        todayTotalTokens,
+        todayAvgTokensPerRequest,
+        todayCacheHitTokens,
+        todayCacheMissTokens
       },
+      apiUsage: apiUsageRows,
       recentUsers
     });
   } catch (error) {
