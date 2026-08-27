@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { extractJsonObject } from "@/lib/ai-json";
 import { DeepReadingRequest, assertDeepReadingResult } from "@/lib/deep-reading-result";
 import {
   AiFailureReason,
@@ -13,6 +14,7 @@ export const runtime = "nodejs";
 
 const DEEPSEEK_URL = "https://api.deepseek.com/chat/completions";
 const FREE_DEEP_READING_LIMIT = 3;
+const AI_UNAVAILABLE_MESSAGE = "AI 服务暂时不可用，请复制prompt后移步其他AI";
 
 class AiProviderError extends Error {
   status: number;
@@ -148,27 +150,6 @@ Use the Deep Reading rules provided in the system prompt.
 Return only the required JSON object.`;
 }
 
-function extractJsonObject(content: string) {
-  const trimmed = content.trim();
-
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
-    if (fenced?.[1]) {
-      return JSON.parse(fenced[1].trim());
-    }
-
-    const start = trimmed.indexOf("{");
-    const end = trimmed.lastIndexOf("}");
-    if (start !== -1 && end !== -1 && end > start) {
-      return JSON.parse(trimmed.slice(start, end + 1));
-    }
-
-    throw new Error("DeepSeek response did not contain parseable JSON.");
-  }
-}
-
 async function callDeepSeek(input: DeepReadingRequest) {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
@@ -266,7 +247,7 @@ export async function POST(request: Request) {
           code: getPublicErrorCode(reason),
           error: "ai_failed",
           reason,
-          message: "解读服务暂时不可用，本次不会消耗解读次数，请点击下方复制移步其他AI进行解读。"
+          message: AI_UNAVAILABLE_MESSAGE
         },
         { status: 503 }
       );
