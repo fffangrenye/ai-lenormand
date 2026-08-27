@@ -77,9 +77,12 @@ Core rules:
 - Fox is not automatically cheating. Snake is not automatically a third party. Ring is not automatically marriage.
 - Avoid absolute predictions. Give clear but probabilistic conclusions.
 - If time is not supported, set time_window to null.
-- Keep the response compact enough to fit safely in JSON: core_conclusion 40-90 Chinese characters, interpretation 360-620 Chinese characters, uncertainty 60-120 Chinese characters.
+- Keep core_conclusion to 1-2 concise Chinese sentences.
+- Keep interpretation roughly 260-420 Chinese characters.
+- Keep uncertainty to 1 concise Chinese sentence.
+- The JSON object is transport format only. Every field value must contain only the actual reader-facing Chinese answer. Never put JSON key names, braces, quotation marks, schema explanations, counting notes, drafting notes, or meta-commentary inside any field value.
 
-Return exactly one JSON object and nothing else:
+Return exactly one valid JSON object and nothing before or after it:
 {
   "core_conclusion": "string",
   "interpretation": "string",
@@ -165,9 +168,10 @@ async function callDeepSeek(input: DeepReadingRequest) {
     },
     body: JSON.stringify({
       model: process.env.DEEPSEEK_MODEL || "deepseek-v4-flash",
+      thinking: { type: "disabled" },
       response_format: { type: "json_object" },
       temperature: 0.35,
-      max_tokens: 1400,
+      max_tokens: 800,
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: buildUserPrompt(input) }
@@ -182,12 +186,18 @@ async function callDeepSeek(input: DeepReadingRequest) {
 
   const payload = (await response.json()) as {
     choices?: Array<{ finish_reason?: string; message?: { content?: string; reasoning_content?: string } }>;
+    usage?: Record<string, unknown>;
   };
   const choice = payload.choices?.[0];
   const content = choice?.message?.content?.trim();
 
-  // reasoning_content is private model reasoning and must never be surfaced or
-  // salvaged into a user-facing reading. Only message.content may be parsed.
+  console.info("[deepseek-usage]", {
+    model: process.env.DEEPSEEK_MODEL || "deepseek-v4-flash",
+    thinking: "disabled",
+    finish_reason: choice?.finish_reason ?? null,
+    usage: payload.usage ?? null
+  });
+
   if (!content) {
     console.warn("[deepseek-diagnostic] missing-final-content", buildAiResponseDiagnostic(payload, null));
     throw new Error(`DeepSeek response did not include final message content. finish_reason=${choice?.finish_reason ?? "unknown"}`);
