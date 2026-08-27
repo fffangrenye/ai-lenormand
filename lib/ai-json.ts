@@ -6,18 +6,12 @@ function normalizeJsonText(text: string) {
     .trim();
 }
 
-function repairCommonJsonIssues(text: string) {
-  return text
-    .replace(/[“”]/g, '"')
-    .replace(/[‘’]/g, "'")
-    .replace(/,\s*([}\]])/g, "$1")
-    .trim();
+function removeTrailingCommas(text: string) {
+  return text.replace(/,\s*([}\]])/g, "$1").trim();
 }
 
 function tryParse(candidate: string): unknown | undefined {
-  const attempts = [candidate, repairCommonJsonIssues(candidate)];
-
-  for (const attempt of attempts) {
+  for (const attempt of [candidate, removeTrailingCommas(candidate)]) {
     try {
       const parsed = JSON.parse(attempt);
       if (typeof parsed === "string") {
@@ -29,21 +23,18 @@ function tryParse(candidate: string): unknown | undefined {
       }
       return parsed;
     } catch {
-      // Try the next local repair before giving up.
+      // Try the next conservative repair.
     }
   }
-
   return undefined;
 }
 
-function extractBalancedObjects(text: string) {
-  const objects: string[] = [];
-  let start = -1;
+function extractBalancedObjectFrom(text: string, start: number) {
   let depth = 0;
   let inString = false;
   let escaped = false;
 
-  for (let i = 0; i < text.length; i += 1) {
+  for (let i = start; i < text.length; i += 1) {
     const char = text[i];
 
     if (inString) {
@@ -62,41 +53,43 @@ function extractBalancedObjects(text: string) {
       continue;
     }
 
-    if (char === "{") {
-      if (depth === 0) start = i;
-      depth += 1;
-      continue;
-    }
-
-    if (char === "}" && depth > 0) {
+    if (char === "{") depth += 1;
+    if (char === "}") {
       depth -= 1;
-      if (depth === 0 && start !== -1) {
-        objects.push(text.slice(start, i + 1));
-        start = -1;
-      }
+      if (depth === 0) return text.slice(start, i + 1);
+      if (depth < 0) return null;
     }
-  }
-
-  return objects;
-}
-
-function extractLabeledPlainText(text: string) {
-  const cleaned = text.trim();
-  const coreMatch = cleaned.match(/(?:核心结论|结论|core[_ ]?conclusion)\s*[:：]\s*([\s\S]*?)(?=\n\s*(?:解读|详细解读|interpretation|analysis)\s*[:：]|$)/i);
-  const interpretationMatch = cleaned.match(/(?:详细解读|解读|interpretation|analysis)\s*[:：]\s*([\s\S]*?)(?=\n\s*(?:时间|time[_ ]?window|不确定性|uncertainty|边界)\s*[:：]|$)/i);
-  const timeMatch = cleaned.match(/(?:时间|time[_ ]?window)\s*[:：]\s*([^\n]+)/i);
-  const uncertaintyMatch = cleaned.match(/(?:不确定性|uncertainty|边界)\s*[:：]\s*([\s\S]*?)$/i);
-
-  if (coreMatch?.[1] || interpretationMatch?.[1]) {
-    return {
-      core_conclusion: coreMatch?.[1]?.trim() || "",
-      interpretation: interpretationMatch?.[1]?.trim() || cleaned,
-      time_window: timeMatch?.[1]?.trim() || null,
-      uncertainty: uncertaintyMatch?.[1]?.trim() || ""
-    };
   }
 
   return null;
+}
+
+function extractJsonCandidates(text: string) {
+  const candidates: string[] = [];
+
+  for (let i = 0; i < text.length; i += 1) {
+    if (text[i] !== "{") continue;
+    const candidate = extractBalancedObjectFrom(text, i);
+    if (candidate) candidates.push(candidate);
+  }
+
+  return candidates;
+}
+
+function looksLikeReadingObject(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  return [
+    "core_conclusion",
+    "coreConclusion",
+    "conclusion",
+    "summary",
+    "interpretation",
+    "analysis",
+    "reading",
+    "answer",
+    "response"
+  ].some((key) => typeof record[key] === "string" && record[key]!.trim());
 }
 
 export function extractJsonObject(content: string) {
@@ -107,19 +100,20 @@ export function extractJsonObject(content: string) {
     return direct;
   }
 
-  for (const candidate of extractBalancedObjects(normalized)) {
-    const parsed = tryParse(candidate);
-    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-      return parsed;
-    }
-  }
+  // Parse every balanced object independently. This intentionally handles a
+  // malformed prefix followed by a complete valid JSON object, e.g.
+  // `{ "core_conclusion": "...` + a second complete JSON object.
+  const parsedCandidates = extractJsonCandidates(normalized)
+    .map((candidate) => tryParse(candidate))
+    .filter((value): value is Record<string, unknown> => Boolean(value) && typeof value === "object" && !Array.isArray(value));
 
-  const labeled = extractLabeledPlainText(normalized);
-  if (labeled) return labeled;
+  const readingCandidate = parsedCandidates.find(looksLikeReadingObject);
+  if (readingCandidate) return readingCandidate;
 
-  if (normalized.length >= 20) {
-    return { content: normalized };
-  }
+  if (parsedCandidates[0]) return parsedCandidates[0];
 
-  throw new Error("DeepSeek response did not contain usable content after local repair.");
+  // Do not surface arbitrary malformed prose/JSON fragments to the user. A
+  // response that cannot be parsed safely must fail and use the normal AI
+  // unavailable UI instead of exposing schema labels such as core_conclusion.
+  throw new Error("DeepSeek final content did not contain a safely parseable JSON object.");
 }
