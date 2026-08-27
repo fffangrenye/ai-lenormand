@@ -17,6 +17,37 @@ const DEEPSEEK_URL = "https://api.deepseek.com/chat/completions";
 const FREE_DEEP_READING_LIMIT = 3;
 const AI_UNAVAILABLE_MESSAGE = "AI 服务暂时不可用，请复制prompt后移步其他AI";
 
+type DeepSeekUsage = {
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  prompt_cache_hit_tokens: number;
+  prompt_cache_miss_tokens: number;
+};
+
+type ErrorWithUsage = Error & { usage?: DeepSeekUsage };
+
+function normalizeUsage(raw: Record<string, unknown> | undefined): DeepSeekUsage {
+  const numberValue = (key: string) => {
+    const value = raw?.[key];
+    return typeof value === "number" && Number.isFinite(value) ? value : 0;
+  };
+
+  return {
+    prompt_tokens: numberValue("prompt_tokens"),
+    completion_tokens: numberValue("completion_tokens"),
+    total_tokens: numberValue("total_tokens"),
+    prompt_cache_hit_tokens: numberValue("prompt_cache_hit_tokens"),
+    prompt_cache_miss_tokens: numberValue("prompt_cache_miss_tokens")
+  };
+}
+
+function getUsageFromError(error: unknown): DeepSeekUsage | null {
+  if (!error || typeof error !== "object") return null;
+  const usage = (error as { usage?: DeepSeekUsage }).usage;
+  return usage ?? null;
+}
+
 class AiProviderError extends Error {
   status: number;
   body: string;
@@ -190,27 +221,32 @@ async function callDeepSeek(input: DeepReadingRequest) {
   };
   const choice = payload.choices?.[0];
   const content = choice?.message?.content?.trim();
+  const usage = normalizeUsage(payload.usage);
 
   console.info("[deepseek-usage]", {
     model: process.env.DEEPSEEK_MODEL || "deepseek-v4-flash",
     thinking: "disabled",
     finish_reason: choice?.finish_reason ?? null,
-    usage: payload.usage ?? null
+    usage
   });
 
   if (!content) {
     console.warn("[deepseek-diagnostic] missing-final-content", buildAiResponseDiagnostic(payload, null));
-    throw new Error(`DeepSeek response did not include final message content. finish_reason=${choice?.finish_reason ?? "unknown"}`);
+    const error = new Error(`DeepSeek response did not include final message content. finish_reason=${choice?.finish_reason ?? "unknown"}`) as ErrorWithUsage;
+    error.usage = usage;
+    throw error;
   }
 
   try {
-    return assertDeepReadingResult(extractJsonObject(content));
+    return { result: assertDeepReadingResult(extractJsonObject(content)), usage };
   } catch (error) {
     console.warn("[deepseek-diagnostic] invalid-final-response", {
       error: error instanceof Error ? error.message : String(error),
       ...buildAiResponseDiagnostic(payload, content)
     });
-    throw error;
+    const wrapped = (error instanceof Error ? error : new Error(String(error))) as ErrorWithUsage;
+    wrapped.usage = usage;
+    throw wrapped;
   }
 }
 
@@ -244,11 +280,12 @@ export async function POST(request: Request) {
       }
     }
 
-    let result;
+    let aiResult;
     try {
-      result = await callDeepSeek(input);
+      aiResult = await callDeepSeek(input);
     } catch (error) {
       const reason = classifyAIError(error);
+      const usage = getUsageFromError(error);
       await trackServerAnalyticsEvent({
         eventName: "ai_failed",
         userId: user.id,
@@ -260,7 +297,9 @@ export async function POST(request: Request) {
           failure_reason: reason,
           provider: "deepseek",
           model: process.env.DEEPSEEK_MODEL || "deepseek-v4-flash",
-          provider_status: getProviderStatus(error)
+          provider_status: getProviderStatus(error),
+          kind: "deep_reading",
+          ...(usage ?? {})
         }
       });
 
@@ -309,11 +348,13 @@ export async function POST(request: Request) {
       request,
       properties: {
         provider: "deepseek",
-        model: process.env.DEEPSEEK_MODEL || "deepseek-v4-flash"
+        model: process.env.DEEPSEEK_MODEL || "deepseek-v4-flash",
+        kind: "deep_reading",
+        ...aiResult.usage
       }
     });
 
-    return NextResponse.json(result);
+    return NextResponse.json(aiResult.result);
   } catch (error) {
     console.error(error);
     if (error instanceof Error && error.message === "Unauthorized") {
