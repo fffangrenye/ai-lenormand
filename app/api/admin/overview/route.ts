@@ -34,12 +34,13 @@ type ApiUsageRow = {
   api_requests: number;
   api_successes: number;
   api_failures: number;
+  usage_tracked_requests: number;
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
   prompt_cache_hit_tokens: number;
   prompt_cache_miss_tokens: number;
-  avg_tokens_per_request: number;
+  avg_tokens_per_tracked_request: number;
   success_rate_pct: number;
 };
 
@@ -124,7 +125,7 @@ function countUniqueVisitors(rows: AnalyticsEventRow[]) {
 }
 
 function sumApiMetric(rows: ApiUsageRow[], key: keyof Pick<ApiUsageRow,
-  "api_requests" | "api_successes" | "api_failures" | "prompt_tokens" | "completion_tokens" | "total_tokens" | "prompt_cache_hit_tokens" | "prompt_cache_miss_tokens"
+  "api_requests" | "api_successes" | "api_failures" | "usage_tracked_requests" | "prompt_tokens" | "completion_tokens" | "total_tokens" | "prompt_cache_hit_tokens" | "prompt_cache_miss_tokens"
 >) {
   return rows.reduce((total, row) => total + Number(row[key] ?? 0), 0);
 }
@@ -159,13 +160,14 @@ export async function GET(request: Request) {
     const todayApiRequests = sumApiMetric(apiUsageRows, "api_requests");
     const todayApiSuccess = sumApiMetric(apiUsageRows, "api_successes");
     const todayApiFailed = sumApiMetric(apiUsageRows, "api_failures");
+    const todayUsageTrackedRequests = sumApiMetric(apiUsageRows, "usage_tracked_requests");
     const todayPromptTokens = sumApiMetric(apiUsageRows, "prompt_tokens");
     const todayCompletionTokens = sumApiMetric(apiUsageRows, "completion_tokens");
     const todayTotalTokens = sumApiMetric(apiUsageRows, "total_tokens");
     const todayCacheHitTokens = sumApiMetric(apiUsageRows, "prompt_cache_hit_tokens");
     const todayCacheMissTokens = sumApiMetric(apiUsageRows, "prompt_cache_miss_tokens");
     const todayApiSuccessRate = todayApiRequests > 0 ? Number(((todayApiSuccess / todayApiRequests) * 100).toFixed(2)) : 0;
-    const todayAvgTokensPerRequest = todayApiRequests > 0 ? Number((todayTotalTokens / todayApiRequests).toFixed(1)) : 0;
+    const todayAvgTokensPerRequest = todayUsageTrackedRequests > 0 ? Number((todayTotalTokens / todayUsageTrackedRequests).toFixed(1)) : 0;
 
     const recentUsers: UserActivity[] = users
       .map((authUser) => {
@@ -213,6 +215,7 @@ export async function GET(request: Request) {
         todayApiSuccess,
         todayApiFailed,
         todayApiSuccessRate,
+        todayUsageTrackedRequests,
         todayPromptTokens,
         todayCompletionTokens,
         todayTotalTokens,
