@@ -1,0 +1,72 @@
+name: CF Linux Build Check
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - cf-linux-build-check
+
+permissions:
+  contents: read
+
+jobs:
+  linux-build-check:
+    name: Ubuntu OpenNext build validation
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Record versions
+        run: |
+          node -v
+          pnpm -v
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Native Next build
+        run: pnpm build
+
+      - name: OpenNext Cloudflare build
+        run: pnpm cf:build
+
+      - name: Verify OpenNext output and measure size
+        run: |
+          test -f .open-next/worker.js
+          test -d .open-next/assets
+          {
+            echo "worker_exists=true"
+            echo "assets_exists=true"
+            printf "worker_raw_bytes="
+            wc -c < .open-next/worker.js
+            printf "open_next_total="
+            du -sh .open-next | cut -f1
+          } | tee cf-build-summary.txt
+
+      - name: Wrangler dry-run
+        run: pnpm exec wrangler deploy --dry-run 2>&1 | tee wrangler-dry-run.txt
+
+      - name: Upload build summary
+        uses: actions/upload-artifact@v4
+        if: success()
+        with:
+          name: cf-linux-build-summary
+          path: |
+            cf-build-summary.txt
+            wrangler-dry-run.txt
+            .open-next/worker.js
+          if-no-files-found: error
