@@ -65,6 +65,7 @@ jobs:
         if: success()
         with:
           name: cf-linux-build-summary
+          include-hidden-files: true
           path: |
             cf-build-summary.txt
             wrangler-dry-run.txt
