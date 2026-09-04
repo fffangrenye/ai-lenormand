@@ -25,6 +25,7 @@ type AdminOverview = {
     todayDeepSubmits: number;
     todayAiSuccess: number;
     todayAiFailed: number;
+    todayReadingGenerationFailed: number;
     todayQuotaExceeded: number;
     todayBalanceInsufficient: number;
     todayProviderRateLimited: number;
@@ -148,6 +149,7 @@ export default function AdminPage() {
               <StatCard label="提交深占" value={overview.summary.todayDeepSubmits} hint="今日抽牌" />
               <StatCard label="AI 成功" value={overview.summary.todayAiSuccess} hint="模型返回成功" />
               <StatCard label="AI 失败" value={overview.summary.todayAiFailed} hint="已调用模型但失败" />
+              <StatCard label="生成失败" value={overview.summary.todayReadingGenerationFailed} hint="最终状态失败" />
               <StatCard label="额度触达" value={overview.summary.todayQuotaExceeded} hint="未调用模型" />
               <StatCard label="余额不足" value={overview.summary.todayBalanceInsufficient} hint="DeepSeek / 402" />
               <StatCard label="模型限流" value={overview.summary.todayProviderRateLimited} hint="Provider 429" />

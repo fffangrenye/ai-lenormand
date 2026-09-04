@@ -1,3 +1,4 @@
+import type { InterpretationSource } from "./reading-source";
 import type { DeepReadingCard, ReadingWithCards } from "./project-store";
 
 export type DeepReadingResult = {
@@ -5,6 +6,11 @@ export type DeepReadingResult = {
   interpretation: string;
   time_window: string | null;
   uncertainty: string;
+  interpretation_source?: InterpretationSource;
+  rule_engine_version?: string | null;
+  rule_engine_schema_version?: string | null;
+  rule_engine_result?: unknown;
+  generation_error_code?: string | null;
 };
 
 export type DeepFollowUpResult = {
@@ -22,6 +28,7 @@ export type DeepReadingRequest = {
     id: string;
     question: string;
     spreadType: ReadingWithCards["spreadType"];
+    interpretationSource?: InterpretationSource;
   };
   cards: DeepReadingCard[];
   recentReadings: Array<{
@@ -54,6 +61,8 @@ export type DeepFollowUpRequest = {
     interpretation: string;
     timeWindow: string | null;
     uncertainty: string;
+    interpretationSource?: InterpretationSource;
+    ruleEngineSummary?: unknown;
   };
   cards: DeepReadingCard[];
   messages: Array<{
@@ -63,34 +72,49 @@ export type DeepFollowUpRequest = {
   }>;
 };
 
+function pickString(record: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) return value.trim();
+  }
+
+  return "";
+}
+
+function hasKey(record: Record<string, unknown>, keys: string[]) {
+  return keys.some((key) => key in record);
+}
+
 export function assertDeepReadingResult(value: unknown): DeepReadingResult {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("Deep Reading response is not a JSON object.");
   }
 
   const record = value as Record<string, unknown>;
-  const allowedKeys = ["core_conclusion", "interpretation", "time_window", "uncertainty"];
-  const keys = Object.keys(record);
+  const coreConclusion = pickString(record, ["core_conclusion", "coreConclusion", "conclusion", "summary"]);
+  const interpretation = pickString(record, ["interpretation", "analysis", "reading", "content"]);
+  const uncertainty = pickString(record, ["uncertainty", "caveat", "boundary", "limitations"]);
+  const timeWindowValue =
+    record.time_window ?? record.timeWindow ?? record.timing ?? record.time ?? (hasKey(record, ["time_window", "timeWindow", "timing", "time"]) ? null : null);
 
-  const hasOnlyExpectedKeys = keys.every((key) => allowedKeys.includes(key)) && allowedKeys.every((key) => key in record);
-  if (!hasOnlyExpectedKeys) {
+  if (!coreConclusion || !interpretation) {
     throw new Error("Deep Reading response does not match the required schema.");
   }
 
-  if (
-    typeof record.core_conclusion !== "string" ||
-    typeof record.interpretation !== "string" ||
-    !(typeof record.time_window === "string" || record.time_window === null) ||
-    typeof record.uncertainty !== "string"
-  ) {
+  if (!(typeof timeWindowValue === "string" || timeWindowValue === null || typeof timeWindowValue === "undefined")) {
     throw new Error("Deep Reading response has invalid field types.");
   }
 
   return {
-    core_conclusion: record.core_conclusion.trim(),
-    interpretation: record.interpretation.trim(),
-    time_window: typeof record.time_window === "string" ? record.time_window.trim() || null : null,
-    uncertainty: record.uncertainty.trim()
+    core_conclusion: coreConclusion,
+    interpretation,
+    time_window: typeof timeWindowValue === "string" ? timeWindowValue.trim() || null : null,
+    uncertainty,
+    interpretation_source: record.interpretation_source === "rule_engine" ? "rule_engine" : record.interpretation_source === "ai" ? "ai" : undefined,
+    rule_engine_version: typeof record.rule_engine_version === "string" ? record.rule_engine_version : null,
+    rule_engine_schema_version: typeof record.rule_engine_schema_version === "string" ? record.rule_engine_schema_version : null,
+    rule_engine_result: record.rule_engine_result,
+    generation_error_code: typeof record.generation_error_code === "string" ? record.generation_error_code : null
   };
 }
 
@@ -100,11 +124,12 @@ export function assertDeepFollowUpResult(value: unknown): DeepFollowUpResult {
   }
 
   const record = value as Record<string, unknown>;
-  if (Object.keys(record).length !== 1 || typeof record.answer !== "string") {
+  const answer = pickString(record, ["answer", "reply", "response", "content"]);
+  if (!answer) {
     throw new Error("Follow-up response does not match the required schema.");
   }
 
   return {
-    answer: record.answer.trim()
+    answer
   };
 }

@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { buildAiResponseDiagnostics, DeepSeekPayload } from "@/lib/ai-response-diagnostics";
+import { parseAiJsonObject } from "@/lib/ai-json";
 import { DeepFollowUpRequest, assertDeepFollowUpResult } from "@/lib/deep-reading-result";
 import { AiFailureReason, consumeDailyQuota, isAdminEmail, requireSupabaseUser, trackServerAnalyticsEvent } from "@/lib/supabase-server";
 
@@ -8,6 +10,8 @@ const DEEPSEEK_URL = "https://api.deepseek.com/chat/completions";
 const FREE_FOLLOW_UP_LIMIT = 1;
 const FOLLOW_UP_USAGE_TRACKING_LIMIT = 1000000;
 const FOLLOW_UP_FAILURE_MESSAGE = "这次追问暂时没有生成成功。你的问题已经保留，可以稍后再问一次。";
+const FOLLOW_UP_QUOTA_MESSAGE = "这次解读的 1 次免费 AI 追问已经用完。";
+const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || "deepseek-v4-flash";
 
 class AiProviderError extends Error {
   status: number;
@@ -18,6 +22,16 @@ class AiProviderError extends Error {
     this.name = "AiProviderError";
     this.status = status;
     this.body = body;
+  }
+}
+
+class InvalidAiResponseError extends Error {
+  diagnostics?: ReturnType<typeof buildAiResponseDiagnostics>;
+
+  constructor(message: string, diagnostics?: ReturnType<typeof buildAiResponseDiagnostics>) {
+    super(message);
+    this.name = "InvalidAiResponseError";
+    this.diagnostics = diagnostics;
   }
 }
 
@@ -52,6 +66,16 @@ function getPublicErrorCode(reason: AiFailureReason) {
 
 function getProviderStatus(error: unknown) {
   return error && typeof error === "object" && typeof (error as { status?: unknown }).status === "number" ? (error as { status: number }).status : null;
+}
+
+function isInvalidResponseError(error: unknown) {
+  if (error instanceof Error && error.name === "InvalidAiResponseError") return true;
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+  return message.includes("json") || message.includes("schema") || message.includes("parse");
+}
+
+function getDiagnostics(error: unknown) {
+  return error instanceof InvalidAiResponseError ? error.diagnostics : undefined;
 }
 
 const systemPrompt = `You are a professional Lenormand Reader answering follow-up questions for an existing AI Lenormand Deep Reading.
@@ -123,31 +147,44 @@ ${input.reading.timeWindow ?? "None"}
 UNCERTAINTY:
 ${input.reading.uncertainty || "None"}
 
+INITIAL READING SOURCE:
+${input.reading.interpretationSource === "rule_engine" ? "rule_engine" : "ai"}
+
+RULE ENGINE SUMMARY IF PRESENT:
+${input.reading.ruleEngineSummary ? JSON.stringify(input.reading.ruleEngineSummary).slice(0, 1600) : "None"}
+
 FOLLOW-UP CONVERSATION:
 ${formatMessages(input.messages)}
 
 Use only the existing reading and conversation. Return only the required JSON object.`;
 }
 
-function extractJsonObject(content: string) {
-  const trimmed = content.trim();
+async function requestDeepSeekContent(apiKey: string, body: Record<string, unknown>) {
+  const response = await fetch(DEEPSEEK_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`
+    },
+    signal: AbortSignal.timeout(45000),
+    body: JSON.stringify(body)
+  });
 
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
-    if (fenced?.[1]) {
-      return JSON.parse(fenced[1].trim());
-    }
-
-    const start = trimmed.indexOf("{");
-    const end = trimmed.lastIndexOf("}");
-    if (start !== -1 && end !== -1 && end > start) {
-      return JSON.parse(trimmed.slice(start, end + 1));
-    }
-
-    throw new Error("DeepSeek response did not contain parseable JSON.");
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new AiProviderError(response.status, errorText);
   }
+
+  const payload = (await response.json()) as DeepSeekPayload;
+  const choice = payload.choices?.[0];
+  const content = choice?.message?.content;
+  const diagnostics = buildAiResponseDiagnostics(payload);
+
+  if (typeof content !== "string" || !content.trim()) {
+    throw new InvalidAiResponseError(`DeepSeek response did not include usable message.content. finish_reason=${choice?.finish_reason ?? "unknown"}`, diagnostics);
+  }
+
+  return { content, diagnostics };
 }
 
 async function callDeepSeek(input: DeepFollowUpRequest) {
@@ -156,40 +193,24 @@ async function callDeepSeek(input: DeepFollowUpRequest) {
     throw new Error("Missing DEEPSEEK_API_KEY on the server.");
   }
 
-  const response = await fetch(DEEPSEEK_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model: process.env.DEEPSEEK_MODEL || "deepseek-v4-flash",
-      response_format: { type: "json_object" },
-      temperature: 0.68,
-      max_tokens: 420,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: buildUserPrompt(input) }
-      ]
-    })
+  const { content, diagnostics } = await requestDeepSeekContent(apiKey, {
+    model: DEEPSEEK_MODEL,
+    thinking: { type: "disabled" },
+    response_format: { type: "json_object" },
+    temperature: 0.35,
+    max_tokens: 420,
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: buildUserPrompt(input) }
+    ]
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new AiProviderError(response.status, errorText);
+  try {
+    return assertDeepFollowUpResult(parseAiJsonObject(content));
+  } catch (error) {
+    if (!isInvalidResponseError(error)) throw error;
+    throw new InvalidAiResponseError(error instanceof Error ? error.message : "DeepSeek response could not be parsed.", diagnostics);
   }
-
-  const payload = (await response.json()) as {
-    choices?: Array<{ finish_reason?: string; message?: { content?: string; reasoning_content?: string } }>;
-  };
-  const choice = payload.choices?.[0];
-  const content = choice?.message?.content || choice?.message?.reasoning_content;
-
-  if (!content) {
-    throw new Error(`DeepSeek response did not include message content. finish_reason=${choice?.finish_reason ?? "unknown"}`);
-  }
-
-  return assertDeepFollowUpResult(extractJsonObject(content));
 }
 
 export async function POST(request: Request) {
@@ -211,11 +232,11 @@ export async function POST(request: Request) {
 
       return NextResponse.json(
         {
-          code: "QUOTA_EXCEEDED",
-          error: "quota_exceeded",
-          message: "今日解读次数已用完，请明日再试。",
-          quota: { allowed: false, limit: FREE_FOLLOW_UP_LIMIT }
-        },
+            code: "QUOTA_EXCEEDED",
+            error: "quota_exceeded",
+            message: FOLLOW_UP_QUOTA_MESSAGE,
+            quota: { allowed: false, limit: FREE_FOLLOW_UP_LIMIT }
+          },
         { status: 429 }
       );
     }
@@ -235,8 +256,9 @@ export async function POST(request: Request) {
         properties: {
           failure_reason: reason,
           provider: "deepseek",
-          model: process.env.DEEPSEEK_MODEL || "deepseek-v4-flash",
-          provider_status: getProviderStatus(error)
+          model: DEEPSEEK_MODEL,
+          provider_status: getProviderStatus(error),
+          diagnostics: getDiagnostics(error)
         }
       });
 
@@ -245,7 +267,7 @@ export async function POST(request: Request) {
           code: getPublicErrorCode(reason),
           error: "ai_failed",
           reason,
-          message: "解读服务暂时不可用，本次不会消耗解读次数，请点击下方复制移步其他AI进行解读。"
+          message: "AI 服务暂时不可用，请复制prompt后移步其他AI"
         },
         { status: 503 }
       );
@@ -264,7 +286,7 @@ export async function POST(request: Request) {
       request,
       properties: {
         provider: "deepseek",
-        model: process.env.DEEPSEEK_MODEL || "deepseek-v4-flash"
+        model: DEEPSEEK_MODEL
       }
     });
 

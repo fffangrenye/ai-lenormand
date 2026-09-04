@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { buildAiResponseDiagnostics, DeepSeekPayload } from "@/lib/ai-response-diagnostics";
+import { parseAiJsonObject } from "@/lib/ai-json";
 import { DeepReadingRequest, assertDeepReadingResult } from "@/lib/deep-reading-result";
 import {
   AiFailureReason,
@@ -12,7 +14,8 @@ import {
 export const runtime = "nodejs";
 
 const DEEPSEEK_URL = "https://api.deepseek.com/chat/completions";
-const FREE_DEEP_READING_LIMIT = 3;
+const FREE_DEEP_READING_LIMIT = 5;
+const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || "deepseek-v4-flash";
 
 class AiProviderError extends Error {
   status: number;
@@ -23,6 +26,16 @@ class AiProviderError extends Error {
     this.name = "AiProviderError";
     this.status = status;
     this.body = body;
+  }
+}
+
+class InvalidAiResponseError extends Error {
+  diagnostics?: ReturnType<typeof buildAiResponseDiagnostics>;
+
+  constructor(message: string, diagnostics?: ReturnType<typeof buildAiResponseDiagnostics>) {
+    super(message);
+    this.name = "InvalidAiResponseError";
+    this.diagnostics = diagnostics;
   }
 }
 
@@ -59,6 +72,16 @@ function getProviderStatus(error: unknown) {
   return error && typeof error === "object" && typeof (error as { status?: unknown }).status === "number" ? (error as { status: number }).status : null;
 }
 
+function isInvalidResponseError(error: unknown) {
+  if (error instanceof Error && error.name === "InvalidAiResponseError") return true;
+  const message = error instanceof Error ? error.message.toLowerCase() : "";
+  return message.includes("json") || message.includes("schema") || message.includes("parse");
+}
+
+function getDiagnostics(error: unknown) {
+  return error instanceof InvalidAiResponseError ? error.diagnostics : undefined;
+}
+
 const systemPrompt = `You are a professional Lenormand Reader for AI Lenormand Deep Reading.
 
 Core rules:
@@ -74,7 +97,7 @@ Core rules:
 - Fox is not automatically cheating. Snake is not automatically a third party. Ring is not automatically marriage.
 - Avoid absolute predictions. Give clear but probabilistic conclusions.
 - If time is not supported, set time_window to null.
-- Keep the response compact enough to fit safely in JSON: core_conclusion 40-90 Chinese characters, interpretation 360-620 Chinese characters, uncertainty 60-120 Chinese characters.
+- Keep the response compact enough to fit safely in JSON: core_conclusion about 1-2 sentences, interpretation about 300-500 Chinese characters, uncertainty about 1-2 sentences.
 
 Return exactly one JSON object and nothing else:
 {
@@ -148,25 +171,32 @@ Use the Deep Reading rules provided in the system prompt.
 Return only the required JSON object.`;
 }
 
-function extractJsonObject(content: string) {
-  const trimmed = content.trim();
+async function requestDeepSeekContent(apiKey: string, body: Record<string, unknown>) {
+  const response = await fetch(DEEPSEEK_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${apiKey}`
+    },
+    signal: AbortSignal.timeout(45000),
+    body: JSON.stringify(body)
+  });
 
-  try {
-    return JSON.parse(trimmed);
-  } catch {
-    const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i);
-    if (fenced?.[1]) {
-      return JSON.parse(fenced[1].trim());
-    }
-
-    const start = trimmed.indexOf("{");
-    const end = trimmed.lastIndexOf("}");
-    if (start !== -1 && end !== -1 && end > start) {
-      return JSON.parse(trimmed.slice(start, end + 1));
-    }
-
-    throw new Error("DeepSeek response did not contain parseable JSON.");
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new AiProviderError(response.status, errorText);
   }
+
+  const payload = (await response.json()) as DeepSeekPayload;
+  const choice = payload.choices?.[0];
+  const content = choice?.message?.content;
+  const diagnostics = buildAiResponseDiagnostics(payload);
+
+  if (typeof content !== "string" || !content.trim()) {
+    throw new InvalidAiResponseError(`DeepSeek response did not include usable message.content. finish_reason=${choice?.finish_reason ?? "unknown"}`, diagnostics);
+  }
+
+  return { content, diagnostics };
 }
 
 async function callDeepSeek(input: DeepReadingRequest) {
@@ -175,46 +205,40 @@ async function callDeepSeek(input: DeepReadingRequest) {
     throw new Error("Missing DEEPSEEK_API_KEY on the server.");
   }
 
-  const response = await fetch(DEEPSEEK_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`
-    },
-    body: JSON.stringify({
-      model: process.env.DEEPSEEK_MODEL || "deepseek-v4-flash",
-      response_format: { type: "json_object" },
-      temperature: 0.7,
-      max_tokens: 1100,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: buildUserPrompt(input) }
-      ]
-    })
+  const { content, diagnostics } = await requestDeepSeekContent(apiKey, {
+    model: DEEPSEEK_MODEL,
+    thinking: { type: "disabled" },
+    response_format: { type: "json_object" },
+    temperature: 0.35,
+    max_tokens: 1400,
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: buildUserPrompt(input) }
+    ]
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new AiProviderError(response.status, errorText);
+  try {
+    return assertDeepReadingResult(parseAiJsonObject(content));
+  } catch (error) {
+    if (!isInvalidResponseError(error)) throw error;
+    throw new InvalidAiResponseError(error instanceof Error ? error.message : "DeepSeek response could not be parsed.", diagnostics);
   }
-
-  const payload = (await response.json()) as {
-    choices?: Array<{ finish_reason?: string; message?: { content?: string; reasoning_content?: string } }>;
-  };
-  const choice = payload.choices?.[0];
-  const content = choice?.message?.content || choice?.message?.reasoning_content;
-
-  if (!content) {
-    throw new Error(`DeepSeek response did not include message content. finish_reason=${choice?.finish_reason ?? "unknown"}`);
-  }
-
-  return assertDeepReadingResult(extractJsonObject(content));
 }
 
 export async function POST(request: Request) {
   try {
     const user = await requireSupabaseUser(request);
     const input = (await request.json()) as DeepReadingRequest;
+
+    await trackServerAnalyticsEvent({
+      eventName: "reading_generation_started",
+      userId: user.id,
+      readingId: input.reading.id,
+      spreadType: input.reading.spreadType,
+      path: "/api/deep-reading",
+      request,
+      properties: { source: "ai" }
+    });
 
     if (!isAdminEmail(user.email)) {
       const quota = await checkDailyQuota(user.id, "deep_reading", FREE_DEEP_READING_LIMIT);
@@ -233,7 +257,7 @@ export async function POST(request: Request) {
           {
             code: "QUOTA_EXCEEDED",
             error: "quota_exceeded",
-            message: "今日解读次数已用完，请明日再试。",
+            message: "今日 AI 解读额度已用完",
             quota
           },
           { status: 429 }
@@ -256,8 +280,23 @@ export async function POST(request: Request) {
         properties: {
           failure_reason: reason,
           provider: "deepseek",
-          model: process.env.DEEPSEEK_MODEL || "deepseek-v4-flash",
-          provider_status: getProviderStatus(error)
+          model: DEEPSEEK_MODEL,
+          provider_status: getProviderStatus(error),
+          diagnostics: getDiagnostics(error)
+        }
+      });
+      await trackServerAnalyticsEvent({
+        eventName: "reading_generation_failed",
+        userId: user.id,
+        readingId: input.reading.id,
+        spreadType: input.reading.spreadType,
+        path: "/api/deep-reading",
+        request,
+        properties: {
+          source: "ai",
+          failure_reason: reason,
+          provider: "deepseek",
+          model: DEEPSEEK_MODEL
         }
       });
 
@@ -266,7 +305,7 @@ export async function POST(request: Request) {
           code: getPublicErrorCode(reason),
           error: "ai_failed",
           reason,
-          message: "解读服务暂时不可用，本次不会消耗解读次数，请点击下方复制移步其他AI进行解读。"
+          message: "AI 服务暂时不可用，请复制prompt后移步其他AI"
         },
         { status: 503 }
       );
@@ -289,7 +328,7 @@ export async function POST(request: Request) {
           {
             code: "QUOTA_EXCEEDED",
             error: "quota_exceeded",
-            message: "今日解读次数已用完，请明日再试。",
+            message: "今日 AI 解读额度已用完",
             quota: consumed
           },
           { status: 429 }
@@ -306,7 +345,20 @@ export async function POST(request: Request) {
       request,
       properties: {
         provider: "deepseek",
-        model: process.env.DEEPSEEK_MODEL || "deepseek-v4-flash"
+        model: DEEPSEEK_MODEL
+      }
+    });
+    await trackServerAnalyticsEvent({
+      eventName: "reading_generation_success",
+      userId: user.id,
+      readingId: input.reading.id,
+      spreadType: input.reading.spreadType,
+      path: "/api/deep-reading",
+      request,
+      properties: {
+        source: "ai",
+        provider: "deepseek",
+        model: DEEPSEEK_MODEL
       }
     });
 

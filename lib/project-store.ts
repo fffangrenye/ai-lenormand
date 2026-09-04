@@ -2,6 +2,7 @@
 
 import { LenormandCard, lenormandCards } from "./lenormand-cards";
 import { DeepFollowUpResult, DeepReadingResult, assertDeepFollowUpResult, assertDeepReadingResult } from "./deep-reading-result";
+import { InterpretationSource, getRuleEngineFeatureFlags, resolveInterpretationSource, spreadSizeForSpreadType } from "./reading-source";
 
 export type AuthSession = {
   email: string;
@@ -38,6 +39,11 @@ export type DeepReading = {
   timeWindow: string | null;
   uncertainty: string;
   failureReason?: string | null;
+  interpretationSource: InterpretationSource;
+  ruleEngineVersion?: string | null;
+  ruleEngineSchemaVersion?: string | null;
+  ruleEngineResult?: unknown;
+  generationErrorCode?: string | null;
   createdAt: string;
   completedAt: string | null;
 };
@@ -73,6 +79,8 @@ export type DeepQuota = {
   resetLabel: string;
 };
 
+const SUPABASE_REQUEST_TIMEOUT_MS = 15_000;
+
 type DailyQuotaKind = "deep_reading" | "follow_up";
 
 type DailyQuotaEvent = {
@@ -90,10 +98,11 @@ const READINGS_KEY = "ai-lenormand:deep-readings";
 const READING_CARDS_KEY = "ai-lenormand:deep-reading-cards";
 const FOLLOW_UP_MESSAGES_KEY = "ai-lenormand:deep-follow-up-messages";
 const DAILY_QUOTA_EVENTS_KEY = "ai-lenormand:daily-quota-events";
-export const FREE_DEEP_READING_LIMIT = 3;
+export const FREE_DEEP_READING_LIMIT = 5;
 export const FREE_FOLLOW_UP_LIMIT = 1;
 const UNLIMITED_AI_EMAILS = ["1041871342@qq.com"];
 const FOLLOW_UP_FAILURE_MESSAGE = "这次追问暂时没有生成成功。你的问题已经保留，可以稍后再问一次。";
+const FOLLOW_UP_QUOTA_MESSAGE = "这次解读的 1 次免费 AI 追问已经用完。";
 const DUPLICATE_SUBMIT_WINDOW_MS = 10 * 60 * 1000;
 const AI_PROJECT_BACKGROUND_LIMIT = 500;
 const AI_PROJECT_MEMORY_LIMIT = 700;
@@ -102,7 +111,7 @@ const AI_RECENT_MESSAGE_LIMIT = 2;
 const AI_RECENT_TEXT_LIMIT = 260;
 
 export class QuotaExceededError extends Error {
-  constructor(message = "今日免费额度已用完，明天 00:00 后刷新。") {
+  constructor(message = "今日 AI 解读额度已用完") {
     super(message);
     this.name = "QuotaExceededError";
   }
@@ -116,13 +125,26 @@ type ApiErrorPayload = {
   quota?: unknown;
 };
 
+type SourceResolutionPayload = {
+  source?: InterpretationSource;
+  eligible?: boolean;
+  reason?: string;
+};
+
+type RuleEngineApiResult = DeepReadingResult & {
+  interpretation_source?: "rule_engine";
+  rule_engine_version?: string | null;
+  rule_engine_schema_version?: string | null;
+  rule_engine_result?: unknown;
+};
+
 async function readApiErrorPayload(response: Response): Promise<ApiErrorPayload> {
   return (await response.json().catch(() => ({}))) as ApiErrorPayload;
 }
 
 function getFriendlyAiFailureMessage(payload: ApiErrorPayload) {
   if (payload.code === "QUOTA_EXCEEDED") {
-    return payload.message || "今日解读次数已用完，请明日再试。";
+    return "今日 AI 解读额度已用完";
   }
 
   if (
@@ -130,10 +152,10 @@ function getFriendlyAiFailureMessage(payload: ApiErrorPayload) {
     payload.code === "AI_PROVIDER_RATE_LIMITED" ||
     payload.code === "AI_GENERATION_FAILED"
   ) {
-    return payload.message || "解读服务暂时不可用，本次不会消耗解读次数，请点击下方复制移步其他AI进行解读。";
+    return "AI 服务暂时不可用，请复制prompt后移步其他AI";
   }
 
-  return payload.message || payload.error || "解读服务暂时不可用，本次不会消耗解读次数，请点击下方复制移步其他AI进行解读。";
+  return "AI 服务暂时不可用，请复制prompt后移步其他AI";
 }
 
 function canUseStorage() {
@@ -177,6 +199,18 @@ function normalizeProject(project: DeepProject): DeepProject {
   };
 }
 
+function normalizeReading(reading: DeepReading): DeepReading {
+  return {
+    ...reading,
+    interpretationSource: reading.interpretationSource ?? "ai",
+    ruleEngineVersion: reading.ruleEngineVersion ?? null,
+    ruleEngineSchemaVersion: reading.ruleEngineSchemaVersion ?? null,
+    ruleEngineResult: reading.ruleEngineResult ?? null,
+    generationErrorCode: reading.generationErrorCode ?? null,
+    failureReason: reading.failureReason ?? null
+  };
+}
+
 function readAllProjects(): DeepProject[] {
   if (!canUseStorage()) return [];
 
@@ -193,7 +227,7 @@ function readAllReadings(): DeepReading[] {
 
   try {
     const raw = window.localStorage.getItem(READINGS_KEY);
-    return raw ? (JSON.parse(raw) as DeepReading[]) : [];
+    return raw ? (JSON.parse(raw) as DeepReading[]).map(normalizeReading) : [];
   } catch {
     return [];
   }
@@ -291,15 +325,23 @@ async function supabaseRest<T>(path: string, init?: RequestInit): Promise<T> {
   const { url, anonKey } = getSupabaseBrowserConfig();
 
   async function requestWithSession(activeSession: AuthSession) {
-    return fetch(`${url}/rest/v1${path}`, {
-      ...init,
-      headers: {
-        apikey: anonKey,
-        Authorization: `Bearer ${activeSession.accessToken}`,
-        "Content-Type": "application/json",
-        ...(init?.headers ?? {})
-      }
-    });
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), SUPABASE_REQUEST_TIMEOUT_MS);
+
+    try {
+      return await fetch(`${url}/rest/v1${path}`, {
+        ...init,
+        signal: controller.signal,
+        headers: {
+          apikey: anonKey,
+          Authorization: `Bearer ${activeSession.accessToken}`,
+          "Content-Type": "application/json",
+          ...(init?.headers ?? {})
+        }
+      });
+    } finally {
+      window.clearTimeout(timeoutId);
+    }
   }
 
   let response = await requestWithSession(session);
@@ -325,14 +367,23 @@ async function supabaseRest<T>(path: string, init?: RequestInit): Promise<T> {
 
 async function requestSupabaseAuth(path: string, body: Record<string, unknown>) {
   const { url, anonKey } = getSupabaseBrowserConfig();
-  const response = await fetch(`${url}${path}`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      apikey: anonKey
-    },
-    body: JSON.stringify(body)
-  });
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), SUPABASE_REQUEST_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch(`${url}${path}`, {
+      method: "POST",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        apikey: anonKey
+      },
+      body: JSON.stringify(body)
+    });
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
 
   const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
   if (!response.ok) {
@@ -373,6 +424,11 @@ type RemoteReadingRow = {
   time_window: string | null;
   uncertainty: string | null;
   failure_reason?: string | null;
+  interpretation_source?: InterpretationSource | null;
+  rule_engine_version?: string | null;
+  rule_engine_schema_version?: string | null;
+  rule_engine_result?: unknown;
+  generation_error_code?: string | null;
   created_at: string;
   completed_at: string | null;
 };
@@ -413,7 +469,7 @@ function mapRemoteProject(row: RemoteProjectRow): DeepProject {
 
 function mapRemoteReading(row: RemoteReadingRow): DeepReading {
   const session = getSession();
-  return {
+  return normalizeReading({
     id: row.id,
     userEmail: session?.email ?? "",
     projectId: row.project_id,
@@ -425,9 +481,14 @@ function mapRemoteReading(row: RemoteReadingRow): DeepReading {
     timeWindow: row.time_window,
     uncertainty: row.uncertainty ?? "",
     failureReason: row.failure_reason ?? null,
+    interpretationSource: row.interpretation_source ?? "ai",
+    ruleEngineVersion: row.rule_engine_version ?? null,
+    ruleEngineSchemaVersion: row.rule_engine_schema_version ?? null,
+    ruleEngineResult: row.rule_engine_result ?? null,
+    generationErrorCode: row.generation_error_code ?? null,
     createdAt: row.created_at,
     completedAt: row.completed_at
-  };
+  });
 }
 
 function mapRemoteReadingCard(row: RemoteReadingCardRow): DeepReadingCard {
@@ -547,7 +608,14 @@ function syncDailyQuotaEventsFromVisibleHistory(userEmail: string) {
   const nextEvents = [...events];
 
   readAllReadings()
-    .filter((reading) => reading.userEmail === userEmail && reading.status === "completed" && reading.completedAt && getBeijingDateKey(reading.completedAt) === todayKey)
+    .filter(
+      (reading) =>
+        reading.userEmail === userEmail &&
+        reading.interpretationSource !== "rule_engine" &&
+        reading.status === "completed" &&
+        reading.completedAt &&
+        getBeijingDateKey(reading.completedAt) === todayKey
+    )
     .forEach((reading) => {
       const key = `${userEmail}:deep_reading:${reading.id}:${todayKey}`;
       if (existingKeys.has(key)) return;
@@ -614,7 +682,12 @@ export function getDeepReadingQuota(): DeepQuota {
     (event) => event.userEmail === session.email && event.kind === "deep_reading" && event.dateKey === todayKey
   );
   const visibleCompletedUsed = readAllReadings().filter(
-    (reading) => reading.userEmail === session.email && reading.status === "completed" && reading.completedAt && getBeijingDateKey(reading.completedAt) === todayKey
+    (reading) =>
+      reading.userEmail === session.email &&
+      reading.interpretationSource !== "rule_engine" &&
+      reading.status === "completed" &&
+      reading.completedAt &&
+      getBeijingDateKey(reading.completedAt) === todayKey
   );
   const used = Math.min(Math.max(ledgerUsed.length, visibleCompletedUsed.length), FREE_DEEP_READING_LIMIT);
   return {
@@ -1052,13 +1125,18 @@ function completeReading(readingId: string, result: DeepReadingResult) {
             timeWindow: result.time_window,
             uncertainty: result.uncertainty,
             failureReason: null,
+            interpretationSource: result.interpretation_source ?? reading.interpretationSource,
+            ruleEngineVersion: result.rule_engine_version ?? reading.ruleEngineVersion ?? null,
+            ruleEngineSchemaVersion: result.rule_engine_schema_version ?? reading.ruleEngineSchemaVersion ?? null,
+            ruleEngineResult: result.rule_engine_result ?? reading.ruleEngineResult ?? null,
+            generationErrorCode: null,
             completedAt
           }
         : reading
     )
   );
 
-  if (completedReading) {
+  if (completedReading && completedReading.interpretationSource !== "rule_engine") {
     recordDailyQuotaEvent({
       userEmail: completedReading.userEmail,
       kind: "deep_reading",
@@ -1085,11 +1163,16 @@ async function saveCompletedReading(readingId: string, result: DeepReadingResult
       time_window: result.time_window,
       uncertainty: result.uncertainty,
       failure_reason: null,
+      interpretation_source: result.interpretation_source ?? completedReading?.interpretationSource ?? "ai",
+      rule_engine_version: result.rule_engine_version ?? null,
+      rule_engine_schema_version: result.rule_engine_schema_version ?? null,
+      rule_engine_result: result.rule_engine_result ?? null,
+      generation_error_code: null,
       completed_at: now()
     })
   });
 
-  if (completedReading) {
+  if (completedReading && completedReading.interpretationSource !== "rule_engine") {
     recordDailyQuotaEvent({
       userEmail: completedReading.userEmail,
       kind: "deep_reading",
@@ -1103,24 +1186,51 @@ async function authHeaders(): Promise<HeadersInit> {
   return { Authorization: `Bearer ${session.accessToken}` };
 }
 
-function failReading(readingId: string, failureReason?: string) {
+async function resolveReadingSourceForCreation(spreadType: SpreadType): Promise<InterpretationSource> {
+  if (!canUseRemoteStore()) {
+    return resolveInterpretationSource({
+      flags: getRuleEngineFeatureFlags(),
+      spreadSize: spreadSizeForSpreadType(spreadType)
+    }).source;
+  }
+
+  try {
+    const response = await fetch("/api/deep-reading/source", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(await authHeaders())
+      },
+      body: JSON.stringify({ spreadType })
+    });
+    if (!response.ok) return "ai";
+    const payload = (await response.json()) as SourceResolutionPayload;
+    return payload.source === "rule_engine" ? "rule_engine" : "ai";
+  } catch {
+    return "ai";
+  }
+}
+
+function failReading(readingId: string, failureReason?: string, generationErrorCode?: string) {
   writeAllReadings(
     readAllReadings().map((reading) =>
-      reading.id === readingId ? { ...reading, status: "failed", failureReason: failureReason ?? reading.failureReason ?? null } : reading
+      reading.id === readingId
+        ? { ...reading, status: "failed", failureReason: failureReason ?? reading.failureReason ?? null, generationErrorCode: generationErrorCode ?? reading.generationErrorCode ?? null }
+        : reading
     )
   );
 }
 
-async function saveFailedReading(readingId: string, failureReason?: string) {
+async function saveFailedReading(readingId: string, failureReason?: string, generationErrorCode?: string) {
   if (!canUseRemoteStore()) {
-    failReading(readingId, failureReason);
+    failReading(readingId, failureReason, generationErrorCode);
     return;
   }
 
   await supabaseRest<null>(`/deep_readings?id=eq.${encodeURIComponent(readingId)}`, {
     method: "PATCH",
     headers: { Prefer: "return=minimal" },
-    body: JSON.stringify({ status: "failed", ...(failureReason ? { failure_reason: failureReason } : {}) })
+    body: JSON.stringify({ status: "failed", ...(failureReason ? { failure_reason: failureReason } : {}), ...(generationErrorCode ? { generation_error_code: generationErrorCode } : {}) })
   });
 }
 
@@ -1182,7 +1292,8 @@ async function buildGenerationPayload(readingId: string) {
     reading: {
       id: reading.id,
       question: reading.question,
-      spreadType: reading.spreadType
+      spreadType: reading.spreadType,
+      interpretationSource: reading.interpretationSource
     },
     cards: reading.cards,
     recentReadings,
@@ -1210,6 +1321,11 @@ export function createReading(input: { projectId: string; spreadType: SpreadType
     timeWindow: null,
     uncertainty: "",
     failureReason: null,
+    interpretationSource: "ai",
+    ruleEngineVersion: null,
+    ruleEngineSchemaVersion: null,
+    ruleEngineResult: null,
+    generationErrorCode: null,
     createdAt: timestamp,
     completedAt: null
   };
@@ -1248,6 +1364,7 @@ export async function saveReading(input: { projectId: string; spreadType: Spread
   const project = await loadProject(input.projectId);
   if (!project) throw new Error("Project not found");
 
+  const interpretationSource = await resolveReadingSourceForCreation(input.spreadType);
   const timestamp = now();
   const reading: DeepReading = {
     id: newId(),
@@ -1261,6 +1378,11 @@ export async function saveReading(input: { projectId: string; spreadType: Spread
     timeWindow: null,
     uncertainty: "",
     failureReason: null,
+    interpretationSource,
+    ruleEngineVersion: null,
+    ruleEngineSchemaVersion: null,
+    ruleEngineResult: null,
+    generationErrorCode: null,
     createdAt: timestamp,
     completedAt: null
   };
@@ -1279,6 +1401,11 @@ export async function saveReading(input: { projectId: string; spreadType: Spread
       interpretation: "",
       uncertainty: "",
       failure_reason: null,
+      interpretation_source: interpretationSource,
+      rule_engine_version: null,
+      rule_engine_schema_version: null,
+      rule_engine_result: null,
+      generation_error_code: null,
       created_at: timestamp
     })
   });
@@ -1325,6 +1452,30 @@ export async function generateDeepReading(readingId: string) {
 
   try {
     const payload = await buildGenerationPayload(readingId);
+    if (existingReading.interpretationSource === "rule_engine") {
+      const response = await fetch("/api/deep-reading/rule-engine", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(await authHeaders())
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (response.status === 401) {
+        throw new Error("请重新登录后再生成规则解读。");
+      }
+      if (!response.ok) {
+        const payload = await readApiErrorPayload(response);
+        await saveFailedReading(readingId, payload.reason, payload.code);
+        throw new Error(payload.message ?? "规则解读暂时没有生成成功。");
+      }
+
+      const result = assertDeepReadingResult((await response.json()) as RuleEngineApiResult);
+      await saveCompletedReading(readingId, result);
+      return;
+    }
+
     const response = await fetch("/api/deep-reading", {
       method: "POST",
       headers: {
@@ -1348,7 +1499,7 @@ export async function generateDeepReading(readingId: string) {
     }
 
     const result = assertDeepReadingResult(await response.json());
-    await saveCompletedReading(readingId, result);
+    await saveCompletedReading(readingId, { ...result, interpretation_source: "ai" });
   } catch (error) {
     if (error instanceof Error && error.name !== "QuotaExceededError") {
       await saveFailedReading(readingId);
@@ -1379,7 +1530,9 @@ async function buildFollowUpPayload(readingId: string) {
       coreConclusion: reading.coreConclusion,
       interpretation: reading.interpretation,
       timeWindow: reading.timeWindow,
-      uncertainty: reading.uncertainty
+      uncertainty: reading.uncertainty,
+      interpretationSource: reading.interpretationSource,
+      ruleEngineSummary: reading.ruleEngineResult
     },
     cards: reading.cards,
     messages: (await loadFollowUpMessages(readingId)).map((message) => ({
@@ -1404,7 +1557,7 @@ export async function sendFollowUpMessage(input: { readingId: string; content: s
   await assertNotDuplicateFollowUp({ readingId: reading.id, content: trimmed });
   const existingMessages = await loadFollowUpMessages(reading.id);
   if (!hasUnlimitedAiAccess(session) && getSuccessfulFollowUpCount(existingMessages) >= FREE_FOLLOW_UP_LIMIT) {
-    throw new QuotaExceededError("这次解读的 1 次免费 AI 追问已经用完。你可以明天再开启新的免费解读，或复制牌面 Prompt 自行解读。");
+    throw new QuotaExceededError(FOLLOW_UP_QUOTA_MESSAGE);
   }
 
   const userMessage: FollowUpMessage = {

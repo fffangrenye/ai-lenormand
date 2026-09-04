@@ -80,6 +80,57 @@ function useDeepSession(returnTo: string) {
   return { ready, email };
 }
 
+function isAuthLoadError(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+  return message.includes("登录") || message.includes("Not signed in") || message.includes("401");
+}
+
+function getDeepLoadErrorMessage(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error ?? "");
+
+  if (isAuthLoadError(error)) {
+    return "登录状态已过期，请重新登录后再进入 Deep Reading。";
+  }
+
+  if (message.includes("AbortError") || message.includes("aborted") || message.includes("Failed to fetch") || message.includes("NetworkError")) {
+    return "网络连接有点慢，Deep Reading 暂时没有读取成功。";
+  }
+
+  return "Deep Reading 暂时没有读取成功，请稍后再试。";
+}
+
+function DeepLoadState({
+  title,
+  message,
+  actionLabel,
+  onAction
+}: {
+  title: string;
+  message: string;
+  actionLabel?: string;
+  onAction?: () => void;
+}) {
+  return (
+    <main className="min-h-dvh bg-paper px-5 text-ink">
+      <section className="mx-auto flex min-h-dvh w-full max-w-[430px] flex-col items-center justify-center">
+        <div className="w-full rounded-[6px] border border-ink/10 bg-[#FFFDF8]/82 p-6 text-center shadow-paper">
+          <h1 className="font-serif text-[30px] leading-tight">{title}</h1>
+          <p className="mt-4 text-[14px] leading-6 text-ink/56">{message}</p>
+          {actionLabel && onAction ? (
+            <button
+              type="button"
+              onClick={onAction}
+              className="mt-7 inline-flex h-12 items-center justify-center rounded-full bg-[#6E2638] px-6 text-[13px] uppercase tracking-[0.12em] text-[#FFF9F2]"
+            >
+              {actionLabel}
+            </button>
+          ) : null}
+        </div>
+      </section>
+    </main>
+  );
+}
+
 function ProjectDrawerItem({
   project,
   active,
@@ -793,7 +844,12 @@ function ReadingChapter({ reading }: { reading: ReadingWithCards }) {
   return (
     <article className="border-b border-ink/10 py-8">
       <p className="text-[12px] uppercase tracking-[0.17em] text-ink/36">{formatProjectDate(reading.createdAt)}</p>
-      <h2 className="mt-3 font-serif text-[27px] leading-tight text-ink">{reading.spreadType === "three_card" ? "Three Cards" : "Five-card Linear"}</h2>
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <h2 className="font-serif text-[27px] leading-tight text-ink">{reading.spreadType === "three_card" ? "Three Cards" : "Five-card Linear"}</h2>
+        <span className="shrink-0 rounded-full border border-ink/10 bg-ivory/70 px-3 py-1 text-[11px] uppercase tracking-[0.12em] text-ink/44">
+          {reading.interpretationSource === "rule_engine" ? "Rule-based" : "AI"}
+        </span>
+      </div>
       <p className="mt-3 text-[16px] leading-7 text-ink/72">“{reading.question}”</p>
 
       <div {...cardSaveHandlers} className="reading-card-scroll mt-6 overflow-x-auto pb-3">
@@ -823,7 +879,7 @@ function ReadingChapter({ reading }: { reading: ReadingWithCards }) {
             <p key={paragraph}>{paragraph}</p>
           ))}
           <p className="rounded-[5px] border border-ink/8 bg-ivory/58 p-4 text-[12px] leading-6 text-ink/42">
-            本次解读由 AI 根据你提供的上下文与牌面生成，仅供娱乐和自我梳理，不构成心理、医疗、法律、财务等专业建议。
+            {reading.interpretationSource === "rule_engine" ? "本次解读由站内规则引擎根据问题与牌面生成。" : "本次解读由 AI 根据你提供的上下文与牌面生成。"}仅供娱乐和自我梳理，不构成心理、医疗、法律、财务等专业建议。
           </p>
         </section>
       ) : null}
@@ -1299,27 +1355,69 @@ export function DeepLandingClient() {
   const router = useRouter();
   const { ready, email } = useDeepSession(pathname);
   const [projects, setProjects] = useState<DeepProject[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   function refresh() {
-    void loadProjects().then(setProjects);
+    void loadProjects()
+      .then((loadedProjects) => {
+        setProjects(loadedProjects);
+        setLoadError("");
+      })
+      .catch((error) => {
+        setLoadError(getDeepLoadErrorMessage(error));
+      });
   }
 
   useEffect(() => {
     if (!ready) return;
-    void (async () => {
-      const loadedProjects = await loadProjects();
-      setProjects(loadedProjects);
+    let cancelled = false;
 
-      if (loadedProjects[0]) {
-        router.replace(`/deep/project/${loadedProjects[0].id}`);
+    void (async () => {
+      setLoading(true);
+      setLoadError("");
+
+      try {
+        const loadedProjects = await loadProjects();
+        if (cancelled) return;
+
+        setProjects(loadedProjects);
+
+        if (loadedProjects[0]) {
+          router.replace(`/deep/project/${loadedProjects[0].id}`);
+        }
+      } catch (error) {
+        if (cancelled) return;
+
+        if (isAuthLoadError(error)) {
+          signOut();
+          router.replace(`/login?returnTo=${encodeURIComponent(pathname)}`);
+          return;
+        }
+
+        setLoadError(getDeepLoadErrorMessage(error));
+      } finally {
+        if (!cancelled) setLoading(false);
       }
     })();
-  }, [ready, router]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname, ready, router]);
 
   const currentTitle = useMemo(() => "Deep Reading", []);
 
   if (!ready) {
     return <main className="min-h-dvh bg-paper" />;
+  }
+
+  if (loading) {
+    return <DeepLoadState title="正在进入 Deep Reading" message="正在读取你的项目，请稍候。" />;
+  }
+
+  if (loadError) {
+    return <DeepLoadState title="暂时没有读取成功" message={loadError} actionLabel="重新读取" onAction={refresh} />;
   }
 
   return (
@@ -1337,6 +1435,8 @@ export function DeepProjectPageClient({ projectId }: { projectId: string }) {
   const [project, setProject] = useState<DeepProject | null>(null);
   const [readings, setReadings] = useState<ReadingWithCards[]>([]);
   const [notFound, setNotFound] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     preloadLenormandCardImages();
@@ -1344,36 +1444,82 @@ export function DeepProjectPageClient({ projectId }: { projectId: string }) {
 
   function refresh() {
     void (async () => {
-      const [loadedProjects, loadedProject, loadedReadings] = await Promise.all([loadProjects(), loadProject(projectId), loadReadings(projectId)]);
-      setProjects(loadedProjects);
-      setProject(loadedProject);
-      setReadings(loadedReadings);
-      setNotFound(!loadedProject);
+      try {
+        const [loadedProjects, loadedProject, loadedReadings] = await Promise.all([loadProjects(), loadProject(projectId), loadReadings(projectId)]);
+        setProjects(loadedProjects);
+        setProject(loadedProject);
+        setReadings(loadedReadings);
+        setNotFound(!loadedProject);
+        setLoadError("");
+      } catch (error) {
+        if (isAuthLoadError(error)) {
+          signOut();
+          router.replace(`/login?returnTo=${encodeURIComponent(pathname)}`);
+          return;
+        }
+
+        setLoadError(getDeepLoadErrorMessage(error));
+      }
     })();
   }
 
   useEffect(() => {
     if (!ready) return;
+    let cancelled = false;
+
     void (async () => {
-      const loadedProject = await loadProject(projectId);
+      setLoading(true);
+      setLoadError("");
 
-      if (!loadedProject) {
-        setNotFound(true);
-        setProjects(await loadProjects());
-        return;
+      try {
+        const loadedProject = await loadProject(projectId);
+
+        if (cancelled) return;
+
+        if (!loadedProject) {
+          setNotFound(true);
+          setProjects(await loadProjects());
+          return;
+        }
+
+        await saveProjectTouch(projectId);
+        const [refreshedProject, loadedProjects, loadedReadings] = await Promise.all([loadProject(projectId), loadProjects(), loadReadings(projectId)]);
+        if (cancelled) return;
+
+        setProject(refreshedProject);
+        setProjects(loadedProjects);
+        setReadings(loadedReadings);
+        setNotFound(false);
+      } catch (error) {
+        if (cancelled) return;
+
+        if (isAuthLoadError(error)) {
+          signOut();
+          router.replace(`/login?returnTo=${encodeURIComponent(pathname)}`);
+          return;
+        }
+
+        setLoadError(getDeepLoadErrorMessage(error));
+      } finally {
+        if (!cancelled) setLoading(false);
       }
-
-      await saveProjectTouch(projectId);
-      const [refreshedProject, loadedProjects, loadedReadings] = await Promise.all([loadProject(projectId), loadProjects(), loadReadings(projectId)]);
-      setProject(refreshedProject);
-      setProjects(loadedProjects);
-      setReadings(loadedReadings);
-      setNotFound(false);
     })();
-  }, [projectId, ready]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pathname, projectId, ready, router]);
 
   if (!ready) {
     return <main className="min-h-dvh bg-paper" />;
+  }
+
+  if (loading) {
+    return <DeepLoadState title="正在进入项目" message="正在读取项目与历史解读，请稍候。" />;
+  }
+
+  if (loadError) {
+    return <DeepLoadState title="暂时没有读取成功" message={loadError} actionLabel="重新读取" onAction={refresh} />;
   }
 
   if (notFound) {

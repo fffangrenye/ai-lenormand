@@ -11,6 +11,9 @@ const ALLOWED_EVENTS = new Set([
   "follow_up_submit",
   "ai_success",
   "ai_failed",
+  "reading_generation_started",
+  "reading_generation_success",
+  "reading_generation_failed",
   "quota_exceeded"
 ]);
 

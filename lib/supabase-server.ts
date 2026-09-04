@@ -162,7 +162,7 @@ export async function consumeDailyQuota(userId: string, kind: ServerQuotaKind, l
 }
 
 export async function trackServerAnalyticsEvent(input: {
-  eventName: "ai_success" | "ai_failed" | "quota_exceeded";
+  eventName: "ai_success" | "ai_failed" | "quota_exceeded" | "reading_generation_started" | "reading_generation_success" | "reading_generation_failed";
   userId?: string | null;
   visitorId?: string | null;
   readingId?: string | null;

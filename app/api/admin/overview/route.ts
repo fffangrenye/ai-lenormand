@@ -102,6 +102,10 @@ function countEvents(rows: AnalyticsEventRow[], eventName: string) {
   return rows.filter((row) => row.event_name === eventName).length;
 }
 
+function isApiAiFailure(row: AnalyticsEventRow) {
+  return row.event_name === "ai_failed" && typeof row.properties?.failure_reason === "string";
+}
+
 function countUniqueVisitors(rows: AnalyticsEventRow[]) {
   return new Set(rows.map((row) => row.visitor_id || row.session_id).filter(Boolean)).size;
 }
@@ -168,11 +172,12 @@ export async function GET(request: Request) {
         todayDeepStarts: countEvents(todayEvents, "deep_start"),
         todayDeepSubmits: countEvents(todayEvents, "deep_submit"),
         todayAiSuccess: countEvents(todayEvents, "ai_success"),
-        todayAiFailed: countEvents(todayEvents, "ai_failed"),
+        todayAiFailed: todayEvents.filter(isApiAiFailure).length,
+        todayReadingGenerationFailed: countEvents(todayEvents, "reading_generation_failed"),
         todayQuotaExceeded: countEvents(todayEvents, "quota_exceeded"),
-        todayBalanceInsufficient: todayEvents.filter((row) => row.event_name === "ai_failed" && row.properties?.failure_reason === "insufficient_balance").length,
-        todayProviderRateLimited: todayEvents.filter((row) => row.event_name === "ai_failed" && row.properties?.failure_reason === "rate_limited").length,
-        todayInvalidResponse: todayEvents.filter((row) => row.event_name === "ai_failed" && row.properties?.failure_reason === "invalid_response").length,
+        todayBalanceInsufficient: todayEvents.filter((row) => isApiAiFailure(row) && row.properties?.failure_reason === "insufficient_balance").length,
+        todayProviderRateLimited: todayEvents.filter((row) => isApiAiFailure(row) && row.properties?.failure_reason === "rate_limited").length,
+        todayInvalidResponse: todayEvents.filter((row) => isApiAiFailure(row) && row.properties?.failure_reason === "invalid_response").length,
         totalPageViews: countEvents(analyticsRows, "page_view")
       },
       recentUsers

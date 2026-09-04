@@ -68,5 +68,5 @@ jobs:
           path: |
             cf-build-summary.txt
             wrangler-dry-run.txt
-            .open-next/worker.js
+            .open-next/**
           if-no-files-found: error
