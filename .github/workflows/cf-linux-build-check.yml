@@ -2,6 +2,19 @@ name: CF Linux Build Check
 
 on:
   workflow_dispatch:
+    inputs:
+      next_public_supabase_url:
+        description: "Build-time NEXT_PUBLIC_SUPABASE_URL for private Cloudflare preview validation"
+        required: false
+        type: string
+      next_public_supabase_anon_key:
+        description: "Build-time NEXT_PUBLIC_SUPABASE_ANON_KEY for private Cloudflare preview validation"
+        required: false
+        type: string
+      next_public_api_base:
+        description: "Optional build-time NEXT_PUBLIC_API_BASE for private Cloudflare preview validation"
+        required: false
+        type: string
   push:
     branches:
       - cf-linux-build-check
@@ -14,6 +27,10 @@ jobs:
     name: Ubuntu OpenNext build validation
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    env:
+      NEXT_PUBLIC_SUPABASE_URL: ${{ inputs.next_public_supabase_url }}
+      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ inputs.next_public_supabase_anon_key }}
+      NEXT_PUBLIC_API_BASE: ${{ inputs.next_public_api_base }}
 
     steps:
       - name: Checkout
