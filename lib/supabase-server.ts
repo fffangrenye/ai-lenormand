@@ -161,6 +161,41 @@ export async function consumeDailyQuota(userId: string, kind: ServerQuotaKind, l
   });
 }
 
+function cleanAnalyticsText(value: unknown, maxLength: number) {
+  return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
+}
+
+function getAnalyticsHost(value: unknown) {
+  return cleanAnalyticsText(value, 120).toLowerCase().replace(/^https?:\/\//, "").split("/")[0] || "";
+}
+
+function getUrlHost(value: unknown) {
+  const text = cleanAnalyticsText(value, 500);
+  if (!text) return "";
+
+  try {
+    return new URL(text).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function getServerAnalyticsChannel(host: string, referrer: string, explicitChannel: unknown) {
+  const channel = cleanAnalyticsText(explicitChannel, 80);
+  if (channel) return channel;
+
+  const referrerHost = getUrlHost(referrer);
+  if (!referrerHost) return "direct";
+  if (host && referrerHost === host) return "internal";
+  if (referrerHost.includes("instagram")) return "instagram";
+  if (referrerHost.includes("tiktok")) return "tiktok";
+  if (referrerHost.includes("xiaohongshu") || referrerHost.includes("xhs")) return "xiaohongshu";
+  if (referrerHost.includes("google")) return "google";
+  if (referrerHost.includes("bing")) return "bing";
+  if (referrerHost.includes("baidu")) return "baidu";
+  return referrerHost;
+}
+
 export async function trackServerAnalyticsEvent(input: {
   eventName: "ai_success" | "ai_failed" | "quota_exceeded" | "reading_generation_started" | "reading_generation_success" | "reading_generation_failed";
   userId?: string | null;
@@ -173,6 +208,13 @@ export async function trackServerAnalyticsEvent(input: {
 }) {
   try {
     const { url } = getSupabaseServiceConfig();
+    const requestHost = getAnalyticsHost(input.request?.headers.get("host"));
+    const requestOrigin = cleanAnalyticsText(input.request?.headers.get("origin"), 240);
+    const referrer = cleanAnalyticsText(input.request?.headers.get("referer"), 300);
+    const origin = requestOrigin || (requestHost ? `https://${requestHost}` : "");
+    const referrerHost = getUrlHost(referrer);
+    const channel = getServerAnalyticsChannel(requestHost, referrer, input.properties?.channel);
+
     await fetch(`${url}/rest/v1/analytics_events`, {
       method: "POST",
       headers: {
@@ -187,10 +229,18 @@ export async function trackServerAnalyticsEvent(input: {
         event_name: input.eventName,
         reading_id: input.readingId ?? null,
         spread_type: input.spreadType ?? null,
-        referrer: input.request?.headers.get("referer") ?? null,
+        channel: channel || null,
+        referrer: referrer || null,
         properties: {
           ...(input.properties ?? {}),
           path: input.path,
+          origin: origin || null,
+          host: requestHost || null,
+          site: requestHost || null,
+          requestHost: requestHost || null,
+          requestOrigin: requestOrigin || null,
+          referrerHost: referrerHost || null,
+          channel: channel || null,
           dateKey: getBeijingDateKey(),
           userAgent: input.request?.headers.get("user-agent") ?? null
         }

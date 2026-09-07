@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
+import { trackAnalyticsEvent } from "@/components/AnalyticsTracker";
 import { getLenormandCardImagePath, preloadLenormandCardImages } from "@/lib/lenormand-cards";
 import { useCardSpreadLongPressSave } from "@/lib/use-card-spread-save";
 
@@ -91,7 +92,13 @@ function DailyCardFace({ card }: { card: LenormandCard }) {
 function DailyCard({ card, revealed }: { card: LenormandCard | null; revealed: boolean }) {
   const saveHandlers = useCardSpreadLongPressSave(
     () => (card ? [{ src: getLenormandCardImagePath(card.number), label: `${card.nameEn} / ${card.nameZh}` }] : []),
-    "daily-reading-cards.png"
+    "daily-reading-cards.png",
+    () =>
+      trackAnalyticsEvent("save_cards", {
+        surface: "daily",
+        cardNumber: card?.number,
+        cardName: card?.nameEn
+      })
   );
 
   return (
@@ -155,6 +162,11 @@ export default function DailyPage() {
 
   function startDaily() {
     const picked = drawDailyCard();
+    trackAnalyticsEvent("daily_draw", {
+      cardNumber: picked.number,
+      cardName: picked.nameEn,
+      tone: picked.tone
+    });
     setCard(picked);
     setStage("drawing");
     window.setTimeout(() => setRevealed(true), 620);

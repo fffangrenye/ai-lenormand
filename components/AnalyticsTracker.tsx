@@ -5,6 +5,8 @@ import { usePathname } from "next/navigation";
 import { getSession } from "@/lib/project-store";
 
 const ANALYTICS_SESSION_KEY = "ai-lenormand:analytics-session";
+const ANALYTICS_FIRST_TOUCH_KEY = "ai-lenormand:first-touch";
+const UTM_KEYS = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term", "ref"] as const;
 
 function createSessionId() {
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
@@ -26,26 +28,94 @@ function getAnalyticsSessionId() {
   }
 }
 
-type AnalyticsEventName = "page_view" | "signup_clicked" | "referral_landed" | "share_clicked" | "deep_start" | "deep_submit" | "follow_up_submit";
+type AnalyticsEventName =
+  | "page_view"
+  | "signup_clicked"
+  | "signin_clicked"
+  | "referral_landed"
+  | "share_clicked"
+  | "copy_prompt"
+  | "save_cards"
+  | "daily_draw"
+  | "yes_no_submit"
+  | "deep_start"
+  | "deep_submit"
+  | "follow_up_submit";
 
-function getChannel() {
+function getSearchMetadata() {
   const params = new URLSearchParams(window.location.search);
-  return params.get("utm_source") || params.get("ref") || "";
+  return Object.fromEntries(UTM_KEYS.map((key) => [key, params.get(key) || ""]).filter(([, value]) => value));
+}
+
+function getHost(value: string) {
+  try {
+    return new URL(value).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function getChannel(searchMetadata = getSearchMetadata()) {
+  if (searchMetadata.utm_source) return String(searchMetadata.utm_source);
+  if (searchMetadata.ref) return String(searchMetadata.ref);
+
+  const referrerHost = getHost(document.referrer);
+  const currentHost = window.location.hostname.toLowerCase();
+  if (!referrerHost) return "direct";
+  if (referrerHost === currentHost) return "internal";
+  if (referrerHost.includes("instagram")) return "instagram";
+  if (referrerHost.includes("tiktok")) return "tiktok";
+  if (referrerHost.includes("xiaohongshu") || referrerHost.includes("xhs")) return "xiaohongshu";
+  if (referrerHost.includes("google")) return "google";
+  if (referrerHost.includes("bing")) return "bing";
+  if (referrerHost.includes("baidu")) return "baidu";
+  return referrerHost;
+}
+
+function getFirstTouchMetadata(channel: string, searchMetadata: Record<string, string>) {
+  const landing = {
+    firstTouchAt: new Date().toISOString(),
+    firstTouchChannel: channel,
+    firstTouchLandingPath: `${window.location.pathname}${window.location.search}`,
+    firstTouchLandingUrl: window.location.href,
+    firstTouchHost: window.location.hostname.toLowerCase(),
+    firstTouchReferrer: document.referrer,
+    ...Object.fromEntries(Object.entries(searchMetadata).map(([key, value]) => [`first_${key}`, value]))
+  };
+
+  try {
+    const existing = window.localStorage.getItem(ANALYTICS_FIRST_TOUCH_KEY);
+    if (existing) return JSON.parse(existing) as Record<string, unknown>;
+    window.localStorage.setItem(ANALYTICS_FIRST_TOUCH_KEY, JSON.stringify(landing));
+  } catch {
+    // Ignore localStorage issues; tracking still works with current-touch data.
+  }
+
+  return landing;
 }
 
 export function trackAnalyticsEvent(eventName: AnalyticsEventName, metadata?: Record<string, unknown>) {
   if (typeof window === "undefined") return;
 
   const session = getSession();
+  const searchMetadata = getSearchMetadata();
+  const channel = String(metadata?.channel ?? getChannel(searchMetadata));
+  const firstTouch = getFirstTouchMetadata(channel, searchMetadata);
   const payload = {
     eventName,
     path: `${window.location.pathname}${window.location.search}`,
+    url: window.location.href,
+    origin: window.location.origin,
+    host: window.location.hostname.toLowerCase(),
     referrer: document.referrer,
     sessionId: getAnalyticsSessionId(),
     userId: session?.userId,
     metadata: {
+      ...searchMetadata,
+      ...firstTouch,
       ...metadata,
-      channel: metadata?.channel ?? getChannel()
+      channel,
+      referrerHost: getHost(document.referrer) || null
     }
   };
 
@@ -72,6 +142,13 @@ export function AnalyticsTracker() {
 
   useEffect(() => {
     trackAnalyticsEvent("page_view", { title: document.title });
+
+    const searchMetadata = getSearchMetadata();
+    const hasCampaign = Object.keys(searchMetadata).length > 0;
+    const hasExternalReferrer = Boolean(document.referrer && getHost(document.referrer) !== window.location.hostname.toLowerCase());
+    if (hasCampaign || hasExternalReferrer) {
+      trackAnalyticsEvent("referral_landed", { title: document.title });
+    }
   }, [pathname]);
 
   return null;

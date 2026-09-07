@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useEffect, useState } from "react";
 import { ArrowLeft } from "lucide-react";
+import { trackAnalyticsEvent } from "@/components/AnalyticsTracker";
 import { getSession, signIn, signUp } from "@/lib/project-store";
 
 function LoginClient() {
@@ -45,6 +46,9 @@ function LoginClient() {
     setSubmitting(mode);
     setError("");
     setMessage("");
+    trackAnalyticsEvent(mode === "signup" ? "signup_clicked" : "signin_clicked", {
+      returnTo: returnTo.startsWith("/") ? returnTo : "/deep"
+    });
 
     try {
       if (mode === "signup") {

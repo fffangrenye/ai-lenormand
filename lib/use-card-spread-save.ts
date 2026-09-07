@@ -47,7 +47,7 @@ async function saveCardSpreadImage(images: CardSpreadImage[], fileName: string) 
   link.remove();
 }
 
-export function useCardSpreadLongPressSave(getImages: () => CardSpreadImage[], fileName: string) {
+export function useCardSpreadLongPressSave(getImages: () => CardSpreadImage[], fileName: string, onSaved?: () => void) {
   const timerRef = useRef<number | null>(null);
   const savingRef = useRef(false);
   const lastSaveAtRef = useRef(0);
@@ -70,6 +70,7 @@ export function useCardSpreadLongPressSave(getImages: () => CardSpreadImage[], f
 
     try {
       await saveCardSpreadImage(getImages(), fileName);
+      onSaved?.();
     } finally {
       savingRef.current = false;
     }

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
+import { trackAnalyticsEvent } from "@/components/AnalyticsTracker";
 import { getLenormandCardImagePath, preloadLenormandCardImages } from "@/lib/lenormand-cards";
 import { useCardSpreadLongPressSave } from "@/lib/use-card-spread-save";
 
@@ -153,7 +154,13 @@ export default function YesNoPage() {
   const remaining = useMemo(() => 200 - question.length, [question]);
   const cardSaveHandlers = useCardSpreadLongPressSave(
     () => cards.map((card) => ({ src: getLenormandCardImagePath(card.number), label: `${card.nameEn} / ${card.nameZh}` })),
-    "yes-or-no-cards.png"
+    "yes-or-no-cards.png",
+    () =>
+      trackAnalyticsEvent("save_cards", {
+        surface: "yes_no",
+        result,
+        cardNumbers: cards.map((card) => card.number).join(",")
+      })
   );
 
   function reset() {
@@ -194,6 +201,11 @@ export default function YesNoPage() {
 
     const picked = drawCards();
     const tendency = getResult(picked);
+    trackAnalyticsEvent("yes_no_submit", {
+      questionLength: trimmed.length,
+      result: tendency,
+      cardNumbers: picked.map((card) => card.number).join(",")
+    });
     setCards(picked);
     setResult(tendency);
     setStage("drawing");

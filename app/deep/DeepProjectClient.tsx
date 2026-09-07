@@ -826,13 +826,29 @@ function ReadingChapter({ reading }: { reading: ReadingWithCards }) {
         src: getLenormandCardImagePath(card.cardNumber, card.cardSlug),
         label: `${card.nameEn} / ${card.nameZh}`
       })),
-    `deep-reading-${reading.id}.png`
+    `deep-reading-${reading.id}.png`,
+    () =>
+      trackAnalyticsEvent("save_cards", {
+        surface: "deep",
+        readingId: reading.id,
+        projectId: reading.projectId,
+        spreadType: reading.spreadType,
+        status: reading.status,
+        interpretationSource: reading.interpretationSource
+      })
   );
 
   async function copyExternalPrompt(includeRecentContext: boolean) {
     try {
       const prompt = await buildExternalReadingPrompt(reading.id, includeRecentContext);
       await navigator.clipboard.writeText(prompt);
+      trackAnalyticsEvent("copy_prompt", {
+        readingId: reading.id,
+        projectId: reading.projectId,
+        spreadType: reading.spreadType,
+        status: reading.status,
+        includeRecentContext
+      });
       setCopyState(includeRecentContext ? "recent" : "current");
       window.setTimeout(() => setCopyState("idle"), 2200);
     } catch {
