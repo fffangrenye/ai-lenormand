@@ -48,6 +48,20 @@ export function getSupabaseServiceConfig() {
   return { url, serviceRoleKey };
 }
 
+export function getSupabasePublicAuthConfig() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+
+  if (!url || !anonKey) {
+    throw new Error("Missing Supabase public auth configuration.");
+  }
+
+  return {
+    url: url.replace(/\/$/, ""),
+    anonKey
+  };
+}
+
 export function getSupabaseServiceHeaders(extra?: Record<string, string>): Record<string, string> {
   const { serviceRoleKey } = getServerSupabaseConfig();
   const headers: Record<string, string> = {

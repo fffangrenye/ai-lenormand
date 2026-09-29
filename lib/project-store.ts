@@ -594,7 +594,7 @@ function mapRemoteFollowUpMessage(row: RemoteFollowUpMessageRow): FollowUpMessag
   };
 }
 
-function saveSupabaseAuthSession(payload: Record<string, unknown>, fallbackEmail: string) {
+export function saveSupabaseAuthSession(payload: Record<string, unknown>, fallbackEmail: string) {
   const user = payload.user && typeof payload.user === "object" ? (payload.user as Record<string, unknown>) : null;
   const accessToken = typeof payload.access_token === "string" ? payload.access_token : "";
   const refreshToken = typeof payload.refresh_token === "string" ? payload.refresh_token : "";
@@ -889,6 +889,37 @@ export async function resetPasswordWithRecoverySession(accessToken: string, refr
     },
     typeof user.email === "string" ? user.email : ""
   );
+  await syncUserProfile(session);
+  return session;
+}
+
+export async function completePasswordReset(input: {
+  password: string;
+  accessToken?: string;
+  refreshToken?: string;
+  expiresIn?: number;
+  tokenHash?: string;
+}) {
+  const response = await fetch("/api/auth/reset-password", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+
+  const payload = (await response.json().catch(() => ({}))) as {
+    error?: string;
+    session?: Record<string, unknown>;
+  };
+
+  if (!response.ok || !payload.session) {
+    throw new Error(payload.error ?? "密码修改失败，请稍后再试。");
+  }
+
+  const sessionPayload = payload.session;
+  const user = sessionPayload.user && typeof sessionPayload.user === "object" ? (sessionPayload.user as Record<string, unknown>) : null;
+  const session = saveSupabaseAuthSession(sessionPayload, typeof user?.email === "string" ? user.email : "");
   await syncUserProfile(session);
   return session;
 }

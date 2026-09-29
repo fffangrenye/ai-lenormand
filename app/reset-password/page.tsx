@@ -5,13 +5,23 @@ import { useRouter } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { trackAnalyticsEvent } from "@/components/AnalyticsTracker";
-import { resetPasswordWithRecoverySession } from "@/lib/project-store";
+import { completePasswordReset } from "@/lib/project-store";
 
 type RecoverySession = {
   accessToken: string;
   refreshToken: string;
   expiresIn: number;
 };
+
+type RecoveryProof =
+  | {
+      kind: "session";
+      session: RecoverySession;
+    }
+  | {
+      kind: "token_hash";
+      tokenHash: string;
+    };
 
 function readRecoverySessionFromLocation() {
   const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
@@ -20,16 +30,26 @@ function readRecoverySessionFromLocation() {
   const accessToken = params.get("access_token") || "";
   const refreshToken = params.get("refresh_token") || "";
   const expiresIn = Number(params.get("expires_in") || 3600);
+  const tokenHash = searchParams.get("token_hash") || params.get("token_hash") || "";
+  const type = searchParams.get("type") || params.get("type") || "";
   const errorDescription = params.get("error_description") || params.get("error");
 
   return {
     errorDescription,
-    session: accessToken
-      ? {
-          accessToken,
-          refreshToken,
-          expiresIn: Number.isFinite(expiresIn) ? expiresIn : 3600
-        }
+    proof: tokenHash && (!type || type === "recovery")
+      ? ({
+          kind: "token_hash",
+          tokenHash
+        } satisfies RecoveryProof)
+      : accessToken
+        ? ({
+            kind: "session",
+            session: {
+              accessToken,
+              refreshToken,
+              expiresIn: Number.isFinite(expiresIn) ? expiresIn : 3600
+            }
+          } satisfies RecoveryProof)
       : null
   };
 }
@@ -50,7 +70,7 @@ function getFriendlyUpdateError(error: unknown) {
 
 export default function ResetPasswordPage() {
   const router = useRouter();
-  const [recoverySession, setRecoverySession] = useState<RecoverySession | null>(null);
+  const [recoveryProof, setRecoveryProof] = useState<RecoveryProof | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
@@ -59,10 +79,10 @@ export default function ResetPasswordPage() {
   const [checkedLink, setCheckedLink] = useState(false);
 
   useEffect(() => {
-    const { errorDescription, session } = readRecoverySessionFromLocation();
+    const { errorDescription, proof } = readRecoverySessionFromLocation();
 
-    if (session) {
-      setRecoverySession(session);
+    if (proof) {
+      setRecoveryProof(proof);
       setMessage("邮件链接已验证，请设置一个新密码。");
       window.history.replaceState(null, "", window.location.pathname);
     } else if (errorDescription) {
@@ -78,7 +98,7 @@ export default function ResetPasswordPage() {
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!recoverySession?.accessToken) {
+    if (!recoveryProof) {
       setError("重置链接无效或已过期，请重新申请密码重置。");
       return;
     }
@@ -99,10 +119,22 @@ export default function ResetPasswordPage() {
     trackAnalyticsEvent("password_reset_submitted");
 
     try {
-      await resetPasswordWithRecoverySession(recoverySession.accessToken, recoverySession.refreshToken, recoverySession.expiresIn, newPassword);
+      await completePasswordReset(
+        recoveryProof.kind === "token_hash"
+          ? {
+              tokenHash: recoveryProof.tokenHash,
+              password: newPassword
+            }
+          : {
+              accessToken: recoveryProof.session.accessToken,
+              refreshToken: recoveryProof.session.refreshToken,
+              expiresIn: recoveryProof.session.expiresIn,
+              password: newPassword
+            }
+      );
       setNewPassword("");
       setConfirmPassword("");
-      setRecoverySession(null);
+      setRecoveryProof(null);
       setMessage("密码已更新。正在返回登录页。");
       window.setTimeout(() => {
         router.replace("/login");
@@ -114,7 +146,7 @@ export default function ResetPasswordPage() {
     }
   }
 
-  const canReset = Boolean(recoverySession?.accessToken);
+  const canReset = Boolean(recoveryProof);
 
   return (
     <main className="min-h-dvh bg-paper px-5 py-5 text-ink">
