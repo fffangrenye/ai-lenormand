@@ -1,9 +1,20 @@
-const DEFAULT_SITE_URL = "https://flora.floralenormand.workers.dev";
+const PRODUCTION_SITE_URL = "https://flora.soul-ai-frontend.workers.dev";
+
+function normalizeSiteUrl(value: string) {
+  return value.replace(/\/+$/, "");
+}
+
+function isLocalhostUrl(value: string) {
+  return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?($|\/)/i.test(value);
+}
 
 export function getPublicSiteUrl() {
   const configuredUrl = process.env.NEXT_PUBLIC_SITE_URL?.trim();
-  const siteUrl = configuredUrl || DEFAULT_SITE_URL;
-  return siteUrl.replace(/\/+$/, "");
+  if (configuredUrl && !(process.env.NODE_ENV === "production" && isLocalhostUrl(configuredUrl))) {
+    return normalizeSiteUrl(configuredUrl);
+  }
+
+  return PRODUCTION_SITE_URL;
 }
 
 export function getPasswordResetRedirectUrl(origin?: string) {

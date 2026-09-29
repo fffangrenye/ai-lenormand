@@ -11,7 +11,7 @@
     "binding": "ASSETS"
   },
   "vars": {
-    "NEXT_PUBLIC_SITE_URL": "https://flora.floralenormand.workers.dev"
+    "NEXT_PUBLIC_SITE_URL": "https://flora.soul-ai-frontend.workers.dev"
   },
   "observability": {
     "enabled": true

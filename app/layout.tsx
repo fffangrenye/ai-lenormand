@@ -9,6 +9,7 @@ import "./globals.css";
 const siteUrl = getPublicSiteUrl();
 const siteTitle = "花语雷诺曼 · Flora Lenormand · 深度占卜";
 const siteDescription = "每日运势 · 是与否 · 深度占卜";
+const ogImageUrl = `${siteUrl}/opengraph-image.png`;
 
 const titleSerif = Noto_Serif_SC({
   weight: "500",
@@ -33,7 +34,7 @@ export const metadata: Metadata = {
     type: "website",
     images: [
       {
-        url: "/opengraph-image.png",
+        url: ogImageUrl,
         width: 1731,
         height: 909,
         alt: "Flora Lenormand 花语雷诺曼"
@@ -44,7 +45,7 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: siteTitle,
     description: siteDescription,
-    images: ["/opengraph-image.png"]
+    images: [ogImageUrl]
   }
 };
 
