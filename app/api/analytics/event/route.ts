@@ -5,6 +5,8 @@ const ALLOWED_EVENTS = new Set([
   "page_view",
   "signup_clicked",
   "signin_clicked",
+  "password_reset_code_requested",
+  "password_reset_submitted",
   "referral_landed",
   "share_clicked",
   "copy_prompt",

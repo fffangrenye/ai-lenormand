@@ -10,6 +10,9 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
+  "vars": {
+    "NEXT_PUBLIC_SITE_URL": "https://flora.floralenormand.workers.dev"
+  },
   "observability": {
     "enabled": true
   }

@@ -15,15 +15,17 @@ function LoginClient() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState<"signin" | "signup" | null>(null);
+  const [failedSignInCount, setFailedSignInCount] = useState(0);
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
   const [entertainmentAccepted, setEntertainmentAccepted] = useState(false);
   const returnTo = searchParams.get("returnTo") || "/deep";
+  const safeReturnTo = returnTo.startsWith("/") ? returnTo : "/deep";
 
   useEffect(() => {
     if (getSession()) {
-      router.replace(returnTo.startsWith("/") ? returnTo : "/deep");
+      router.replace(safeReturnTo);
     }
-  }, [returnTo, router]);
+  }, [safeReturnTo, router]);
 
   async function submitAuth(mode: "signin" | "signup") {
     const value = email.trim();
@@ -47,7 +49,7 @@ function LoginClient() {
     setError("");
     setMessage("");
     trackAnalyticsEvent(mode === "signup" ? "signup_clicked" : "signin_clicked", {
-      returnTo: returnTo.startsWith("/") ? returnTo : "/deep"
+      returnTo: safeReturnTo
     });
 
     try {
@@ -57,8 +59,12 @@ function LoginClient() {
       } else {
         await signIn(value, password);
       }
-      router.replace(returnTo.startsWith("/") ? returnTo : "/deep");
+      setFailedSignInCount(0);
+      router.replace(safeReturnTo);
     } catch (submitError) {
+      if (mode === "signin") {
+        setFailedSignInCount((count) => count + 1);
+      }
       setError(submitError instanceof Error ? submitError.message : "登录失败，请稍后再试。");
     } finally {
       setSubmitting(null);
@@ -101,9 +107,14 @@ function LoginClient() {
               className="mt-2 h-12 w-full rounded-[4px] border border-ink/12 bg-white/70 px-4 text-[15px] outline-none transition focus:border-ink/35"
             />
 
-            <label className="mt-5 block text-[13px] text-ink/62" htmlFor="password">
-              密码
-            </label>
+            <div className="mt-5 flex items-center justify-between gap-4">
+              <label className="block text-[13px] text-ink/62" htmlFor="password">
+                密码
+              </label>
+              <Link href="/forgot-password" className="text-[12px] text-[#6E2638] underline-offset-4 transition hover:underline">
+                忘记密码？
+              </Link>
+            </div>
             <input
               id="password"
               type="password"
@@ -120,6 +131,15 @@ function LoginClient() {
 
             {error ? <p className="mt-3 text-[13px] text-[#8E4D4A]">{error}</p> : null}
             {message ? <p className="mt-3 text-[13px] text-ink/48">{message}</p> : null}
+
+            {failedSignInCount >= 2 ? (
+              <div className="mt-4 rounded-[5px] border border-[#8E4D4A]/18 bg-[#FDF3EF] p-4 text-[12px] leading-5 text-[#8E4D4A]">
+                如果一直提示密码不对，可以用注册邮箱收重置链接。
+                <Link href="/forgot-password" className="ml-1 font-medium underline underline-offset-4">
+                  现在找回
+                </Link>
+              </div>
+            ) : null}
 
             <div className="mt-5 space-y-3 rounded-[5px] border border-ink/8 bg-ivory/48 p-4">
               <label className="flex gap-3 text-[12px] leading-5 text-ink/54">

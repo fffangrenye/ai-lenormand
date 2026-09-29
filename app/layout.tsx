@@ -2,9 +2,11 @@ import type { Metadata } from "next";
 import { Noto_Serif_SC } from "next/font/google";
 import { AnalyticsTracker } from "@/components/AnalyticsTracker";
 import { CookieConsent } from "@/components/CookieConsent";
+import { RecoveryRedirector } from "@/components/RecoveryRedirector";
+import { getPublicSiteUrl } from "@/lib/site-config";
 import "./globals.css";
 
-const siteUrl = "https://flora.soul-ai-frontend.workers.dev";
+const siteUrl = getPublicSiteUrl();
 const siteTitle = "花语雷诺曼 · Flora Lenormand · 深度占卜";
 const siteDescription = "每日运势 · 是与否 · 深度占卜";
 
@@ -50,6 +52,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="zh-CN">
       <body className={titleSerif.variable}>
+        <RecoveryRedirector />
         <AnalyticsTracker />
         {children}
         <CookieConsent />

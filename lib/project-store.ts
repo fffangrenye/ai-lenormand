@@ -3,6 +3,7 @@
 import { LenormandCard, lenormandCards } from "./lenormand-cards";
 import { DeepFollowUpResult, DeepReadingResult, assertDeepFollowUpResult, assertDeepReadingResult } from "./deep-reading-result";
 import { InterpretationSource, getRuleEngineFeatureFlags, resolveInterpretationSource, spreadSizeForSpreadType } from "./reading-source";
+import { getPasswordResetRedirectUrl, getPublicSiteUrl } from "./site-config";
 
 export type AuthSession = {
   email: string;
@@ -406,6 +407,78 @@ async function requestSupabaseAuth(path: string, body: Record<string, unknown>) 
   return payload;
 }
 
+async function updateSupabaseUser(accessToken: string, body: Record<string, unknown>) {
+  const { url, anonKey } = getSupabaseBrowserConfig();
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), SUPABASE_REQUEST_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch(`${url}/auth/v1/user`, {
+      method: "PUT",
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+        apikey: anonKey
+      },
+      body: JSON.stringify(body)
+    });
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+
+  const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!response.ok) {
+    const message =
+      typeof payload.msg === "string"
+        ? payload.msg
+        : typeof payload.message === "string"
+          ? payload.message
+          : typeof payload.error_description === "string"
+            ? payload.error_description
+            : "密码修改失败，请稍后再试。";
+    throw new Error(message);
+  }
+
+  return payload;
+}
+
+async function getSupabaseAuthUser(accessToken: string) {
+  const { url, anonKey } = getSupabaseBrowserConfig();
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), SUPABASE_REQUEST_TIMEOUT_MS);
+
+  let response: Response;
+  try {
+    response = await fetch(`${url}/auth/v1/user`, {
+      method: "GET",
+      signal: controller.signal,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        apikey: anonKey
+      }
+    });
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+
+  const payload = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!response.ok) {
+    const message =
+      typeof payload.msg === "string"
+        ? payload.msg
+        : typeof payload.message === "string"
+          ? payload.message
+          : typeof payload.error_description === "string"
+            ? payload.error_description
+            : "找回密码链接已失效，请重新发送邮件。";
+    throw new Error(message);
+  }
+
+  return payload;
+}
+
 type RemoteProjectRow = {
   id: string;
   user_id: string;
@@ -767,6 +840,55 @@ export async function signUp(email: string, password: string) {
     password
   });
   const session = saveSupabaseAuthSession(payload, normalizedEmail);
+  await syncUserProfile(session);
+  return session;
+}
+
+export async function requestPasswordResetCode(email: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+  const currentOrigin = typeof window !== "undefined" ? window.location.origin : undefined;
+  const redirectTo = getPasswordResetRedirectUrl(currentOrigin);
+  const path = `/auth/v1/recover?redirect_to=${encodeURIComponent(redirectTo)}`;
+
+  await requestSupabaseAuth(path, {
+    email: normalizedEmail,
+    redirect_to: redirectTo
+  });
+}
+
+export async function resetPasswordWithRecoveryCode(email: string, code: string, password: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+  const token = code.trim();
+
+  const payload = await requestSupabaseAuth("/auth/v1/verify", {
+    email: normalizedEmail,
+    token,
+    type: "recovery"
+  });
+  const session = saveSupabaseAuthSession(payload, normalizedEmail);
+
+  if (!session.accessToken) {
+    throw new Error("验证码已通过，但恢复登录状态无效，请重新发送验证码。");
+  }
+
+  await updateSupabaseUser(session.accessToken, { password });
+  await syncUserProfile(session);
+  return session;
+}
+
+export async function resetPasswordWithRecoverySession(accessToken: string, refreshToken: string, expiresIn: number, password: string) {
+  await updateSupabaseUser(accessToken, { password });
+
+  const user = await getSupabaseAuthUser(accessToken);
+  const session = saveSupabaseAuthSession(
+    {
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      expires_in: expiresIn,
+      user
+    },
+    typeof user.email === "string" ? user.email : ""
+  );
   await syncUserProfile(session);
   return session;
 }

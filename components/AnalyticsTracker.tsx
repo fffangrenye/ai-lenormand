@@ -32,6 +32,8 @@ type AnalyticsEventName =
   | "page_view"
   | "signup_clicked"
   | "signin_clicked"
+  | "password_reset_code_requested"
+  | "password_reset_submitted"
   | "referral_landed"
   | "share_clicked"
   | "copy_prompt"
@@ -99,12 +101,13 @@ export function trackAnalyticsEvent(eventName: AnalyticsEventName, metadata?: Re
 
   const session = getSession();
   const searchMetadata = getSearchMetadata();
+  const safeUrl = `${window.location.origin}${window.location.pathname}${window.location.search}`;
   const channel = String(metadata?.channel ?? getChannel(searchMetadata));
   const firstTouch = getFirstTouchMetadata(channel, searchMetadata);
   const payload = {
     eventName,
     path: `${window.location.pathname}${window.location.search}`,
-    url: window.location.href,
+    url: safeUrl,
     origin: window.location.origin,
     host: window.location.hostname.toLowerCase(),
     referrer: document.referrer,
