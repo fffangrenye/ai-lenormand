@@ -9,7 +9,7 @@ import "./globals.css";
 const siteUrl = getPublicSiteUrl();
 const siteTitle = "花语雷诺曼 · Flora Lenormand · 深度占卜";
 const siteDescription = "每日运势 · 是与否 · 深度占卜";
-const ogImageUrl = `${siteUrl}/og-image.png`;
+const ogImageUrl = `${siteUrl}/og-image.jpg`;
 
 const titleSerif = Noto_Serif_SC({
   weight: "500",
@@ -35,8 +35,10 @@ export const metadata: Metadata = {
     images: [
       {
         url: ogImageUrl,
-        width: 1731,
-        height: 909,
+        secureUrl: ogImageUrl,
+        width: 1200,
+        height: 630,
+        type: "image/jpeg",
         alt: "Flora Lenormand 花语雷诺曼"
       }
     ]
