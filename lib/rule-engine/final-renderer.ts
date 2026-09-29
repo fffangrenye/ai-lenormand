@@ -84,7 +84,7 @@ function uncertaintySentence(input: FinalRendererInput) {
   if (!uncertainty || input.answer.confidence === "high") return undefined;
   if (uncertainty.type === "timeframe") return undefined;
   if (uncertainty.type === "spread_conflict") return "旁侧或冲突信号让结论需要保留余地。";
-  if (uncertainty.type === "semantic_ambiguity") return "目前仍有一些牌面指向没有完全收束。";
+  if (uncertainty.type === "semantic_ambiguity") return "这组牌仍保留多重解释，需要结合前面的具体主题一起看。";
   return "目前仍有未定因素。";
 }
 
@@ -93,7 +93,7 @@ function buildConclusion(answer: BasicAnswerResolution, style: RendererStyle) {
   if (answer.resolution === "not_supported") return "这里的不支持只针对当前命题，不等于直接否定未来变化。";
   if (answer.resolution === "weakly_supported") return "可以保留可能性，但当前结构给出的支持不够直接。";
   if (answer.resolution === "conditional") return "条件和限制需要一起看，不能只取支持的一面。";
-  if (answer.resolution === "not_applicable") return "这类问题更适合看结构走向，而不是压成是或否。";
+  if (answer.resolution === "not_applicable") return "这里先看牌面主线和条件变化，不把开放式问题强行压成是或否。";
   return undefined;
 }
 

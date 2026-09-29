@@ -211,6 +211,29 @@ test("Stage 2.1 production long-tail questions keep parser domain and renderer w
   );
 });
 
+test("V2 owner trial regression: relationship outlook must not render tautological placeholders", () => {
+  const result = runRuleEngineReading({
+    question: "最近一个月感情运势",
+    cardIds: [32, 13, 36, 29, 4],
+    spreadSize: 5,
+    rendererStyle: "standard"
+  });
+  const visible = [
+    result.rendered.headline,
+    result.rendered.answerLead,
+    result.rendered.body,
+    result.rendered.conclusion,
+    result.rendered.timingNote
+  ].filter(Boolean).join("\n");
+
+  assert.equal(result.metadata.engineVersion, RULE_ENGINE_VERSION);
+  assert.equal(result.questionContext.domain, "relationship");
+  assert.equal(result.questionContext.answerMode, "open");
+  assert.match(visible, /负担|压力|考验|女性|家庭|感情|关系|月亮|孩子|十字架|女人|房屋/);
+  assert.match(visible, /收束|负担|描述|人物|家庭|缩小|小范围|修饰|转变/);
+  assert.doesNotMatch(visible, /核心主题是当前主题|当前结构没有形成明确推进方向|当前状态之后转入下一步|没有完全收束|结构走向，而不是压成是或否/);
+});
+
 test("invalid input returns structured RuleEngineError codes", () => {
   const invalids: Array<{ input: Parameters<typeof runRuleEngineReading>[0]; code: RuleEngineError["code"] }> = [
     { input: { question: "x", cardIds: [], spreadSize: 3 }, code: "INVALID_CARD_IDS" },

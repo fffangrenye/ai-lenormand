@@ -96,9 +96,11 @@ function inferRelations(
 
 function passiveAnchorRelation(input: PairInput, left: SemanticCandidate, right: SemanticCandidate) {
   if (input.leftCard.semanticAgency === "passive_anchor" && input.rightCard.semanticAgency !== "passive_anchor") {
+    if (shouldSuppressPassiveAnchorDescription(input.rightCard, right.modeId)) return null;
     return buildRelation(input, "describe", input.leftCard.id, input.rightCard.id, left.modeId, right.modeId, "high", [{ source: "semantic_agency", code: "PASSIVE_PERSON_ANCHOR_RIGHT_DESCRIBES_LEFT" }], scorePair(left, right, "describe") + 3);
   }
   if (input.rightCard.semanticAgency === "passive_anchor" && input.leftCard.semanticAgency !== "passive_anchor") {
+    if (shouldSuppressPassiveAnchorDescription(input.leftCard, left.modeId)) return null;
     return buildRelation(input, "describe", input.rightCard.id, input.leftCard.id, right.modeId, left.modeId, "high", [{ source: "semantic_agency", code: "PASSIVE_PERSON_ANCHOR_LEFT_DESCRIBES_RIGHT" }], scorePair(left, right, "describe") + 3);
   }
   return null;
@@ -113,6 +115,8 @@ function behaviorRelation(input: PairInput, left: SemanticCandidate, right: Sema
   if (input.rightCard.id === 36 && input.rightCard.specialBehaviors?.includes("finalize_previous_theme")) {
     return buildBehavior(input, "finalize_previous_theme", "finalize", input.leftCard.id, input.rightCard.id, left.modeId, right.modeId, left, right, { stateChange: "end" });
   }
+  const leftPreemptiveBehavior = leftOperatorPreemptsRightBehavior(input, left, right, leftBehavior, rightBehavior);
+  if (leftPreemptiveBehavior) return leftPreemptiveBehavior;
   if (rightBehavior && ["backward", "bidirectional", "contextual"].includes(rightBehavior.direction)) {
     return buildBehavior(input, rightBehavior.behavior, rightBehavior.relation, input.leftCard.id, input.rightCard.id, left.modeId, right.modeId, left, right, rightBehavior);
   }
@@ -130,10 +134,71 @@ function behaviorRelation(input: PairInput, left: SemanticCandidate, right: Sema
       { stateChange: "change" }
     );
   }
+  const leadingObstacle = leadingObstacleSequence(input, left, right, leftBehavior);
+  if (leadingObstacle) return leadingObstacle;
   if (leftBehavior && ["forward", "bidirectional", "contextual"].includes(leftBehavior.direction)) {
     return buildBehavior(input, leftBehavior.behavior, leftBehavior.relation, input.rightCard.id, input.leftCard.id, right.modeId, left.modeId, left, right, leftBehavior);
   }
   return null;
+}
+
+function shouldSuppressPassiveAnchorDescription(descriptorCard: CardLexiconEntry, descriptorModeId: string) {
+  if (descriptorCard.id !== 26) return false;
+  return ["project_case", "exam_assessment", "physical_book_record"].includes(descriptorModeId);
+}
+
+function leftOperatorPreemptsRightBehavior(
+  input: PairInput,
+  left: SemanticCandidate,
+  right: SemanticCandidate,
+  leftBehavior: ReturnType<typeof bestBehavior>,
+  rightBehavior: ReturnType<typeof bestBehavior>
+) {
+  if (!leftBehavior || !rightBehavior) return null;
+  if (input.leftCard.id === 23 && ["diminish_adjacent_theme", "erode_adjacent_theme", "drain_resource"].includes(leftBehavior.behavior)) {
+    if (canReceiveErosion(input.rightCard, right)) {
+      return buildBehavior(input, leftBehavior.behavior, "erode", input.rightCard.id, input.leftCard.id, right.modeId, left.modeId, left, right, { stateChange: "decrease", quantityEffect: leftBehavior.quantityEffect });
+    }
+  }
+  if (input.leftCard.id === 35 && ["stabilize_adjacent_theme", "fix_adjacent_theme"].includes(leftBehavior.behavior)) {
+    if (canReceivePersistence(input.rightCard, right)) {
+      return buildBehavior(input, leftBehavior.behavior, "stabilize", input.rightCard.id, input.leftCard.id, right.modeId, left.modeId, left, right, { stateChange: "stabilize", temporalEffect: leftBehavior.temporalEffect });
+    }
+  }
+  return null;
+}
+
+function canReceiveErosion(card: CardLexiconEntry, candidate: SemanticCandidate) {
+  if (card.semanticAgency === "passive_anchor") return false;
+  if (card.id === 35) return false;
+  return candidate.roles.some((role) => ["state", "core_theme", "resource", "information", "duration", "result"].includes(role));
+}
+
+function canReceivePersistence(card: CardLexiconEntry, candidate: SemanticCandidate) {
+  if (card.semanticAgency === "passive_anchor") return false;
+  return candidate.roles.some((role) => ["state", "core_theme", "resource", "information", "duration", "result", "action"].includes(role));
+}
+
+function leadingObstacleSequence(
+  input: PairInput,
+  left: SemanticCandidate,
+  right: SemanticCandidate,
+  leftBehavior: ReturnType<typeof bestBehavior>
+) {
+  if (input.leftCard.id !== 21 || !leftBehavior || !["block_adjacent_theme", "delay_adjacent_theme"].includes(leftBehavior.behavior)) return null;
+  if (!right.roles.some((role) => role === "information" || role === "action" || role === "tempo")) return null;
+  return buildRelation(
+    input,
+    "sequence",
+    input.leftCard.id,
+    input.rightCard.id,
+    left.modeId,
+    right.modeId,
+    "high",
+    [{ source: "special_behavior", code: "BEHAVIOR_OBSTACLE_STATE_THEN_ACTION", detail: leftBehavior.behavior }],
+    scorePair(left, right, "sequence") + 3,
+    { stateChange: left.modeId === "delay" ? "delay" : "block", temporalEffect: "slower" }
+  );
 }
 
 function applyPairOverrides(input: PairInput, overrides: ReturnType<typeof findPairOverrides>) {
@@ -303,6 +368,12 @@ function bestBehavior(card: CardLexiconEntry, modeId: string) {
 }
 
 function roleRelation(input: PairInput, left: SemanticCandidate, right: SemanticCandidate, leftMode: SemanticMode, rightMode: SemanticMode): PairRelationType {
+  if (
+    (input.leftCard.semanticAgency === "passive_anchor" && shouldSuppressPassiveAnchorDescription(input.rightCard, right.modeId)) ||
+    (input.rightCard.semanticAgency === "passive_anchor" && shouldSuppressPassiveAnchorDescription(input.leftCard, left.modeId))
+  ) {
+    return "associate";
+  }
   if (
     input.question.domain === "study" &&
     (input.question.primaryTopic === "academic_project" || input.question.primaryTopic === "research" || input.question.object.type === "project") &&

@@ -136,6 +136,16 @@ test("Moon switches between career, feelings, and timing contexts", () => {
   assert.equal(modes(32, feelings)[0].modeId, "emotion_attraction");
   assert.ok(!["dominant", "strong"].includes(relevance(32, feelings, "career_vocation") ?? ""));
 
+  const relationshipOutlook = context("最近一个月感情运势", {
+    domain: "relationship",
+    primaryTopic: "relationship_state",
+    object: { type: "relationship", label: "感情运势" },
+    intent: "state",
+    answerMode: "open"
+  });
+  assert.notEqual(modes(32, relationshipOutlook)[0].modeId, "career_vocation");
+  assert.equal(modes(32, relationshipOutlook)[0].modeId, "emotion_attraction");
+
   const timing = context("什么时候会收到结果？", {
     intent: "timing",
     object: { type: "event", label: "收到结果" }

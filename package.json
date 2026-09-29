@@ -9,8 +9,12 @@
     "lint": "next lint",
     "cf:patch": "node scripts/patch-next-cloudflare-windows.cjs",
     "cf:build": "npm run cf:patch && opennextjs-cloudflare build --dangerouslyUseUnsupportedNextVersion",
+    "cf:build:secure": "node scripts/secure-cloudflare-build.cjs",
+    "cf:scan-artifacts": "node scripts/scan-cloudflare-artifacts.cjs",
     "cf:preview": "npm run cf:patch && opennextjs-cloudflare build --dangerouslyUseUnsupportedNextVersion && opennextjs-cloudflare preview",
     "cf:deploy": "npm run cf:patch && opennextjs-cloudflare build --dangerouslyUseUnsupportedNextVersion && opennextjs-cloudflare deploy",
+    "cf:deploy:redirect:ai-lenormand": "wrangler deploy --config wrangler.redirect-ai-lenormand.jsonc",
+    "cf:deploy:redirect:preview": "wrangler deploy --config wrangler.redirect-preview.jsonc",
     "cf:typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
   },
   "dependencies": {

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getRuleEngineFeatureFlags, InterpretationSource, resolveInterpretationSource, spreadSizeForSpreadType } from "@/lib/reading-source";
+import { getRuleEngineOwnerTrialAccess } from "@/lib/rule-engine-owner-trial";
 import { requireSupabaseUser } from "@/lib/supabase-server";
 
 type SourceRequest = {
@@ -11,6 +12,12 @@ export async function POST(request: Request) {
   try {
     const user = await requireSupabaseUser(request);
     const input = (await request.json().catch(() => ({}))) as SourceRequest;
+    if (input.explicitSource === "rule_engine") {
+      const access = getRuleEngineOwnerTrialAccess(user);
+      if (!access.allowed) {
+        return NextResponse.json({ code: "RULE_ENGINE_TRIAL_FORBIDDEN", error: access.reason }, { status: 403 });
+      }
+    }
     const resolution = resolveInterpretationSource({
       flags: getRuleEngineFeatureFlags(),
       spreadSize: spreadSizeForSpreadType(input.spreadType ?? ""),

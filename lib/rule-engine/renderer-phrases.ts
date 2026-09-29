@@ -103,6 +103,32 @@ const conceptPhrases: Record<string, string> = {
   anxiety_noise: "焦虑和杂音",
   choice_path: "选择路径",
   decision_point: "需要做选择",
+  career_vocation: "事业方向或个人角色感",
+  recognition_reputation: "被看见、被认可的状态",
+  creativity_inspiration: "感受力与灵感",
+  self_image_awareness: "自我感受和被看见的方式",
+  intuition_dreams: "直觉与内在感受",
+  cycle_phase: "阶段性循环",
+  night_month: "月度节奏",
+  small_scale: "小范围、轻量或初始阶段",
+  early_stage: "早期阶段",
+  literal_child: "孩子相关的现实因素",
+  female_person_anchor: "这位女性或当事人",
+  male_person_anchor: "这位男性或当事人",
+  household: "家庭、居所或生活基础",
+  home_residence: "居所和生活根基",
+  burden_hardship: "压力、负担或困难",
+  trial_test: "考验和需要承受的阶段",
+  necessity_obligation: "责任和必须面对的议题",
+  finalization: "阶段收尾",
+  pain_sorrow: "情绪上的沉重感",
+  sacrifice_cost: "需要付出的代价",
+  ending: "阶段收束",
+  finalize: "收束或定局",
+  burden: "压力加重",
+  describe: "补充描述",
+  blocked: "推进受阻",
+  none: "过程证据不足",
   relationship_definition_unclear: "关系本身的定义目前仍不明确",
   information_incomplete: "目前的信息仍不完整",
   timeframe_tight: "你问的时间窗口比较紧",
@@ -148,13 +174,14 @@ const unresolvedPhrases: Record<string, string> = {
 export function themePhrase(label: string) {
   if (label === "uncertainty around feelings/relationship") return "核心在于感情或关系定义仍不够清楚。";
   if (label === "relationship uncertainty") return "这段关系的定义和态度还没有完全落定。";
+  if (label === "trust and bond persistence") return "核心在于信任、连接和持续性的叠加。";
   if (label === "obstacle ending into clearer state") return "主线不是单纯受阻，而是阻碍走向收束后出现更清楚的状态。";
   if (label === "project long-term stabilization") return "核心是项目进入较慢、偏长期固定的推进方式。";
   if (label === "fixed obstacle / slow persistence") return "核心是阻碍和稳定性叠在一起，状态更偏持久。";
   if (label === "written_message") return "核心落在消息、文字或通知的确认。";
   if (label === "project revision / repeated editing") return "核心是项目或文本需要反复修改。";
   if (label === "persistent emotional erosion") return "核心是情绪投入被持续消耗。";
-  return `核心主题是${userFacingConceptPhrase(label, "当前主题")}。`;
+  return `核心主题落在${userFacingConceptPhrase(label)}。`;
 }
 
 export function conditionPhrase(concept: string) {
@@ -189,8 +216,15 @@ export function safetyPhrase(type: string) {
 }
 
 export function transitionPhrase(type: string, from?: string, to?: string) {
-  const left = from ? userFacingConceptPhrase(from, "当前状态") : "当前状态";
-  const right = to ? userFacingConceptPhrase(to, "下一步") : "下一步";
+  const left = from ? userFacingConceptPhrase(from) : undefined;
+  const right = to ? userFacingConceptPhrase(to) : undefined;
+  if (!left && !right) return transitionTypePhrase(type);
+  if (!left) return `${transitionTypePhrase(type)}重点落向${right}。`;
+  if (!right) {
+    if (type === "end") return `${left}正在走向收束。`;
+    if (type === "burden") return `${left}带来压力或负担。`;
+    return `${left}正在发生${transitionTypePhrase(type).replace(/。$/, "")}。`;
+  }
   if (type === "communicate") return `${left}需要通过实际沟通进入${right}。`;
   if (type === "confirm") return `${left}进一步落到${right}。`;
   if (type === "end") return `${left}正在走向收束。`;
@@ -203,6 +237,7 @@ export function transitionPhrase(type: string, from?: string, to?: string) {
   if (type === "bind") return `${left}与${right}之间形成连接。`;
   if (type === "block") return `${left}到${right}之间存在阻碍。`;
   if (type === "delay") return `${left}到${right}之间节奏被拖慢。`;
+  if (type === "burden") return `${left}让${right}带上压力或责任。`;
   return `${left}与${right}之间形成联系。`;
 }
 
@@ -221,6 +256,24 @@ export function userFacingConceptPhrase(value: string, fallback = "相关因素"
   if (/stable|stability|persist|anchor|fixed/i.test(value)) return "持续或固定的状态";
   if (/end|coffin|closure|stop/i.test(value)) return "阶段收束";
   if (/project|research|study|book|revision|editing/i.test(value)) return "项目或学习主题";
+  if (/burden|hardship|cross|trial|necessity|obligation|cost/i.test(value)) return "压力、负担或考验";
+  if (/child|small|early|minor|begin/i.test(value)) return "小范围或初始阶段";
+  if (/woman|female|person.anchor/i.test(value)) return "这位女性或当事人";
+  if (/man|male|person.anchor/i.test(value)) return "这位男性或当事人";
+  if (/house|home|household|residence|domestic/i.test(value)) return "家庭、居所或生活基础";
+  if (/career|vocation|recognition|reputation|self.image|intuition|dream|moon/i.test(value)) return "感受、自我形象或被看见的状态";
   if (/safety|risk|health|pregnancy|legal|investment|crime|third.party/i.test(value)) return "需要谨慎看待的现实议题";
   return fallback;
+}
+
+function transitionTypePhrase(type: string) {
+  if (type === "end") return "阶段正在收束。";
+  if (type === "change") return "状态正在转变。";
+  if (type === "burden") return "压力或责任正在变重。";
+  if (type === "communicate") return "重点需要通过沟通推进。";
+  if (type === "confirm") return "重点正在被确认。";
+  if (type === "clarify") return "信息正在变清楚。";
+  if (type === "block") return "推进受到阻碍。";
+  if (type === "stabilize") return "状态趋向固定。";
+  return "牌面之间形成结构联系。";
 }

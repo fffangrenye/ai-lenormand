@@ -100,7 +100,6 @@ const FOLLOW_UP_MESSAGES_KEY = "ai-lenormand:deep-follow-up-messages";
 const DAILY_QUOTA_EVENTS_KEY = "ai-lenormand:daily-quota-events";
 export const FREE_DEEP_READING_LIMIT = 5;
 export const FREE_FOLLOW_UP_LIMIT = 1;
-const UNLIMITED_AI_EMAILS = ["1041871342@qq.com"];
 const FOLLOW_UP_FAILURE_MESSAGE = "这次追问暂时没有生成成功。你的问题已经保留，可以稍后再问一次。";
 const FOLLOW_UP_QUOTA_MESSAGE = "这次解读的 1 次免费 AI 追问已经用完。";
 const DUPLICATE_SUBMIT_WINDOW_MS = 10 * 60 * 1000;
@@ -128,6 +127,12 @@ type ApiErrorPayload = {
 type SourceResolutionPayload = {
   source?: InterpretationSource;
   eligible?: boolean;
+  reason?: string;
+};
+
+type RuleEngineTrialAccessPayload = {
+  allowed?: boolean;
+  enabled?: boolean;
   reason?: string;
 };
 
@@ -740,7 +745,8 @@ export function getSession(): AuthSession | null {
 }
 
 export function hasUnlimitedAiAccess(session = getSession()) {
-  return Boolean(session?.email && UNLIMITED_AI_EMAILS.includes(session.email.trim().toLowerCase()));
+  // Admin quota exemptions are enforced server-side from ADMIN_EMAILS.
+  return false;
 }
 
 export async function signIn(email: string, password: string) {
@@ -1186,11 +1192,12 @@ async function authHeaders(): Promise<HeadersInit> {
   return { Authorization: `Bearer ${session.accessToken}` };
 }
 
-async function resolveReadingSourceForCreation(spreadType: SpreadType): Promise<InterpretationSource> {
+async function resolveReadingSourceForCreation(spreadType: SpreadType, explicitSource?: InterpretationSource): Promise<InterpretationSource> {
   if (!canUseRemoteStore()) {
     return resolveInterpretationSource({
       flags: getRuleEngineFeatureFlags(),
-      spreadSize: spreadSizeForSpreadType(spreadType)
+      spreadSize: spreadSizeForSpreadType(spreadType),
+      explicitSource
     }).source;
   }
 
@@ -1201,13 +1208,33 @@ async function resolveReadingSourceForCreation(spreadType: SpreadType): Promise<
         "Content-Type": "application/json",
         ...(await authHeaders())
       },
-      body: JSON.stringify({ spreadType })
+      body: JSON.stringify({ spreadType, explicitSource })
     });
     if (!response.ok) return "ai";
     const payload = (await response.json()) as SourceResolutionPayload;
     return payload.source === "rule_engine" ? "rule_engine" : "ai";
   } catch {
     return "ai";
+  }
+}
+
+export async function getRuleEngineOwnerTrialAccess() {
+  if (!canUseRemoteStore()) return { allowed: false, enabled: false, reason: "local_store" };
+
+  try {
+    const response = await fetch("/api/deep-reading/rule-engine/trial-access", {
+      method: "GET",
+      headers: await authHeaders()
+    });
+    if (!response.ok) return { allowed: false, enabled: false, reason: "request_failed" };
+    const payload = (await response.json()) as RuleEngineTrialAccessPayload;
+    return {
+      allowed: payload.allowed === true,
+      enabled: payload.enabled === true,
+      reason: typeof payload.reason === "string" ? payload.reason : "unknown"
+    };
+  } catch {
+    return { allowed: false, enabled: false, reason: "request_failed" };
   }
 }
 
@@ -1353,7 +1380,7 @@ export function createReading(input: { projectId: string; spreadType: SpreadType
   };
 }
 
-export async function saveReading(input: { projectId: string; spreadType: SpreadType; question: string }) {
+export async function saveReading(input: { projectId: string; spreadType: SpreadType; question: string; explicitSource?: InterpretationSource }) {
   await assertNotDuplicateReading(input);
 
   if (!canUseRemoteStore()) return createReading(input);
@@ -1364,7 +1391,7 @@ export async function saveReading(input: { projectId: string; spreadType: Spread
   const project = await loadProject(input.projectId);
   if (!project) throw new Error("Project not found");
 
-  const interpretationSource = await resolveReadingSourceForCreation(input.spreadType);
+  const interpretationSource = await resolveReadingSourceForCreation(input.spreadType, input.explicitSource);
   const timestamp = now();
   const reading: DeepReading = {
     id: newId(),
@@ -1738,7 +1765,7 @@ export async function buildExternalReadingPrompt(readingId: string, includeRecen
         .join("\n\n")
     : "暂无";
 
-  return `You are a professional Lenormand Reader for AI Lenormand Deep Reading.
+  return `You are a professional Lenormand Reader for Flora Lenormand Deep Reading.
 
 Core rules:
 - You must answer in Simplified Chinese only. Do not output English unless it is a Lenormand card name.

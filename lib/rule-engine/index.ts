@@ -32,6 +32,8 @@ export * from "./renderer-types";
 export * from "./renderer-schema";
 export * from "./renderer-phrases";
 export * from "./final-renderer";
+export * from "./interpretation-plan";
+export * from "./ai-verbalizer";
 export * from "./rule-engine-version";
 export * from "./rule-engine-errors";
 export * from "./pipeline";

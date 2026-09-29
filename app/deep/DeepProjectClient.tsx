@@ -18,6 +18,7 @@ import {
   generateDeepReading,
   getDeepReadingQuota,
   getFollowUpQuota,
+  getRuleEngineOwnerTrialAccess,
   getSession,
   loadFollowUpMessages,
   loadProject,
@@ -676,6 +677,9 @@ function QuestionStep({
   spreadType,
   question,
   error,
+  ruleEngineTrialAllowed,
+  useRuleEngineTrial,
+  onUseRuleEngineTrialChange,
   onQuestionChange,
   onBack,
   onSubmit,
@@ -684,6 +688,9 @@ function QuestionStep({
   spreadType: SpreadType;
   question: string;
   error: string;
+  ruleEngineTrialAllowed: boolean;
+  useRuleEngineTrial: boolean;
+  onUseRuleEngineTrialChange: (enabled: boolean) => void;
   onQuestionChange: (question: string) => void;
   onBack: () => void;
   onSubmit: () => void;
@@ -707,6 +714,21 @@ function QuestionStep({
         <span>{error}</span>
         <span>{question.length}/300</span>
       </div>
+
+      {ruleEngineTrialAllowed ? (
+        <label className="mt-5 flex items-start gap-3 rounded-[6px] border border-clay/18 bg-[#FFFDF8]/72 p-4">
+          <input
+            type="checkbox"
+            checked={useRuleEngineTrial}
+            onChange={(event) => onUseRuleEngineTrialChange(event.target.checked)}
+            className="mt-1 h-4 w-4 accent-[#6E2638]"
+          />
+          <span>
+            <span className="block text-[14px] font-medium leading-5 text-ink">试用 V2 规则解读</span>
+            <span className="mt-1 block text-[12px] leading-5 text-ink/48">仅当前授权测试账号可用；普通用户路径仍保持 AI 解读。</span>
+          </span>
+        </label>
+      ) : null}
 
       <div className="mt-8 flex gap-3">
         <button type="button" onClick={onBack} disabled={submitting} className="h-12 flex-1 rounded-full border border-ink/12 text-[13px] uppercase tracking-[0.12em] text-ink/58 disabled:opacity-50">
@@ -820,6 +842,7 @@ function ReadingCardFace({ card, compact = false }: { card: ReadingWithCards["ca
 function ReadingChapter({ reading }: { reading: ReadingWithCards }) {
   const paragraphs = reading.interpretation.split("\n\n").filter(Boolean);
   const [copyState, setCopyState] = useState<"idle" | "current" | "recent" | "failed">("idle");
+  const isVerifiedRuleReading = reading.interpretationSource === "rule_engine" && Boolean(reading.ruleEngineVersion) && Boolean(reading.ruleEngineResult);
   const cardSaveHandlers = useCardSpreadLongPressSave(
     () =>
       reading.cards.map((card) => ({
@@ -863,7 +886,7 @@ function ReadingChapter({ reading }: { reading: ReadingWithCards }) {
       <div className="mt-3 flex items-center justify-between gap-3">
         <h2 className="font-serif text-[27px] leading-tight text-ink">{reading.spreadType === "three_card" ? "Three Cards" : "Five-card Linear"}</h2>
         <span className="shrink-0 rounded-full border border-ink/10 bg-ivory/70 px-3 py-1 text-[11px] uppercase tracking-[0.12em] text-ink/44">
-          {reading.interpretationSource === "rule_engine" ? "Rule-based" : "AI"}
+          {isVerifiedRuleReading ? `Rule-based / ${reading.ruleEngineVersion}` : "AI"}
         </span>
       </div>
       <p className="mt-3 text-[16px] leading-7 text-ink/72">“{reading.question}”</p>
@@ -895,7 +918,7 @@ function ReadingChapter({ reading }: { reading: ReadingWithCards }) {
             <p key={paragraph}>{paragraph}</p>
           ))}
           <p className="rounded-[5px] border border-ink/8 bg-ivory/58 p-4 text-[12px] leading-6 text-ink/42">
-            {reading.interpretationSource === "rule_engine" ? "本次解读由站内规则引擎根据问题与牌面生成。" : "本次解读由 AI 根据你提供的上下文与牌面生成。"}仅供娱乐和自我梳理，不构成心理、医疗、法律、财务等专业建议。
+            {isVerifiedRuleReading ? `本次解读由站内规则引擎 ${reading.ruleEngineVersion} 根据问题与牌面生成。` : "本次解读由 AI 根据你提供的上下文与牌面生成。"}仅供娱乐和自我梳理，不构成心理、医疗、法律、财务等专业建议。
           </p>
         </section>
       ) : null}
@@ -1098,7 +1121,19 @@ function ReadingWorkspace({
   const [generatingReadingId, setGeneratingReadingId] = useState<string | null>(null);
   const [drawingReading, setDrawingReading] = useState<ReadingWithCards | null>(null);
   const [submittingQuestion, setSubmittingQuestion] = useState(false);
+  const [ruleEngineTrialAllowed, setRuleEngineTrialAllowed] = useState(false);
+  const [useRuleEngineTrial, setUseRuleEngineTrial] = useState(false);
   const quota = getDeepReadingQuota();
+
+  useEffect(() => {
+    let cancelled = false;
+    void getRuleEngineOwnerTrialAccess().then((access) => {
+      if (!cancelled) setRuleEngineTrialAllowed(access.allowed);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function generateAndRefresh(readingId: string) {
     setGeneratingReadingId(readingId);
@@ -1115,6 +1150,7 @@ function ReadingWorkspace({
   function startReading() {
     setStep("spread");
     setError("");
+    setUseRuleEngineTrial(false);
     setQuotaMessage(quota.remaining <= 0 ? "今天的免费 AI 解读次数已经用完。你仍然可以抽牌、长按保存牌面，并在结果里复制专业 Prompt 自行解读。" : "");
     trackAnalyticsEvent("deep_start", {
       projectId: project.id,
@@ -1133,7 +1169,7 @@ function ReadingWorkspace({
       void (async () => {
         let reading: ReadingWithCards;
         try {
-          reading = await saveReading({ projectId: project.id, spreadType, question });
+          reading = await saveReading({ projectId: project.id, spreadType, question, explicitSource: ruleEngineTrialAllowed && useRuleEngineTrial ? "rule_engine" : undefined });
           trackAnalyticsEvent("deep_submit", {
             projectId: project.id,
             readingId: reading.id,
@@ -1167,7 +1203,12 @@ function ReadingWorkspace({
     setSubmittingQuestion(true);
     let reading: ReadingWithCards;
     try {
-      reading = await saveReading({ projectId: project.id, spreadType, question: submittedQuestion });
+      reading = await saveReading({
+        projectId: project.id,
+        spreadType,
+        question: submittedQuestion,
+        explicitSource: ruleEngineTrialAllowed && useRuleEngineTrial ? "rule_engine" : undefined
+      });
       trackAnalyticsEvent("deep_submit", {
         projectId: project.id,
         readingId: reading.id,
@@ -1212,6 +1253,9 @@ function ReadingWorkspace({
         spreadType={spreadType}
         question={question}
         error={error}
+        ruleEngineTrialAllowed={ruleEngineTrialAllowed}
+        useRuleEngineTrial={useRuleEngineTrial}
+        onUseRuleEngineTrialChange={setUseRuleEngineTrial}
         onQuestionChange={(value) => {
           setQuestion(value);
           setError("");

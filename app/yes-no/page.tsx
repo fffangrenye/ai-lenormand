@@ -222,7 +222,7 @@ export default function YesNoPage() {
       <section className="mx-auto flex min-h-dvh w-full max-w-[430px] flex-col px-5 pb-8 pt-5">
         <header className="flex items-center justify-between">
           <Link href="/" className="font-serif text-[18px] leading-none tracking-[0.04em] text-ink/86">
-            AI Lenormand
+            Flora Lenormand
           </Link>
           <Link href="/" className="border-b border-ink/22 pb-1 text-[12px] uppercase tracking-[0.13em] text-ink/56">
             Home

@@ -78,7 +78,7 @@ function getDiagnostics(error: unknown) {
   return error instanceof InvalidAiResponseError ? error.diagnostics : undefined;
 }
 
-const systemPrompt = `You are a professional Lenormand Reader answering follow-up questions for an existing AI Lenormand Deep Reading.
+const systemPrompt = `You are a professional Lenormand Reader answering follow-up questions for an existing Flora Lenormand Deep Reading.
 
 Core rules:
 - You must answer in Simplified Chinese only. Do not output English unless it is a Lenormand card name.

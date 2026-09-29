@@ -335,8 +335,16 @@ function applyNamedContextSwitches(candidates: MutableCandidate[], card: CardLex
       if (question.domain === "career" && candidate.modeId === "emotion_attraction") {
         return adjust(candidate, -2, { source: "override", code: "CONTEXT_SUPPRESS_MOON_EMOTION_CAREER" }, "context_overrides", trace);
       }
-      if (question.domain === "relationship" && question.primaryTopic === "feelings_attraction" && candidate.modeId === "career_vocation") {
-        return adjust(candidate, -2, { source: "override", code: "CONTEXT_SUPPRESS_MOON_CAREER_FEELINGS" }, "context_overrides", trace);
+      if (question.domain === "relationship") {
+        if (candidate.modeId === "emotion_attraction") {
+          return adjust(candidate, question.primaryTopic === "feelings_attraction" ? 2 : 3, { source: "override", code: "CONTEXT_OVERRIDE_MOON_RELATIONSHIP_EMOTION" }, "context_overrides", trace);
+        }
+        if (candidate.modeId === "self_image_awareness" || candidate.modeId === "intuition_dreams") {
+          return adjust(candidate, 1, { source: "override", code: "CONTEXT_OVERRIDE_MOON_RELATIONSHIP_INNER_STATE" }, "context_overrides", trace);
+        }
+        if (candidate.modeId === "career_vocation") {
+          return adjust(candidate, -3, { source: "override", code: "CONTEXT_SUPPRESS_MOON_CAREER_RELATIONSHIP" }, "context_overrides", trace);
+        }
       }
       if (question.intent === "timing" && (candidate.modeId === "career_vocation" || candidate.modeId === "emotion_attraction")) {
         return adjust(candidate, -2, { source: "override", code: "CONTEXT_SUPPRESS_MOON_NON_TIMING" }, "context_overrides", trace);

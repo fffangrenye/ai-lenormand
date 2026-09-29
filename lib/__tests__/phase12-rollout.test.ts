@@ -107,10 +107,12 @@ test("source integrity rules distinguish rule engine, AI, and legacy rows", () =
   assert.equal(validateReadingSourceIntegrity({ interpretationSource: null, ruleEngineVersion: null, ruleEngineResult: null }).valid, true);
 });
 
-test("no hidden AI verification remains true for rule route and quota isolation", () => {
+test("rule route keeps quota isolation while hybrid verbalizer is explicit and guarded", () => {
   const ruleRoute = read("app/api/deep-reading/rule-engine/route.ts");
   const store = read("lib/project-store.ts");
-  assert.doesNotMatch(ruleRoute, /DeepSeek|DEEPSEEK|api\.deepseek\.com|checkDailyQuota|consumeDailyQuota/);
+  assert.doesNotMatch(ruleRoute, /checkDailyQuota|consumeDailyQuota/);
+  assert.match(ruleRoute, /verbalizeWithAiGuard/);
+  assert.match(ruleRoute, /verbalization_source/);
   assert.match(store, /existingReading\.interpretationSource === "rule_engine"/);
   assert.match(store, /await saveCompletedReading\(readingId, result\);\s+return;/);
   assert.match(store, /reading\.interpretationSource !== "rule_engine"/);

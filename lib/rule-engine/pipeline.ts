@@ -17,6 +17,7 @@ import { BasicAnswerResolution } from "./answer-types";
 import { RenderedReading, RendererStyle } from "./renderer-types";
 import { RULE_ENGINE_SCHEMA_VERSION, RULE_ENGINE_VERSION } from "./rule-engine-version";
 import { RuleEngineError } from "./rule-engine-errors";
+import { buildInterpretationPlan, InterpretationPlan } from "./interpretation-plan";
 
 export type RuleEngineReadingInput = {
   question: string;
@@ -36,6 +37,7 @@ export type RuleEngineReadingResult = {
   tempo: TempoCompatibilityResult;
   answer: BasicAnswerResolution;
   rendered: RenderedReading;
+  interpretationPlan: InterpretationPlan;
   refinementPasses: 0 | 1;
   metadata: {
     engineVersion: string;
@@ -88,6 +90,28 @@ export function runRuleEngineReading(input: RuleEngineReadingInput): RuleEngineR
       style: input.rendererStyle ?? "standard"
     })
   );
+  const interpretationPlan = stage("RENDER_FAILED", () =>
+    buildInterpretationPlan({
+      questionContext,
+      preselection,
+      initialPairs: pairPipeline.initialPairs,
+      resolvedCards: pairPipeline.resolvedCards,
+      refinedPairs: pairPipeline.refinedPairs,
+      spread,
+      synthesis,
+      tempo,
+      answer,
+      rendered,
+      refinementPasses: pairPipeline.refinementPasses,
+      metadata: {
+        engineVersion: RULE_ENGINE_VERSION,
+        schemaVersion: RULE_ENGINE_SCHEMA_VERSION,
+        source: "rule_engine",
+        externalFallbackUsed: false
+      },
+      engineVersion: RULE_ENGINE_VERSION
+    })
+  );
 
   return {
     questionContext,
@@ -100,6 +124,7 @@ export function runRuleEngineReading(input: RuleEngineReadingInput): RuleEngineR
     tempo,
     answer,
     rendered,
+    interpretationPlan,
     refinementPasses: pairPipeline.refinementPasses,
     metadata: {
       engineVersion: RULE_ENGINE_VERSION,

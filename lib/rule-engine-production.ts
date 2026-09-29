@@ -35,6 +35,12 @@ export type RuleEnginePersistenceResult = {
   tempo: Omit<RuleEngineReadingResult["tempo"], "debugTrace">;
   answer: Omit<RuleEngineReadingResult["answer"], "debugTrace">;
   rendered: RuleEngineReadingResult["rendered"];
+  interpretationPlan: RuleEngineReadingResult["interpretationPlan"];
+  verbalization?: {
+    source: "ai" | "deterministic_fallback";
+    attempts: number;
+    validationIssues?: string[];
+  };
   versions: RuleEngineReadingResult["metadata"];
 };
 
@@ -42,6 +48,8 @@ export function generateRuleEngineReading(input: {
   question: string;
   cards: ProductionReadingCard[];
   spreadType: ProductionSpreadType;
+  verbalizedResult?: DeepReadingResult;
+  verbalization?: RuleEnginePersistenceResult["verbalization"];
 }): ProductionRuleEngineResult {
   const spreadSize = spreadSizeForSpreadType(input.spreadType);
   const result = runRuleEngineReading({
@@ -52,8 +60,8 @@ export function generateRuleEngineReading(input: {
   });
 
   return {
-    deepReadingResult: mapRuleEngineRenderedOutput(result),
-    ruleEngineResult: toRuleEnginePersistenceResult(result),
+    deepReadingResult: input.verbalizedResult ?? mapRuleEngineRenderedOutput(result),
+    ruleEngineResult: toRuleEnginePersistenceResult(result, input.verbalization),
     ruleEngineVersion: result.metadata.engineVersion,
     ruleEngineSchemaVersion: result.metadata.schemaVersion
   };
@@ -78,7 +86,7 @@ export function mapRuleEngineRenderedOutput(result: RuleEngineReadingResult): De
   };
 }
 
-export function toRuleEnginePersistenceResult(result: RuleEngineReadingResult): RuleEnginePersistenceResult {
+export function toRuleEnginePersistenceResult(result: RuleEngineReadingResult, verbalization?: RuleEnginePersistenceResult["verbalization"]): RuleEnginePersistenceResult {
   const { debugTrace: synthesisDebugTrace, ...synthesis } = result.synthesis;
   const { debugTrace: tempoDebugTrace, ...tempo } = result.tempo;
   const { debugTrace: answerDebugTrace, ...answer } = result.answer;
@@ -97,6 +105,8 @@ export function toRuleEnginePersistenceResult(result: RuleEngineReadingResult): 
     tempo,
     answer,
     rendered: result.rendered,
+    interpretationPlan: result.interpretationPlan,
+    verbalization,
     versions: result.metadata
   };
 }

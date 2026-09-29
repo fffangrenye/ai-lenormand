@@ -131,9 +131,10 @@ function resolveCoreTheme(input: WholeLineSynthesisInput, units: SemanticUnit[])
 function resolveMainProcess(input: WholeLineSynthesisInput): SynthesisMainProcess {
   const relations = input.spread.forwardChain.pairRelations;
   const modes = input.resolvedCards.map((card) => card.primaryMode);
+  const spreadProcess = input.spread.semanticFrame.mainProcess;
   if (relations.includes("erode")) return relations.includes("stabilize") || modes.some((mode) => /stability|persistence/.test(mode)) ? "eroding" : "deteriorating";
   if (relations.includes("block")) return relations.some((relation) => relation === "sequence" || relation === "unlock") ? "delayed" : "blocked";
-  if (relations.includes("end") && relations.includes("sequence") && modes.some((mode) => /clarity|success|relief|recovery/.test(mode))) return "improving";
+  if ((relations.includes("end") || relations.includes("finalize")) && relations.includes("sequence") && modes.some((mode) => /clarity|success|relief|recovery/.test(mode))) return "improving";
   if (relations.includes("sequence") || relations.includes("change")) return "changing";
   if (relations.includes("confirm") && relations.includes("hide")) return "clarifying";
   if (relations.includes("confirm")) return "confirming";
@@ -142,9 +143,11 @@ function resolveMainProcess(input: WholeLineSynthesisInput): SynthesisMainProces
   if (relations.includes("hide")) return "uncertain";
   if (relations.includes("stabilize")) return "stabilizing";
   if (relations.includes("bind")) return "binding";
-  if (input.spread.semanticFrame.mainProcess === "stable") return "stable";
-  if (input.spread.semanticFrame.mainProcess === "developing") return "developing";
-  return input.spread.semanticFrame.mainProcess === "mixed" ? "mixed" : "none";
+  if (relations.includes("end") || relations.includes("finalize")) return "ending";
+  if (relations.includes("cut")) return "cutting";
+  if (relations.includes("burden")) return spreadProcess === "ending" ? "ending" : "blocked";
+  if (spreadProcess) return spreadProcess;
+  return "none";
 }
 
 function resolveKeyTransitions(input: WholeLineSynthesisInput): SynthesisTransition[] {
@@ -375,7 +378,7 @@ function transitionForPair(input: WholeLineSynthesisInput, pair: PairInterpretat
 
 function transitionTypeForRelation(relation: PairRelationType, stateChange: unknown): SynthesisTransitionType | undefined {
   if (relation === "sequence") return "change";
-  if (relation === "end" || stateChange === "end") return "end";
+  if (relation === "end" || relation === "finalize" || stateChange === "end") return "end";
   if (relation === "erode") return "erode";
   if (relation === "block") return "block";
   if (relation === "hide") return "hide";
@@ -389,6 +392,7 @@ function transitionTypeForRelation(relation: PairRelationType, stateChange: unkn
   if (relation === "publicize") return "publicize";
   if (relation === "modify" || relation === "change") return "change";
   if (relation === "cut") return "cut";
+  if (relation === "burden") return "burden";
   return undefined;
 }
 
@@ -490,7 +494,7 @@ function unitTypeForRelation(relation: PairRelationType): SemanticUnitType {
 }
 
 function importantRelation(relation: PairRelationType) {
-  return ["change", "cut", "end", "block", "confirm", "bind", "stabilize", "erode", "clarify", "repeat", "sequence", "hide", "modify", "publicize", "unlock"].includes(relation);
+  return ["change", "cut", "end", "finalize", "block", "burden", "confirm", "bind", "stabilize", "erode", "clarify", "repeat", "sequence", "hide", "modify", "publicize", "unlock"].includes(relation);
 }
 
 function importantTransition(input: WholeLineSynthesisInput, pair: PairInterpretation) {
@@ -508,8 +512,9 @@ function importantTransition(input: WholeLineSynthesisInput, pair: PairInterpret
 
 function processForRelation(relation: PairRelationType) {
   if (relation === "sequence") return "changing";
-  if (relation === "end") return "ending";
+  if (relation === "end" || relation === "finalize") return "ending";
   if (relation === "erode") return "eroding";
+  if (relation === "burden") return "blocked";
   return relation;
 }
 

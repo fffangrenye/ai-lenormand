@@ -17,3 +17,4 @@ pnpm-debug.log*
 .vercel
 .open-next/
 .wrangler/
+.codex-cf-artifact/

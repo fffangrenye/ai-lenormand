@@ -67,7 +67,7 @@ test("rule generation maps stored card slugs to ordered rule engine card ids", (
   ];
   assert.deepEqual(cardIdsFromReadingCards(cards), [1, 27, 33]);
   const result = generateRuleEngineReading({ question: "三天内会收到消息吗？", cards, spreadType: "three_card" });
-  assert.equal(result.ruleEngineVersion, "1.0.0-rc.1");
+  assert.equal(result.ruleEngineVersion, "1.0.0-rc.2");
   assert.equal(result.ruleEngineSchemaVersion, "1");
   assert.equal(result.ruleEngineResult.versions.source, "rule_engine");
   assert.ok(result.deepReadingResult.core_conclusion);
@@ -117,7 +117,7 @@ test("project-store routes rule readings without AI or quota fallback", () => {
   assert.match(source, /await saveCompletedReading\(readingId, result\);\s+return;/);
 });
 
-test("AI route keeps quota and DeepSeek while rule route has neither", () => {
+test("AI route keeps quota while rule route uses only guarded verbalizer without AI initial quota", () => {
   const aiRoute = read("app/api/deep-reading/route.ts");
   const ruleRoute = read("app/api/deep-reading/rule-engine/route.ts");
   assert.match(aiRoute, /checkDailyQuota/);
@@ -126,7 +126,9 @@ test("AI route keeps quota and DeepSeek while rule route has neither", () => {
   assert.match(aiRoute, /eventName: "ai_success"/);
   assert.match(aiRoute, /eventName: "reading_generation_success"/);
   assert.match(aiRoute, /source: "ai"/);
-  assert.doesNotMatch(ruleRoute, /checkDailyQuota|consumeDailyQuota|callDeepSeek|DEEPSEEK|api\.deepseek\.com/);
+  assert.doesNotMatch(ruleRoute, /checkDailyQuota|consumeDailyQuota|callDeepSeek/);
+  assert.match(ruleRoute, /verbalizeWithAiGuard/);
+  assert.match(ruleRoute, /deterministicVerbalizerFallback/);
   assert.match(ruleRoute, /eventName: "reading_generation_success"/);
   assert.match(ruleRoute, /source: "rule_engine"/);
 });

@@ -225,6 +225,69 @@ test("five-card stable bond synthesis separates trust, bond, maturity, and persi
   assert.ok(!concepts(result).includes("guarantee"));
 });
 
+test("spread ending survives whole-line synthesis when pair evidence is generic but supported", () => {
+  const result = synth(
+    context("最近一个月感情运势", {
+      domain: "relationship",
+      primaryTopic: "relationship_state",
+      intent: "state",
+      object: { type: "relationship", label: "感情运势" },
+      answerMode: "open"
+    }),
+    [32, 13, 36, 29, 4]
+  );
+
+  assert.equal(result.debugTrace?.mergedUnits.some((unit) => unit.id === "spread-process" && unit.concept === "ending"), true);
+  assert.equal(result.mainProcess, "ending");
+  assert.notEqual(result.mainProcess, "none");
+  assert.ok(result.keyTransitions.some((transition) => transition.type === "end"));
+  assert.ok(result.keyTransitions.some((transition) => transition.type === "burden"));
+});
+
+test("career Moon can still select vocation or recognition after relationship affinity fix", () => {
+  const result = synth(
+    context("未来职业方向如何？", {
+      domain: "career",
+      primaryTopic: "career_direction",
+      intent: "development",
+      object: { type: "job", label: "职业方向" },
+      answerMode: "open"
+    }),
+    [32, 16, 3]
+  );
+
+  const moon = buildInput(
+    context("未来职业方向如何？", {
+      domain: "career",
+      primaryTopic: "career_direction",
+      intent: "development",
+      object: { type: "job", label: "职业方向" },
+      answerMode: "open"
+    }),
+    [32, 16, 3]
+  ).resolvedCards.find((card) => card.cardId === 32);
+  assert.ok(["career_vocation", "recognition_reputation"].includes(moon?.primaryMode ?? ""));
+  assert.notEqual(result.mainProcess, "none");
+});
+
+test("general burden household transition renders as concrete structure instead of none", () => {
+  const result = synth(
+    context("这个状态接下来会怎么变化？", {
+      domain: "general",
+      primaryTopic: "general_development",
+      intent: "development",
+      object: { type: "event", label: "这个状态" },
+      answerMode: "open"
+    }),
+    [13, 36, 4]
+  );
+
+  assert.notEqual(result.mainProcess, "none");
+  assert.ok(["ending", "blocked", "mixed"].includes(result.mainProcess));
+  assert.ok(concepts(result).includes("burden_hardship"));
+  assert.ok(concepts(result).includes("household"));
+});
+
 test("five-card blocked information synthesis does not let Key or Anchor auto-resolve the spread", () => {
   const result = synth(
     context("这个消息阻碍后面能稳定解决吗？", {

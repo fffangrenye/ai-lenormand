@@ -4,6 +4,10 @@ import { AnalyticsTracker } from "@/components/AnalyticsTracker";
 import { CookieConsent } from "@/components/CookieConsent";
 import "./globals.css";
 
+const siteUrl = "https://flora.soul-ai-frontend.workers.dev";
+const siteTitle = "花语雷诺曼 · Flora Lenormand · 深度占卜";
+const siteDescription = "每日运势 · 是与否 · 深度占卜";
+
 const titleSerif = Noto_Serif_SC({
   weight: "500",
   display: "swap",
@@ -12,8 +16,34 @@ const titleSerif = Noto_Serif_SC({
 });
 
 export const metadata: Metadata = {
-  title: "AI Lenormand",
-  description: "Mobile-first Lenormand reading prototype"
+  metadataBase: new URL(siteUrl),
+  title: {
+    default: siteTitle,
+    template: "%s · Flora Lenormand"
+  },
+  description: siteDescription,
+  openGraph: {
+    title: siteTitle,
+    description: siteDescription,
+    url: siteUrl,
+    siteName: "Flora Lenormand",
+    locale: "zh_CN",
+    type: "website",
+    images: [
+      {
+        url: "/opengraph-image.png",
+        width: 1731,
+        height: 909,
+        alt: "Flora Lenormand 花语雷诺曼"
+      }
+    ]
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: siteTitle,
+    description: siteDescription,
+    images: ["/opengraph-image.png"]
+  }
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
