@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getSupabasePublicAuthConfig } from "@/lib/supabase-server";
+import { getSupabasePublicAuthConfig, getSupabaseServiceConfig, getSupabaseServiceHeaders } from "@/lib/supabase-server";
 
 type ResetPasswordRequest = {
   password?: string;
@@ -72,14 +72,17 @@ async function getAuthUser(accessToken: string) {
   return payload;
 }
 
-async function updatePassword(accessToken: string, password: string) {
-  const { url, anonKey } = getSupabasePublicAuthConfig();
-  const response = await fetch(`${url}/auth/v1/user`, {
+function getUserId(user: unknown) {
+  return user && typeof user === "object" && typeof (user as Record<string, unknown>).id === "string" ? String((user as Record<string, unknown>).id) : "";
+}
+
+async function updatePasswordByUserId(userId: string, password: string) {
+  const { url } = getSupabaseServiceConfig();
+  const response = await fetch(`${url}/auth/v1/admin/users/${encodeURIComponent(userId)}`, {
     method: "PUT",
     headers: {
       "Content-Type": "application/json",
-      apikey: anonKey,
-      Authorization: `Bearer ${accessToken}`
+      ...getSupabaseServiceHeaders()
     },
     body: JSON.stringify({ password })
   });
@@ -116,8 +119,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ code: "MISSING_RECOVERY_TOKEN", error: "重置链接无效或已过期，请重新申请密码重置。" }, { status: 400 });
     }
 
-    const updatedUser = await updatePassword(recoverySession.accessToken, password);
-    const user = recoverySession.user ?? updatedUser ?? (await getAuthUser(recoverySession.accessToken));
+    const verifiedUser = recoverySession.user ?? (await getAuthUser(recoverySession.accessToken));
+    const userId = getUserId(verifiedUser);
+    if (!userId) {
+      return NextResponse.json({ code: "MISSING_RECOVERY_USER", error: "重置链接无效或已过期，请重新申请密码重置。" }, { status: 400 });
+    }
+
+    const updatedUser = await updatePasswordByUserId(userId, password);
+    const user = updatedUser.user && typeof updatedUser.user === "object" ? updatedUser.user : updatedUser;
 
     return NextResponse.json({
       session: {

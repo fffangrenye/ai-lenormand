@@ -55,17 +55,21 @@ function readRecoverySessionFromLocation() {
 }
 
 function getFriendlyUpdateError(error: unknown) {
-  const message = error instanceof Error ? error.message.toLowerCase() : "";
-  if (message.includes("expired") || message.includes("invalid") || message.includes("失效")) {
+  const rawMessage = error instanceof Error ? error.message : "";
+  const message = rawMessage.toLowerCase();
+  if (message.includes("expired") || message.includes("invalid") || rawMessage.includes("失效")) {
     return "重置链接已失效，请重新申请。";
   }
   if (message.includes("rate") || message.includes("limit") || message.includes("频繁")) {
     return "请求过于频繁，请稍后再试。";
   }
+  if (message.includes("weak") || message.includes("password") || rawMessage.includes("密码")) {
+    return rawMessage || "新密码不符合要求，请换一个更强的密码。";
+  }
   if (message.includes("fetch") || message.includes("network") || message.includes("abort")) {
     return "网络暂时不稳定，请稍后再试。";
   }
-  return "密码更新失败，请稍后再试。";
+  return rawMessage || "密码更新失败，请稍后再试。";
 }
 
 export default function ResetPasswordPage() {
