@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
 import { Noto_Serif_SC } from "next/font/google";
-import { AnalyticsTracker } from "@/components/AnalyticsTracker";
 import { CookieConsent } from "@/components/CookieConsent";
 import { RecoveryRedirector } from "@/components/RecoveryRedirector";
 import { getPublicSiteUrl } from "@/lib/site-config";
@@ -56,7 +55,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="zh-CN">
       <body className={titleSerif.variable}>
         <RecoveryRedirector />
-        <AnalyticsTracker />
         {children}
         <CookieConsent />
       </body>

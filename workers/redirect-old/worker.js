@@ -1,4 +1,5 @@
-const TARGET_ORIGIN = "https://flora.floralenormand.workers.dev";
+const TARGET_ORIGIN = "https://flora.soul-ai-frontend.workers.dev";
+const REDIRECT_CACHE_CONTROL = "public, max-age=86400, s-maxage=86400";
 
 export default {
   async fetch(request) {
@@ -34,6 +35,12 @@ export default {
       );
     }
 
-    return Response.redirect(target.toString(), 301);
+    return new Response(null, {
+      status: 301,
+      headers: {
+        Location: target.toString(),
+        "Cache-Control": REDIRECT_CACHE_CONTROL
+      }
+    });
   }
 };

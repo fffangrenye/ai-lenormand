@@ -1,0 +1,44 @@
+/
+  Cache-Control: public, max-age=1800, s-maxage=86400, stale-while-revalidate=3600
+
+/forgot-password
+  Cache-Control: public, max-age=1800, s-maxage=86400, stale-while-revalidate=3600
+
+/login
+  Cache-Control: public, max-age=1800, s-maxage=86400, stale-while-revalidate=3600
+
+/daily
+  Cache-Control: public, max-age=1800, s-maxage=86400, stale-while-revalidate=3600
+
+/yes-no
+  Cache-Control: public, max-age=1800, s-maxage=86400, stale-while-revalidate=3600
+
+/deep
+  Cache-Control: public, max-age=1800, s-maxage=86400, stale-while-revalidate=3600
+
+/oracle
+  Cache-Control: public, max-age=1800, s-maxage=86400, stale-while-revalidate=3600
+
+/space
+  Cache-Control: public, max-age=1800, s-maxage=86400, stale-while-revalidate=3600
+
+/profile
+  Cache-Control: public, max-age=1800, s-maxage=86400, stale-while-revalidate=3600
+
+/knowledge
+  Cache-Control: public, max-age=1800, s-maxage=86400, stale-while-revalidate=3600
+
+/reset-password
+  Cache-Control: public, max-age=1800, s-maxage=86400, stale-while-revalidate=3600
+
+/robots.txt
+  Cache-Control: public, max-age=86400, s-maxage=86400
+
+/og-image.jpg
+  Cache-Control: public, max-age=604800, s-maxage=604800, immutable
+
+/cards/*
+  Cache-Control: public, max-age=604800, s-maxage=604800, immutable
+
+/_next/static/*
+  Cache-Control: public, max-age=31536000, s-maxage=31536000, immutable
