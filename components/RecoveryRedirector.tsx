@@ -11,7 +11,7 @@ export function RecoveryRedirector() {
     if (!hash) return;
 
     const hashParams = new URLSearchParams(hash.replace(/^#/, ""));
-    const isRecoveryLink = hashParams.get("type") === "recovery" && Boolean(hashParams.get("access_token"));
+    const isRecoveryLink = Boolean(hashParams.get("access_token"));
     const hasRecoveryError = Boolean(hashParams.get("error") || hashParams.get("error_description"));
     if ((!isRecoveryLink && !hasRecoveryError) || pathname === "/reset-password") return;
 

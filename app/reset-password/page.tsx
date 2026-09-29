@@ -13,6 +13,27 @@ type RecoverySession = {
   expiresIn: number;
 };
 
+function readRecoverySessionFromLocation() {
+  const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const searchParams = new URLSearchParams(window.location.search);
+  const params = hashParams.size ? hashParams : searchParams;
+  const accessToken = params.get("access_token") || "";
+  const refreshToken = params.get("refresh_token") || "";
+  const expiresIn = Number(params.get("expires_in") || 3600);
+  const errorDescription = params.get("error_description") || params.get("error");
+
+  return {
+    errorDescription,
+    session: accessToken
+      ? {
+          accessToken,
+          refreshToken,
+          expiresIn: Number.isFinite(expiresIn) ? expiresIn : 3600
+        }
+      : null
+  };
+}
+
 function getFriendlyUpdateError(error: unknown) {
   const message = error instanceof Error ? error.message.toLowerCase() : "";
   if (message.includes("expired") || message.includes("invalid") || message.includes("失效")) {
@@ -38,14 +59,10 @@ export default function ResetPasswordPage() {
   const [checkedLink, setCheckedLink] = useState(false);
 
   useEffect(() => {
-    const hashParams = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-    const accessToken = hashParams.get("access_token") || "";
-    const refreshToken = hashParams.get("refresh_token") || "";
-    const expiresIn = Number(hashParams.get("expires_in") || 3600);
-    const errorDescription = hashParams.get("error_description") || hashParams.get("error");
+    const { errorDescription, session } = readRecoverySessionFromLocation();
 
-    if (hashParams.get("type") === "recovery" && accessToken) {
-      setRecoverySession({ accessToken, refreshToken, expiresIn: Number.isFinite(expiresIn) ? expiresIn : 3600 });
+    if (session) {
+      setRecoverySession(session);
       setMessage("邮件链接已验证，请设置一个新密码。");
       window.history.replaceState(null, "", window.location.pathname);
     } else if (errorDescription) {

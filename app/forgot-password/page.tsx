@@ -1,11 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { trackAnalyticsEvent } from "@/components/AnalyticsTracker";
 import { requestPasswordResetCode } from "@/lib/project-store";
-import { getPasswordResetRedirectUrl } from "@/lib/site-config";
 
 function getFriendlyResetError(error: unknown) {
   const message = error instanceof Error ? error.message.toLowerCase() : "";
@@ -23,7 +22,17 @@ export default function ForgotPasswordPage() {
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const resetRedirectUrl = getPasswordResetRedirectUrl(typeof window !== "undefined" ? window.location.origin : undefined);
+  const [cooldownSeconds, setCooldownSeconds] = useState(0);
+
+  useEffect(() => {
+    if (cooldownSeconds <= 0) return;
+
+    const timer = window.setTimeout(() => {
+      setCooldownSeconds((value) => Math.max(0, value - 1));
+    }, 1000);
+
+    return () => window.clearTimeout(timer);
+  }, [cooldownSeconds]);
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -39,6 +48,8 @@ export default function ForgotPasswordPage() {
       return;
     }
 
+    if (cooldownSeconds > 0) return;
+
     setSubmitting(true);
     setError("");
     setMessage("");
@@ -46,7 +57,8 @@ export default function ForgotPasswordPage() {
 
     try {
       await requestPasswordResetCode(value);
-      setMessage("如果该邮箱已注册，我们会向它发送密码重置链接，请检查收件箱和垃圾邮件。");
+      setMessage("已发送");
+      setCooldownSeconds(60);
     } catch (resetError) {
       setError(getFriendlyResetError(resetError));
     } finally {
@@ -85,18 +97,13 @@ export default function ForgotPasswordPage() {
 
             {error ? <p className="mt-3 text-[13px] text-[#8E4D4A]">{error}</p> : null}
             {message ? <p className="mt-3 text-[13px] leading-5 text-ink/52">{message}</p> : null}
-            {message ? (
-              <p className="mt-3 rounded-[5px] border border-ink/8 bg-ivory/48 p-3 text-[12px] leading-5 text-ink/46">
-                新邮件应该跳回：{resetRedirectUrl}。如果邮件仍然打开旧的 AI Lenormand 地址，需要在 Supabase 的 URL Configuration 里把 Site URL 和 Redirect URLs 改成 Flora 地址。
-              </p>
-            ) : null}
 
             <button
               type="submit"
-              disabled={submitting}
+              disabled={submitting || cooldownSeconds > 0}
               className="mt-7 h-12 w-full rounded-full bg-[#6E2638] px-5 text-[13px] uppercase tracking-[0.12em] text-[#FFF9F2] shadow-soft transition active:scale-[0.99] disabled:opacity-60"
             >
-              {submitting ? "发送中" : "发送重置邮件"}
+              {submitting ? "发送中" : cooldownSeconds > 0 ? `${cooldownSeconds}s 后可重新发送` : "发送重置邮件"}
             </button>
 
             <Link
