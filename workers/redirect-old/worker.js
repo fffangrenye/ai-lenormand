@@ -1,10 +1,41 @@
 const TARGET_ORIGIN = "https://flora.soul-ai-frontend.workers.dev";
 const REDIRECT_CACHE_CONTROL = "public, max-age=86400, s-maxage=86400";
+const OLD_HOST_ROBOTS = `User-agent: *
+Disallow: /
+Crawl-delay: 60
+`;
+
+function isCommonProbePath(pathname) {
+  return (
+    pathname === "/favicon.ico" ||
+    pathname === "/apple-touch-icon.png" ||
+    pathname === "/apple-touch-icon-precomposed.png" ||
+    pathname.startsWith("/.well-known/")
+  );
+}
 
 export default {
   async fetch(request) {
     const url = new URL(request.url);
     const target = new URL(url.pathname + url.search, TARGET_ORIGIN);
+
+    if (url.pathname === "/robots.txt") {
+      return new Response(OLD_HOST_ROBOTS, {
+        headers: {
+          "Content-Type": "text/plain; charset=utf-8",
+          "Cache-Control": REDIRECT_CACHE_CONTROL
+        }
+      });
+    }
+
+    if (isCommonProbePath(url.pathname)) {
+      return new Response(null, {
+        status: 204,
+        headers: {
+          "Cache-Control": REDIRECT_CACHE_CONTROL
+        }
+      });
+    }
 
     if (url.pathname === "/reset-password" || url.pathname === "/login") {
       const targetWithoutHash = target.toString();

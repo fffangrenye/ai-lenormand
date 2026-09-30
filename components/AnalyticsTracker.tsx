@@ -1,7 +1,5 @@
 "use client";
 
-import { useEffect } from "react";
-import { usePathname } from "next/navigation";
 import { getSession } from "@/lib/project-store";
 
 const ANALYTICS_SESSION_KEY = "ai-lenormand:analytics-session";
@@ -140,19 +138,3 @@ export function trackAnalyticsEvent(eventName: AnalyticsEventName, metadata?: Re
   });
 }
 
-export function AnalyticsTracker() {
-  const pathname = usePathname();
-
-  useEffect(() => {
-    trackAnalyticsEvent("page_view", { title: document.title });
-
-    const searchMetadata = getSearchMetadata();
-    const hasCampaign = Object.keys(searchMetadata).length > 0;
-    const hasExternalReferrer = Boolean(document.referrer && getHost(document.referrer) !== window.location.hostname.toLowerCase());
-    if (hasCampaign || hasExternalReferrer) {
-      trackAnalyticsEvent("referral_landed", { title: document.title });
-    }
-  }, [pathname]);
-
-  return null;
-}
