@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 
 const SITE_URL = "https://flora.soul-ai-frontend.workers.dev";
+const OG_CANONICAL_URL = `${SITE_URL}/?og_refresh=20260930b`;
 const SITE_TITLE = "花语雷诺曼 · Flora Lenormand · 深度占卜";
 const SITE_DESCRIPTION = "每日运势 · 是与否 · 深度占卜";
 const OG_IMAGE_URL = `${SITE_URL}/og-image-live-20260930.jpg`;
@@ -16,7 +17,8 @@ function createSocialPreviewHtml() {
   const title = escapeHtml(SITE_TITLE);
   const description = escapeHtml(SITE_DESCRIPTION);
   const image = escapeHtml(OG_IMAGE_URL);
-  const url = escapeHtml(SITE_URL);
+  const url = escapeHtml(OG_CANONICAL_URL);
+  const visibleUrl = escapeHtml(SITE_URL);
 
   return `<!doctype html>
 <html lang="zh-CN">
@@ -46,7 +48,7 @@ function createSocialPreviewHtml() {
 <link rel="image_src" href="${image}">
 </head>
 <body>
-<a href="${url}">${title}</a>
+<a href="${visibleUrl}">${title}</a>
 </body>
 </html>`;
 }
