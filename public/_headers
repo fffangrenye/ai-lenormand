@@ -1,8 +1,8 @@
 /
-  Cache-Control: public, max-age=1800, s-maxage=86400, stale-while-revalidate=3600
+  Cache-Control: public, max-age=0, s-maxage=60, stale-while-revalidate=30
 
 /forgot-password
-  Cache-Control: public, max-age=1800, s-maxage=86400, stale-while-revalidate=3600
+  Cache-Control: public, max-age=0, s-maxage=60, stale-while-revalidate=30
 
 /login
   Cache-Control: public, max-age=1800, s-maxage=86400, stale-while-revalidate=3600
@@ -36,6 +36,9 @@
 
 /og-image.jpg
   Cache-Control: public, max-age=604800, s-maxage=604800, immutable
+
+/og-image-live-20260930.jpg
+  Cache-Control: public, max-age=0, s-maxage=60, stale-while-revalidate=30
 
 /cards/*
   Cache-Control: public, max-age=604800, s-maxage=604800, immutable

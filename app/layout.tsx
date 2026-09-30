@@ -8,7 +8,7 @@ import "./globals.css";
 const siteUrl = getPublicSiteUrl();
 const siteTitle = "花语雷诺曼 · Flora Lenormand · 深度占卜";
 const siteDescription = "每日运势 · 是与否 · 深度占卜";
-const ogImageUrl = `${siteUrl}/og-image.jpg`;
+const ogImageUrl = `${siteUrl}/og-image-live-20260930.jpg`;
 
 const titleSerif = Noto_Serif_SC({
   weight: "500",
