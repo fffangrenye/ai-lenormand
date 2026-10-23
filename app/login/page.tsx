@@ -57,11 +57,7 @@ function LoginClient() {
   const returnTo = searchParams.get("returnTo") || "/deep";
   const safeReturnTo = returnTo.startsWith("/") ? returnTo : "/deep";
 
-  useEffect(() => {
-    if (getSession()) {
-      router.replace(safeReturnTo);
-    }
-  }, [safeReturnTo, router]);
+  // Keep the login form usable when a cached session exists but the ledger is unavailable.
 
   async function submitAuth(mode: "signin" | "signup") {
     const value = email.trim();

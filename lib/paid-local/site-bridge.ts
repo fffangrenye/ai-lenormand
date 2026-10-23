@@ -8,6 +8,7 @@ export const paidOnlineSiteEnabled = process.env.NEXT_PUBLIC_PAID_ONLINE_MODE ==
 export const paidSiteEnabled = paidLocalSiteEnabled || paidOnlineSiteEnabled;
 export const paidLocalAIEnabled = paidLocalSiteEnabled && process.env.NEXT_PUBLIC_PAID_LOCAL_AI === "1";
 const sessionKey = "flora-paid-local:site-session";
+const legacyCache = new Map<string,PaidReading>();
 
 export class PaidSiteError extends Error {
   constructor(public code: string, message: string, public status: number) { super(message); }
@@ -22,6 +23,8 @@ export async function paidSiteRequest<T>(action = "", body?: Record<string, unkn
     catch { throw new PaidSiteError("UNAUTHORIZED", "请先登录你的 Flora 账号。", 401); }
     if (!accessToken) throw new PaidSiteError("UNAUTHORIZED", "请先登录你的 Flora 账号。", 401);
   }
+  const cacheOwner = getPaidSiteSession()?.userId || "";
+  if(!body && action.startsWith("readings/")){const saved=legacyCache.get(`${cacheOwner}:${action.slice(9)}`);if(saved)return saved as T;}
   const response = await fetch(`${paidOnlineSiteEnabled ? "/api/flora" : "/api/local-paid"}${action ? `/${action}` : ""}`, {
     method: body ? "POST" : "GET", credentials: "same-origin", cache: "no-store",
     headers: { "Content-Type": "application/json", ...(paidOnlineSiteEnabled ? { Authorization: `Bearer ${accessToken}` } : { "x-local-paid": "1" }) },
@@ -29,9 +32,10 @@ export async function paidSiteRequest<T>(action = "", body?: Record<string, unkn
   });
   const payload = await response.json() as { code?: string; message?: string };
   if (!response.ok) {
-    if (response.status === 401 && !action.startsWith("admin")) window.localStorage.removeItem(sessionKey);
+    if (response.status === 401 && !action.startsWith("admin")){window.localStorage.removeItem(paidOnlineSiteEnabled ? "ai-lenormand:auth-session" : sessionKey);legacyCache.clear();}
     throw new PaidSiteError(payload.code || "REQUEST_ERROR", response.status === 401 ? "登录状态已过期，请重新登录。" : payload.message || "请求失败，请重试。", response.status);
   }
+  if(!body && /^projects\/[^/]+\/readings$/.test(action) && Array.isArray(payload))for(const reading of payload as PaidReading[])if(reading.legacyRestored)legacyCache.set(`${cacheOwner}:${reading.id}`,reading);
   return payload as T;
 }
 function rememberSession(overview: PaidOverview): AuthSession {
@@ -44,6 +48,7 @@ export function getPaidSiteSession(): AuthSession | null {
   try { return JSON.parse(window.localStorage.getItem(paidOnlineSiteEnabled ? "ai-lenormand:auth-session" : sessionKey) || "null") as AuthSession | null; } catch { return null; }
 }
 export async function restorePaidSiteSession() {
+  if(paidOnlineSiteEnabled){try{const {getValidSession}=await import("../project-store");return await getValidSession();}catch{return null;}}
   try { const overview = await paidSiteRequest<PaidOverview>(); return paidOnlineSiteEnabled ? getPaidSiteSession() : rememberSession(overview); } catch { return null; }
 }
 export async function loginPaidSite(account: string) { return rememberSession(await paidSiteRequest<PaidOverview>("session", { account })); }

@@ -8,6 +8,10 @@ type Env=TrafficEnvironment & {FLORA_API:{fetch(request:Request):Promise<Respons
 export default {
   async fetch(request:Request,env:Env,ctx:unknown){
     const url=new URL(request.url),path=url.pathname;
+    // Incident switch: telemetry must not consume ledger capacity during recovery.
+    if(path==="/api/flora/analytics" || path==="/api/analytics/event")return new Response(null,{status:204,headers:{"Cache-Control":"no-store"}});
+    if((path==="/api/flora" || path.startsWith("/api/flora/")) && Date.now()<Date.UTC(2026,9,24))return Response.json({code:"DATABASE_QUOTA_RESET",message:"今日数据库免费额度已用完，预计北京时间10月24日08:00重置。请届时刷新重试，账号、历史和花瓣仍然保留。"},{status:503,headers:{"Cache-Control":"no-store","Retry-After":"300"}});
+    if((path==="/deep" || path.startsWith("/deep/project/")) && Date.now()<Date.UTC(2026,9,24))return new Response(`<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Flora · 服务恢复中</title><body style="margin:0;background:#FBF8F0;color:#423835;font-family:serif"><main style="max-width:480px;margin:15vh auto;padding:30px;line-height:1.9"><p>FLORA LENORMAND</p><h1 style="font-size:26px">深度占卜暂时休息一下</h1><p>今日数据库免费额度已用完，预计北京时间10月24日08:00重置。账号、历史和花瓣均已保留。</p><p>我们已暂停重复请求，页面不会继续来回跳转。请在额度重置后刷新。</p><a style="color:#6E2638" href="/">返回首页</a>　<a style="color:#6E2638" href="/login">登录</a>　<a style="color:#6E2638" href="/yes-no">是与否</a></main></body></html>`,{headers:{"Content-Type":"text/html;charset=utf-8","Cache-Control":"no-store","X-Frame-Options":"DENY"}});
     if(url.protocol==="http:" && !["localhost","127.0.0.1"].includes(url.hostname)){url.protocol="https:";return Response.redirect(url.href,308);}
     if(url.hostname==="www.floralenormand.site" && ["GET","HEAD"].includes(request.method) && !path.startsWith("/api/")){url.hostname="floralenormand.site";return Response.redirect(url.href,308);}
     if(path.startsWith("/_next/static/") || path.startsWith("/cards/") || /\.(?:png|jpg|jpeg|webp|gif|svg|ico|woff2?|txt|xml)$/.test(path))return env.ASSETS.fetch(request);
