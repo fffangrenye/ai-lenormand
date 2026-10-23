@@ -61,3 +61,28 @@ test("private maintenance rejects unsigned, modified, expired and mismatched-tar
   assert.equal((await verifyRestoreJob(request(job),key)).expectedUserId,s.user.id);
   for(const r of [request(job,"a".repeat(64)),request({...job,expiresAt:Date.now()-1}),request({...job,expectedUserId:randomUUID()})])await assert.rejects(verifyRestoreJob(r,key),{code:"FORBIDDEN"});
 });
+
+test("unfinished and blank legacy records remain exact read-only archives without invented cards or AI unlocks",()=>{
+  for(const status of ["failed","quota_limited","generating","drawing","completed"]){
+    const {db,store,uid,rid,s}=setup();try{
+      s.readings[0].status=status;s.readings[0].interpretation="";s.readings[0].core_conclusion="";
+      if(status!=="completed")s.cards=s.cards.slice(0,status==="drawing"?0:1);
+      const receipt=store.restoreLegacy(s,randomUUID(),false);assert.equal(receipt.verifiedReadings,1);
+      const saved=store.reading(uid,rid);assert.deepEqual(saved.result?.legacy?.sourceRecord,s.readings[0]);assert.deepEqual(saved.result?.legacy?.sourceCards,s.cards);
+      assert.equal(saved.cards.length,s.cards.length);assert.match(saved.result!.interpretation,/未.*正文/);
+      if(status!=="completed")assert.match(saved.result!.interpretation,/旧站历史记录/);
+      assert.equal(store.reserveReading(uid,rid).runId,null);assert.equal(saved.followUpsRemaining,0);
+      assert.throws(()=>store.reserveFollowUp(uid,rid,"补写",randomUUID()),{code:"LEGACY_READ_ONLY"});
+      assert.equal(db.prepare("SELECT count(*) n FROM credit_batches").get()?.n,0);
+      assert.equal(db.prepare("SELECT count(*) n FROM reading_runs").get()?.n,0);
+    }finally{db.close();}
+  }
+});
+
+test("equivalent JSON field ordering does not duplicate or invalidate a restored source",()=>{
+ const {db,store,s}=setup();try{
+  store.restoreLegacy(s,"bulk-order-test-a",false);
+  const reordered=JSON.parse(JSON.stringify(s,(_key,value)=>value && typeof value==="object" && !Array.isArray(value)?Object.fromEntries(Object.entries(value).reverse()):value));
+  const receipt=store.restoreLegacy(reordered,"bulk-order-test-b",false);assert.equal(receipt.verifiedReadings,1);assert.equal(receipt.inserted?.readings,0);
+ }finally{db.close();}
+});

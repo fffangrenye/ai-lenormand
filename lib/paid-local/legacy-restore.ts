@@ -10,7 +10,8 @@ type Port={one:(sql:string,...args:SQLInputValue[])=>Row|undefined;all:(sql:stri
 const fail=(message:string)=>{throw new LocalPaidError("LEGACY_RESTORE_CONFLICT",message,409);};
 const text=(value:unknown)=>typeof value==="string" ? value : "";
 const date=(value:unknown)=>{const d=new Date(text(value));if(!Number.isFinite(d.getTime()))fail("历史记录时间无效。");return d.toISOString();};
-const hash=(value:unknown)=>createHash("sha256").update(JSON.stringify(value)).digest("hex");
+const canonical=(value:unknown):unknown=>Array.isArray(value)?value.map(canonical):value && typeof value==="object"?Object.fromEntries(Object.entries(value).sort(([a],[b])=>a.localeCompare(b)).map(([key,item])=>[key,canonical(item)])):value;
+const hash=(value:unknown)=>createHash("sha256").update(JSON.stringify(canonical(value))).digest("hex");
 
 export function restoreLegacyHistory(db:Port,s:LegacySnapshot,jobId:string,dryRun:boolean) {
   if(s?.format!=="flora-legacy-v1" || s.sourceProject!=="pgivpvywizvtxjgqkvya" || !/^[a-f0-9-]{36}$/i.test(s.user?.id||"") || !s.user?.email_confirmed_at || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.user?.email||""))fail("历史来源或账号身份无效。");
@@ -21,10 +22,11 @@ export function restoreLegacyHistory(db:Port,s:LegacySnapshot,jobId:string,dryRu
   for(const items of [s.projects,s.readings,s.cards,s.messages])if(new Set(items.map(r=>r.id)).size!==items.length)fail("历史数据有重复标识。");
   for(const p of s.projects){if(p.user_id!==uid || !p.id || !text(p.title))fail("项目不属于目标账号或内容无效。");date(p.created_at);date(p.updated_at);date(p.last_opened_at);}
   for(const r of s.readings){
-    if(r.user_id!==uid || !projects.has(text(r.project_id)) || r.status!=="completed" || !text(r.question) || !text(r.interpretation) || !["three_card","five_card_linear"].includes(text(r.spread_type)))fail("解读归属、完成状态或牌阵无效。");
+    if(r.user_id!==uid || !projects.has(text(r.project_id)) || !["completed","failed","quota_limited","generating","drawing"].includes(text(r.status)) || !text(r.question) || !["three_card","five_card_linear"].includes(text(r.spread_type)))fail("解读归属、原状态或牌阵无效。");
     date(r.created_at);if(r.completed_at)date(r.completed_at);
     const cards=s.cards.filter(c=>c.reading_id===r.id);
-    if(cards.length!==(r.spread_type==="three_card"?3:5) || cards.some(c=>!lenormandCards.some(card=>card.slug===c.card_slug)))fail("历史抽牌不完整或牌号无效。");
+    const expected=r.spread_type==="three_card"?3:5;
+    if(cards.length>expected || (r.status==="completed" && cards.length!==expected) || cards.some(c=>!lenormandCards.some(card=>card.slug===c.card_slug)))fail("历史抽牌数量或牌号无效。");
   }
   for(const c of s.cards)if(!readings.has(text(c.reading_id)))fail("抽牌没有对应的目标账号解读。");
   for(const m of s.messages){if(m.user_id!==uid || !readings.has(text(m.reading_id)) || readings.get(text(m.reading_id))!.project_id!==m.project_id || !["user","assistant"].includes(text(m.role)) || !text(m.content))fail("追问归属或格式无效。");date(m.created_at);}
@@ -40,7 +42,7 @@ export function restoreLegacyHistory(db:Port,s:LegacySnapshot,jobId:string,dryRu
     if(dryRun)return {dryRun:true,userId:uid,email,sourceHash,sourceCounts,missing,financial:before};
     db.run("CREATE TABLE IF NOT EXISTS legacy_restore_jobs(job_id TEXT PRIMARY KEY,user_id TEXT NOT NULL,source_hash TEXT NOT NULL,receipt_json TEXT NOT NULL,created_at TEXT NOT NULL)");
     const old=db.one("SELECT user_id,source_hash,receipt_json FROM legacy_restore_jobs WHERE job_id=?",jobId);
-    if(old){if(old.user_id!==uid || old.source_hash!==sourceHash)fail("恢复批次已用于不同数据。");return {...JSON.parse(String(old.receipt_json)),alreadyRestored:true};}
+    if(old){const oldOrderHash=createHash("sha256").update(JSON.stringify(s)).digest("hex");if(old.user_id!==uid || (old.source_hash!==sourceHash && old.source_hash!==oldOrderHash))fail("恢复批次已用于不同数据。");return {...JSON.parse(String(old.receipt_json)),alreadyRestored:true};}
     const now=new Date(db.clock()).toISOString();
     db.run("INSERT OR IGNORE INTO local_users(id,label,kind,created_at) VALUES(?,?,'legacy',?)",uid,email,now);
     for(const p of s.projects)db.run("INSERT OR IGNORE INTO local_projects(id,user_id,title,background,memory_summary,created_at,updated_at,last_opened_at) VALUES(?,?,?,?,?,?,?,?)",text(p.id),uid,text(p.title),text(p.background),text(p.memory_summary),date(p.created_at),date(p.updated_at),date(p.last_opened_at));
@@ -49,7 +51,12 @@ export function restoreLegacyHistory(db:Port,s:LegacySnapshot,jobId:string,dryRu
       const originalCards=s.cards.filter(c=>c.reading_id===r.id).sort((a,b)=>Number(a.card_number)-Number(b.card_number));
       const cards=originalCards.map(c=>{const card=lenormandCards.find(x=>x.slug===c.card_slug)!;return {number:card.number,slug:card.slug,nameEn:text(c.name_en),nameZh:text(c.name_zh),position:text(c.position)};});
       const messages=s.messages.filter(m=>m.reading_id===r.id);
-      const result={conclusion:text(r.core_conclusion),interpretation:text(r.interpretation),advice:"",uncertainty:text(r.uncertainty),model:text(r.generation_model)||"legacy_restored",promptVersion:"legacy-restored-v1",legacy:{sourceRecord:r,sourceCards:originalCards,messages}};
+      const states:Record<string,string>={failed:"生成失败",quota_limited:"当时额度不足",generating:"当时停留在生成中",drawing:"当时尚未完成抽牌"};
+      const note=r.status!=="completed" ? `旧站历史记录：${states[text(r.status)]}。以下仅展示旧站实际保存的内容，没有重新生成解读。` : "";
+      const interpretation=[note,text(r.interpretation)||"旧站未保存解读正文。原问题和已保存的牌面已保留，未补写内容。"].filter(Boolean).join("\n\n");
+      // Completed here means a frozen, readable archive, not a newly completed AI run.
+      // The original status and every source field remain unchanged in sourceRecord.
+      const result={conclusion:text(r.core_conclusion)||(note?"旧站未完成的记录":""),interpretation,advice:"",uncertainty:text(r.uncertainty),model:text(r.generation_model)||"legacy_restored",promptVersion:"legacy-restored-v1",legacy:{sourceRecord:r,sourceCards:originalCards,messages}};
       db.run("INSERT INTO paid_readings(id,user_id,request_key,question,spread,cards_json,state,result_json,created_at,choices_json) VALUES(?,?,?,?,?,?,'completed',?,?,'[]')",text(r.id),uid,`legacy:supabase:${r.id}`,text(r.question),text(r.spread_type),JSON.stringify(cards),JSON.stringify(result),date(r.created_at));
       db.run("INSERT INTO local_reading_projects(reading_id,project_id) VALUES(?,?)",text(r.id),text(r.project_id));
     }
