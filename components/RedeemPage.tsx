@@ -7,13 +7,13 @@ import { AccountFrame } from "./AccountPages";
 import { FeedbackContact, paymentButton } from "./PaymentBits";
 import { CodeHistory } from "./RedemptionHistory";
 import { paidOnlineSiteEnabled, paidSiteRequest, PaidSiteError } from "@/lib/paid-local/site-bridge";
-import type { PaidOverview, RedemptionResult } from "@/lib/paid-local/types";
+import type { PaidSummary, RedemptionResult } from "@/lib/paid-local/types";
 
 export function RedeemClient() {
   const router=useRouter(),params=useSearchParams(),inFlight=useRef(false);
-  const [account,setAccount]=useState<PaidOverview|null>(null),[code,setCode]=useState(""),[result,setResult]=useState<RedemptionResult|null>(null),[error,setError]=useState(""),[busy,setBusy]=useState(false);
+  const [account,setAccount]=useState<PaidSummary|null>(null),[code,setCode]=useState(""),[result,setResult]=useState<RedemptionResult|null>(null),[error,setError]=useState(""),[busy,setBusy]=useState(false);
   const readingId=params.get("readingId")||"";
-  useEffect(()=>{let active=true;void paidSiteRequest<PaidOverview>().then(data=>{if(active)setAccount(data);}).catch(cause=>{
+  useEffect(()=>{let active=true;void paidSiteRequest<PaidSummary>("summary").then(data=>{if(active)setAccount(data);}).catch(cause=>{
     if(!active)return;
     if(cause instanceof PaidSiteError && cause.status===401)router.replace(`/login?returnTo=${encodeURIComponent(`/redeem${readingId ? `?readingId=${encodeURIComponent(readingId)}` : ""}`)}`);
     else setError(cause instanceof Error ? cause.message : "账户读取失败，请刷新后重试。");

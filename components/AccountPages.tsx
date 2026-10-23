@@ -2,14 +2,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowUpRight, Flower2, LogOut, UserRound } from "lucide-react";
 import { AccountMenu } from "@/components/AccountMenu";
 import { getDeepSpread } from "@/lib/deep-spreads";
 import { FeedbackContact, OrderList } from "@/components/PaymentBits";
 import { CodeHistory } from "./RedemptionHistory";
 import { PaidSiteError, paidSiteEnabled, paidSiteRequest } from "@/lib/paid-local/site-bridge";
-import type { PaidOverview, LocalOrder } from "@/lib/paid-local/types";
+import type { PaidOverview, PaidReadingPage, LocalOrder } from "@/lib/paid-local/types";
 import { getSession, signOut } from "@/lib/project-store";
 
 export function AccountFrame({ title, children }: { title: string; children: React.ReactNode }) {
@@ -37,7 +37,10 @@ export function ProfileClient() {
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<"usage" | "ledger" | "orders">("usage");
   const [period, setPeriod] = useState("all");
+  const [loadingMore, setLoadingMore] = useState(false);
+  const sequence = useRef(0);
   const refresh = useCallback(async () => {
+    const request = ++sequence.current;
     setLoading(true); setError("");
     try {
       if (!paidSiteEnabled) {
@@ -45,14 +48,25 @@ export function ProfileClient() {
         else setError("消费管理正在本地预览，正式站暂未开放。");
         return;
       }
-      const [account, purchases] = await Promise.all([paidSiteRequest<PaidOverview>(), paidSiteRequest<LocalOrder[]>("orders")]);
-      setWallet(account); setOrders(purchases);
+      const [account, purchases, usagePage] = await Promise.all([paidSiteRequest<PaidOverview>(), paidSiteRequest<LocalOrder[]>("orders"), period === "all" ? Promise.resolve(null) : paidSiteRequest<PaidReadingPage>(`usage?days=${period}`)]);
+      if(request !== sequence.current)return;
+      setWallet(usagePage ? {...account,readings:usagePage.items,historyCursor:usagePage.nextCursor} : account); setOrders(purchases);
     } catch (cause) {
+      if(request !== sequence.current)return;
       if (cause instanceof PaidSiteError && cause.status === 401) router.replace("/login?returnTo=%2Fprofile");
       else setError(cause instanceof Error ? cause.message : "暂时无法读取账户，请重试。");
-    } finally { setLoading(false); }
-  }, [router]);
-  useEffect(() => { void refresh(); const focus = () => { void refresh(); }; window.addEventListener("focus", focus); return () => window.removeEventListener("focus", focus); }, [refresh]);
+    } finally { if(request === sequence.current)setLoading(false); }
+  }, [router, period]);
+  useEffect(() => { void refresh(); const focus = () => { if(document.visibilityState === "visible")void refresh(); }; window.addEventListener("focus", focus); return () => {sequence.current++; window.removeEventListener("focus", focus);}; }, [refresh]);
+  async function loadMore() {
+    if (!wallet?.historyCursor || loadingMore) return;
+    const request = sequence.current; setLoadingMore(true);
+    try {
+      const page = await paidSiteRequest<PaidReadingPage>(`usage?days=${period}&cursor=${encodeURIComponent(wallet.historyCursor)}`);
+      if(request === sequence.current)setWallet(current => current ? {...current,readings:Array.from(new Map([...current.readings,...page.items].map(item=>[item.id,item])).values()),historyCursor:page.nextCursor} : current);
+    } catch { if(request === sequence.current)setError("更早的消费记录暂时无法读取，请重试。"); }
+    finally { setLoadingMore(false); }
+  }
   const cutoff = period === "all" ? 0 : Date.now() - Number(period) * 86400000;
   const usage = wallet?.readings.filter((reading) => reading.state === "completed" && new Date(reading.completedAt || reading.createdAt).getTime() >= cutoff).sort((a, b) => (b.completedAt || b.createdAt).localeCompare(a.completedAt || a.createdAt)) || [];
   const ledger = wallet?.ledger.filter((entry) => new Date(entry.createdAt).getTime() >= cutoff) || [];
@@ -79,9 +93,10 @@ export function ProfileClient() {
           {tab !== "orders" && <select aria-label="记录时间范围" value={period} onChange={(event) => setPeriod(event.target.value)} className="mb-2 h-9 rounded-full border border-ink/10 bg-transparent px-3 text-xs text-ink/50"><option value="all">全部时间</option><option value="30">最近 30 天</option><option value="7">最近 7 天</option></select>}
         </div>
         <div className="min-h-[220px]" aria-live="polite">
-          {tab === "usage" && (usage.length ? <ul className="divide-y divide-ink/8">{usage.map((reading) => <li key={reading.id} className="flex items-center justify-between gap-4 py-5"><div className="min-w-0"><Link href={reading.projectId ? `/deep/project/${reading.projectId}?view=history` : "/deep"} className="block truncate text-sm hover:text-[#6E2638]">{reading.question}</Link><p className="mt-2 text-xs text-ink/40">{dateLabel(reading.completedAt || reading.createdAt)} · {getDeepSpread(reading.spread).name} · 剩余 {reading.followUpsRemaining} 次追问</p></div><span className="shrink-0 text-sm text-[#6E2638]">−1 花瓣</span></li>)}</ul> : <EmptyRecord text="这段时间还没有解读消耗。抽牌后解锁的记录会出现在这里。" />)}
+          {tab === "usage" && (usage.length ? <ul className="divide-y divide-ink/8">{usage.map((reading) => <li key={reading.id} className="flex items-center justify-between gap-4 py-5"><div className="min-w-0"><Link href={reading.projectId ? `/deep/project/${reading.projectId}?view=history` : "/deep"} className="block truncate text-sm hover:text-[#6E2638]">{reading.question}</Link><p className="mt-2 text-xs text-ink/40">{dateLabel(reading.completedAt || reading.createdAt)} · {getDeepSpread(reading.spread).name} · 剩余 {reading.followUpsRemaining} 次追问</p></div><span className="shrink-0 text-sm text-[#6E2638]">{reading.legacyRestored ? "旧站留存" : "−1 花瓣"}</span></li>)}</ul> : <EmptyRecord text="这段时间还没有解读消耗。抽牌后解锁的记录会出现在这里。" />)}
           {tab === "ledger" && (ledger.length ? <><ul className="divide-y divide-ink/8">{ledger.map((entry) => <li key={entry.id} className="flex items-center justify-between gap-4 py-5"><div className="min-w-0"><p className="break-words text-sm">{({ welcome: "首次体验赠送", legacy_launch: "老用户启用赠送", reserve: "深度解读 · 预留花瓣", consume: "深度解读 · 完成扣除", release: "解读未完成 · 花瓣返还" } as Record<string, string>)[entry.kind] || entry.reason}</p><p className="mt-2 text-xs text-ink/40">{dateLabel(entry.createdAt)}{entry.reservedDelta > 0 ? " · 当时预留可用余额" : entry.consumedDelta > 0 ? " · 解读完成" : ""}</p></div><div className="shrink-0 text-right text-sm text-[#6E2638]">{entry.availableDelta === 0 ? `消耗 ${entry.consumedDelta} 花瓣` : `${entry.availableDelta > 0 ? "+" : "−"}${Math.abs(entry.availableDelta)} 花瓣`}</div></li>)}</ul><p className="py-3 text-xs leading-5 text-ink/40">展示最近 200 条花瓣变动；预留与结算属于同一笔解读，不会重复扣除。</p></> : <EmptyRecord text="这段时间没有花瓣变动。" />)}
           {tab === "orders" && <><CodeHistory />{orders.length>0 && <details className="mt-8 text-sm text-ink/50"><summary className="min-h-11 cursor-pointer">之前的本地模拟订单</summary><OrderList orders={orders}/></details>}</>}
+          {tab === "usage" && wallet.historyCursor && <button type="button" disabled={loadingMore || loading} onClick={()=>void loadMore()} className="my-4 min-h-11 w-full rounded-full border border-ink/15 text-sm text-ink/60 disabled:opacity-50">{loadingMore ? "正在读取…" : "查看更早的消费记录"}</button>}
         </div>
       </section>
     </>}

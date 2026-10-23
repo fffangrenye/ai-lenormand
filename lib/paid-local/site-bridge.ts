@@ -1,14 +1,31 @@
 "use client";
 
 import type { AuthSession, DeepQuota, FollowUpMessage, ReadingWithCards } from "../project-store";
-import type { PaidOverview, PaidReading } from "./types";
+import type { PaidOverview, PaidReading, PaidSummary } from "./types";
 
 export const paidLocalSiteEnabled = process.env.NEXT_PUBLIC_PAID_LOCAL_MODE === "1";
 export const paidOnlineSiteEnabled = process.env.NEXT_PUBLIC_PAID_ONLINE_MODE === "1";
 export const paidSiteEnabled = paidLocalSiteEnabled || paidOnlineSiteEnabled;
 export const paidLocalAIEnabled = paidLocalSiteEnabled && process.env.NEXT_PUBLIC_PAID_LOCAL_AI === "1";
 const sessionKey = "flora-paid-local:site-session";
-const legacyCache = new Map<string,PaidReading>();
+const cache = new Map<string, { value: unknown; expires: number }>();
+const pending = new Map<string, Promise<unknown>>();
+let cacheEpoch = 0;
+let activeOwner = "";
+function invalidate() { cacheEpoch++; cache.clear(); pending.clear(); }
+function cacheTtl(action: string) {
+  if (action.startsWith("admin")) return 0;
+  if (action === "daily-status") return 60_000;
+  if (action.startsWith("daily")) return 30_000;
+  if (action === "summary") return 15_000;
+  if (action === "card-catalog" || action === "catalog") return 300_000;
+  if (!action || action.startsWith("usage") || action === "projects" || action === "redemptions" || action === "orders") return 30_000;
+  return 10_000;
+}
+function save(key: string, value: unknown, ttl: number) {
+  if (cache.size >= 200) cache.delete(cache.keys().next().value!);
+  cache.set(key, { value, expires: Date.now() + ttl });
+}
 
 export class PaidSiteError extends Error {
   constructor(public code: string, message: string, public status: number) { super(message); }
@@ -17,14 +34,23 @@ export async function paidSiteRequest<T>(action = "", body?: Record<string, unkn
   if (!paidSiteEnabled || typeof window === "undefined") throw new Error("花瓣服务暂未开启。");
   if (paidLocalSiteEnabled && !["127.0.0.1", "localhost"].includes(window.location.hostname)) throw new Error("本地测试接口未开启。");
   let accessToken: string | undefined;
+  let verifiedOwner = "";
   if (paidOnlineSiteEnabled) {
     const { getValidSession } = await import("../project-store");
-    try { accessToken = (await getValidSession())?.accessToken; }
+    try { const session = await getValidSession(); accessToken = session?.accessToken; verifiedOwner = session?.userId || ""; }
     catch { throw new PaidSiteError("UNAUTHORIZED", "请先登录你的 Flora 账号。", 401); }
     if (!accessToken) throw new PaidSiteError("UNAUTHORIZED", "请先登录你的 Flora 账号。", 401);
   }
-  const cacheOwner = getPaidSiteSession()?.userId || "";
-  if(!body && action.startsWith("readings/")){const saved=legacyCache.get(`${cacheOwner}:${action.slice(9)}`);if(saved)return saved as T;}
+  const cacheOwner = verifiedOwner || getPaidSiteSession()?.userId || "";
+  if (activeOwner !== cacheOwner) { invalidate(); activeOwner = cacheOwner; }
+  const day = action.startsWith("daily") ? `:${new Date(Date.now()+8*3600_000).toISOString().slice(0,10)}` : "";
+  const key = `${cacheOwner}:${action}${day}`, epoch = cacheEpoch;
+  if (!body) {
+    const saved = cache.get(key);
+    if (saved && saved.expires > Date.now()) return saved.value as T;
+    const inflight = pending.get(key); if (inflight) return inflight as Promise<T>;
+  } else invalidate();
+  const request = (async () => {
   const response = await fetch(`${paidOnlineSiteEnabled ? "/api/flora" : "/api/local-paid"}${action ? `/${action}` : ""}`, {
     method: body ? "POST" : "GET", credentials: "same-origin", cache: "no-store",
     headers: { "Content-Type": "application/json", ...(paidOnlineSiteEnabled ? { Authorization: `Bearer ${accessToken}` } : { "x-local-paid": "1" }) },
@@ -32,11 +58,21 @@ export async function paidSiteRequest<T>(action = "", body?: Record<string, unkn
   });
   const payload = await response.json() as { code?: string; message?: string };
   if (!response.ok) {
-    if (response.status === 401 && !action.startsWith("admin")){window.localStorage.removeItem(paidOnlineSiteEnabled ? "ai-lenormand:auth-session" : sessionKey);legacyCache.clear();}
+    if (response.status === 401 && !action.startsWith("admin")){window.localStorage.removeItem(paidOnlineSiteEnabled ? "ai-lenormand:auth-session" : sessionKey);invalidate();}
     throw new PaidSiteError(payload.code || "REQUEST_ERROR", response.status === 401 ? "登录状态已过期，请重新登录。" : payload.message || "请求失败，请重试。", response.status);
   }
-  if(!body && /^projects\/[^/]+\/readings$/.test(action) && Array.isArray(payload))for(const reading of payload as PaidReading[])if(reading.legacyRestored)legacyCache.set(`${cacheOwner}:${reading.id}`,reading);
+  // A mutation or account change must not let an older in-flight GET refill caches.
+  if (getPaidSiteSession()?.userId === cacheOwner && (body || epoch === cacheEpoch)) {
+    if (body) invalidate();
+    else save(key, payload, cacheTtl(action));
+    const page = payload as unknown as {items?: PaidReading[]; id?: string; state?: string};
+    const readings = Array.isArray(payload) ? payload as PaidReading[] : page.items || (page.id && page.state ? [payload as unknown as PaidReading] : []);
+    for (const reading of readings) if (reading.id && reading.followUps) save(`${cacheOwner}:readings/${reading.id}`, reading, reading.legacyRestored ? 300_000 : 10_000);
+  }
   return payload as T;
+  })();
+  if (!body) pending.set(key, request);
+  try { return await request; } finally { if (pending.get(key) === request) pending.delete(key); }
 }
 function rememberSession(overview: PaidOverview): AuthSession {
   const session = { email: `${overview.user.id}@local.invalid`, userId: overview.user.id, accessToken: "local-cookie-session" };
@@ -53,6 +89,7 @@ export async function restorePaidSiteSession() {
 }
 export async function loginPaidSite(account: string) { return rememberSession(await paidSiteRequest<PaidOverview>("session", { account })); }
 export function logoutPaidSite() {
+  invalidate();
   window.localStorage.removeItem(sessionKey);
   void paidSiteRequest("logout", {}).catch(() => undefined);
 }
@@ -75,7 +112,7 @@ export function paidFollowUpsForSite(reading: PaidReading): FollowUpMessage[] {
   ])];
 }
 export async function paidSiteQuota(): Promise<DeepQuota> {
-  const overview = await paidSiteRequest<PaidOverview>();
+  const overview = await paidSiteRequest<PaidSummary>("summary");
   return { remaining: overview.balance.available, used: overview.balance.consumed, limit: overview.balance.available + overview.balance.consumed + overview.balance.reserved, resetLabel: "次数长期有效" };
 }
 export function stablePaidRequestKey(scope: string) {

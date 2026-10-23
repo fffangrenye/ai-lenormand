@@ -109,7 +109,8 @@ function prunePrivateBuildArtifacts(directory) {
   for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
     const target = path.join(directory, entry.name);
     if (entry.isSymbolicLink()) continue;
-    if (entry.name === ".local-paid" || entry.name.startsWith(".env")) {
+    const wranglerAccountCache = entry.name === "wrangler-account.json" && /[\\/]node_modules[\\/]\.cache[\\/]wrangler$/.test(directory);
+    if (entry.name === ".local-paid" || entry.name.startsWith(".env") || wranglerAccountCache) {
       assertInsideRoot(target);
       fs.rmSync(target, { recursive: entry.isDirectory(), force: true });
     } else if (entry.isDirectory()) prunePrivateBuildArtifacts(target);

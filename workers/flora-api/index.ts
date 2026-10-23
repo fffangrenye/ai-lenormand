@@ -5,6 +5,7 @@ import { LocalPaidError, isLocalPaidError } from "../../lib/paid-local/guard";
 import { cardCatalog } from "../../lib/paid-local/card-catalog";
 import type { PaidSpread } from "../../lib/paid-local/types";
 import { schema } from "./schema";
+import { costIndexes } from "./cost-indexes";
 import { recoverPassword } from "./password-recovery";
 import { ensureTelemetrySchema, readDailyReport, recordSiteEvent, SITE_HOST, type SiteEvent } from "./telemetry";
 import {verifyRestoreJob} from "./legacy-maintenance";
@@ -12,7 +13,7 @@ import {verifyRestoreJob} from "./legacy-maintenance";
 type Environment = {
   LEDGER: {idFromName(name:string):unknown;get(id:unknown):{fetch(request:Request):Promise<Response>}};
   SUPABASE_URL:string; SUPABASE_ANON_KEY:string; AI_KEY:string; AI_MODEL:string;
-  CODE_SIGNING_KEY:string; ADMIN_EMAILS:string; SALES_ENABLED?:string;
+  CODE_SIGNING_KEY:string; ADMIN_EMAILS:string; SALES_ENABLED?:string; TELEMETRY_ENABLED?:string;
 };
 type Storage = {sql:{exec(query:string,...args:unknown[]):{toArray():Record<string,unknown>[]}};transactionSync<T>(work:()=>T):T};
 const json=(value:unknown,status=200)=>Response.json(value,{status,headers:{"Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}});
@@ -38,6 +39,7 @@ export default {
       }
       if(path!=="/api/flora" && !path.startsWith("/api/flora/"))return json({code:"NOT_FOUND"},404);
       if(path==="/api/flora/analytics"){
+        if (env.TELEMETRY_ENABLED !== "1") return new Response(null, {status:204});
         if(request.method!=="POST" || new URL(request.url).hostname!==SITE_HOST || request.headers.get("origin")!==`https://${SITE_HOST}`)return json({code:"FORBIDDEN"},403);
         const input=await request.json() as Partial<SiteEvent>;
         const allowed=new Set(["page_view","signup_clicked","signup_succeeded","signin_clicked","signin_succeeded","signin_failed","daily_draw","yes_no_submit","deep_start","deep_submit","save_cards","copy_prompt","share_clicked","follow_up_submit"]);
@@ -71,9 +73,12 @@ export default {
 export class FloraLedger {
   private store:PaidLedger;
   private rates=new Map<string,{at:number;n:number}>();
+  private reports = new Map<string, { at: number; value: ReturnType<typeof readDailyReport> }>();
+  private historyRates = new Map<string, {at:number;n:number}>();
   constructor(private ctx:{storage:Storage},private env:Environment){
     const sql=ctx.storage.sql;
     if(!sql.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='local_schema_versions'").toArray().length)ctx.storage.transactionSync(()=>sql.exec(schema));
+    if(!sql.exec("SELECT version FROM local_schema_versions WHERE version=10").toArray().length)ctx.storage.transactionSync(()=>sql.exec(costIndexes));
     ensureTelemetrySchema(sql);
     const db={prepare:(query:string)=>({all:(...args:unknown[])=>sql.exec(query,...args).toArray(),get:(...args:unknown[])=>sql.exec(query,...args).toArray()[0],run:(...args:unknown[])=>{sql.exec(query,...args).toArray();return{};}}),exec:(query:string)=>sql.exec(query).toArray(),close:()=>{}};
     if(!env.CODE_SIGNING_KEY || env.CODE_SIGNING_KEY.length<48)throw new Error("Missing voucher configuration");
@@ -82,6 +87,7 @@ export class FloraLedger {
   async fetch(request:Request){
     try{
       if(new URL(request.url).pathname==="/api/flora/analytics" && request.headers.get("x-flora-telemetry")==="1"){
+        if(this.env.TELEMETRY_ENABLED !== "1")return new Response(null,{status:204});
         recordSiteEvent(this.ctx.storage.sql,await request.json() as SiteEvent);
         return new Response(null,{status:204});
       }
@@ -94,18 +100,31 @@ export class FloraLedger {
       const now=Date.now();
       this.rates.forEach((entry,id)=>{if(now-entry.at>=60000)this.rates.delete(id);});
       const rate=this.rates.get(user)||{at:now,n:0};rate.n++;this.rates.set(user,rate);
-      if(rate.n>180)throw new LocalPaidError("RATE_LIMIT","操作太频繁，请稍后重试。",429);
+      if(rate.n>60)throw new LocalPaidError("RATE_LIMIT","操作太频繁，请稍后重试。",429);
       const url=new URL(request.url),parts=url.pathname.replace(/^\/api\/flora\/?/,"").split("/").filter(Boolean),action=parts.join("/"),store=this.store;
+      if (request.method === "GET" && (!action || action === "usage" || /\/(readings|reading-page)$/.test(action))) {
+        this.historyRates.forEach((entry,id)=>{if(now-entry.at>=60000)this.historyRates.delete(id);});
+        const history=this.historyRates.get(user)||{at:now,n:0};history.n++;this.historyRates.set(user,history);
+        if(history.n>12)throw new LocalPaidError("RATE_LIMIT","历史记录读取较频繁，请稍后再试。",429);
+      }
       const admin=action.startsWith("admin/");
       if(admin && !this.env.ADMIN_EMAILS?.split(",").map(x=>x.trim().toLowerCase()).includes(email))throw new LocalPaidError("FORBIDDEN","此页面仅限管理员访问。",403);
       if(admin && action==="admin/report" && request.method==="GET"){
         const date=url.searchParams.get("date")||new Date(Date.now()-8*3600_000).toISOString().slice(0,10);
         if(!/^\d{4}-\d{2}-\d{2}$/.test(date))throw new LocalPaidError("INVALID_DATE","日期格式不正确。",400);
-        return json(readDailyReport(this.ctx.storage.sql,date));
+        const cached = this.reports.get(date);
+        if (cached && now-cached.at < 300_000) return json(cached.value);
+        const value = readDailyReport(this.ctx.storage.sql,date);
+        if(this.reports.size>=7)this.reports.delete(this.reports.keys().next().value!);
+        this.reports.set(date,{at:now,value});
+        return json(value);
       }
       store.ensureUser(user,email);
       if(request.method==="GET"){
-        if(!action)return json(store.overview(user));
+        if(!action)return json(store.profileOverview(user));
+        if(action==="summary")return json(store.summary(user));
+        if(action==="usage")return json(store.usagePage(user,url.searchParams.get("cursor")||"",url.searchParams.get("days")||"all"));
+        if(action==="daily-status")return json(store.dailyStatus(user));
         if(action==="card-catalog")return json(cardCatalog(false,this.env.SALES_ENABLED==="1"));
         if(action==="redemptions")return json(store.redemptions.history(user));
         if(action==="orders")return json([]);
@@ -114,7 +133,8 @@ export class FloraLedger {
         if(parts[0]==="projects"){
           if(parts.length===1)return json(store.projects(user));
           if(parts.length===2)return json(store.project(user,parts[1]));
-          if(parts[2]==="readings")return json(store.projectReadings(user,parts[1]));
+          if(parts[2]==="readings")return json(store.projectReadingPage(user,parts[1]).items);
+          if(parts[2]==="reading-page")return json(store.projectReadingPage(user,parts[1],url.searchParams.get("cursor")||""));
           if(parts[2]==="draw-session")return json(store.pendingDrawSession(user,parts[1]));
         }
         if(parts[0]==="readings" && parts.length===2)return json(store.reading(user,parts[1]));

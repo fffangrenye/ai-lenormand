@@ -51,6 +51,9 @@ export async function GET(request: NextRequest, { params }: Context) {
       }
       return json(order);
     }
+    if (segments.length === 1 && segments[0] === "summary") return json(store.summary(userId));
+    if (segments.length === 1 && segments[0] === "daily-status") return json(store.dailyStatus(userId));
+    if (segments.length === 1 && segments[0] === "usage") return json(store.usagePage(userId, request.nextUrl.searchParams.get("cursor") || "", request.nextUrl.searchParams.get("days") || "all"));
     if (segments.length === 1 && segments[0] === "daily") return json(store.dailyCalendar(userId, request.nextUrl.searchParams.get("month") || undefined));
     if (segments.length === 0) { const catalog = store.payments.catalog(userId); return json({ ...store.overview(userId), packages: catalog.packages, firstPurchaseEligible: catalog.firstPurchaseEligible }); }
     if (segments[0] === "projects") {

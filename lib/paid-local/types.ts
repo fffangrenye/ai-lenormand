@@ -32,8 +32,11 @@ export type PaidOverview = {
   user: { id: string; label: string; kind: string };
   balance: { available: number; reserved: number; consumed: number };
   readings: PaidReading[];
+  historyCursor?: string | null;
   ledger: { id: string; kind: string; availableDelta: number; reservedDelta: number; consumedDelta: number; reason: string; createdAt: string }[];
 };
+export type PaidSummary = Pick<PaidOverview, "user" | "balance">;
+export type PaidReadingPage = { items: PaidReading[]; nextCursor: string | null };
 
 export type PaymentChannel = "wechat" | "waffo";
 export type CodeReceipt = ReturnType<import("./redemption-store").LocalRedemptions["history"]>[number];

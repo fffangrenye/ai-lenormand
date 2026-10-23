@@ -28,6 +28,7 @@ import {
   loadProject,
   loadProjects,
   loadReadings,
+  loadReadingsPage,
   removeProject,
   saveProject,
   saveProjectTouch,
@@ -720,7 +721,7 @@ function ReadingFollowUps({ reading }: { reading: ReadingWithCards }) {
   </section>;
 }
 
-function ReadingWorkspace({ project, readings, onReadingsChange }: { project: DeepProject; readings: ReadingWithCards[]; onReadingsChange: () => void }) {
+function ReadingWorkspace({ project, readings, onReadingsChange, onLoadEarlier, loadingEarlier }: { project: DeepProject; readings: ReadingWithCards[]; onReadingsChange: () => void; onLoadEarlier?: () => void; loadingEarlier?: boolean }) {
   const [view, setView] = useState<"compose" | "history">("compose");
   const [quota, setQuota] = useState<DeepQuota | null>(null);
   const [notice, setNotice] = useState("");
@@ -738,11 +739,18 @@ function ReadingWorkspace({ project, readings, onReadingsChange }: { project: De
     const id = activeId || latestId;
     requestAnimationFrame(() => { const chapter = scroll.current?.querySelector(`[data-reading-id="${id}"]`); if (chapter && scroll.current) scroll.current.scrollTop = (chapter as HTMLElement).offsetTop - scroll.current.offsetTop - 10; });
   }, [view, activeId, latestId]);
+  const generatingKey = readings.filter(reading => reading.status === "generating").map(reading => reading.id).sort().join(",");
   useEffect(() => {
-    if (view !== "history" || !readings.some((reading) => reading.status === "generating")) return;
-    const timer = window.setInterval(() => { if (document.visibilityState === "visible") onReadingsChange(); }, 8000);
-    return () => window.clearInterval(timer);
-  }, [view, readings, onReadingsChange]);
+    if (view !== "history" || !generatingKey) return;
+    let attempts = 0, timer: ReturnType<typeof setTimeout>;
+    const poll = () => {
+      if (document.visibilityState === "visible") { onReadingsChange(); attempts++; }
+      if (attempts < 6) timer = setTimeout(poll, Math.min(60_000, 15_000 * 2 ** attempts));
+      else setNotice("解读状态暂未更新，可点击重新读取。不会自动重复生成或扣除花瓣。");
+    };
+    timer = setTimeout(poll, 15_000);
+    return () => clearTimeout(timer);
+  }, [view, generatingKey, onReadingsChange]);
   async function unlock(id: string) {
     setNotice("");
     setGeneratingId(id);
@@ -754,7 +762,9 @@ function ReadingWorkspace({ project, readings, onReadingsChange }: { project: De
     <div ref={scroll} data-divination-scroll="true" className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain pb-10 [scrollbar-gutter:stable]" aria-label={view === "compose" ? "开始深度占卜" : "项目解读记录"}>
       {view === "compose" ? <DivinationExperience key={project.id} projectId={project.id} historyCount={readings.length} ruleEngineTrialAllowed={ruleEngineTrialAllowed} onHistory={() => setView("history")} onComplete={(id, message) => { setActiveId(id); setNotice(message || ""); setView("history"); onReadingsChange(); }} /> : <div className="mx-auto w-full max-w-[760px] px-1 sm:px-4">
         <div className="flex items-center justify-between gap-3 py-5"><p className="text-xs text-ink/45">按时间排列 · 最新问题在下方</p><button type="button" onClick={() => setView("compose")} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[#6E2638] px-5 text-sm text-[#FFF9F2]"><Plus size={15} />新的占卜</button></div>
+        {onLoadEarlier && <button type="button" disabled={loadingEarlier} onClick={onLoadEarlier} className="mb-5 min-h-11 w-full rounded-full border border-ink/15 text-sm text-ink/60 disabled:opacity-50">{loadingEarlier ? "正在读取…" : "查看更早的解读"}</button>}
         {ordered.map((reading) => <div key={reading.id} id={`reading-${reading.id}`} className="mb-6 rounded-xl border border-ink/10 bg-[#FFFDF8]/70 px-4 shadow-sm sm:px-7"><ReadingChapter reading={reading} onUnlock={() => unlock(reading.id)} unlocking={generatingId === reading.id} />{reading.status === "completed" && <ReadingFollowUps reading={reading} />}</div>)}
+        {notice && <button type="button" onClick={onReadingsChange} className="mb-4 min-h-11 text-sm text-[#6E2638] underline">重新读取解读与余额</button>}
         {!ordered.length && <EmptyState project={project} onStartReading={() => setView("compose")} />}
         <button type="button" onClick={() => setView("compose")} className="mx-auto mb-3 mt-3 flex min-h-12 items-center gap-2 rounded-full border border-[#6E2638]/25 px-7 text-sm text-[#6E2638]"><Plus size={15} />带着新问题，再抽一次牌</button>
       </div>}
@@ -969,6 +979,9 @@ export function DeepProjectPageClient({ projectId }: { projectId: string }) {
   const [projects, setProjects] = useState<DeepProject[]>([]);
   const [project, setProject] = useState<DeepProject | null>(null);
   const [readings, setReadings] = useState<ReadingWithCards[]>([]);
+  const [historyCursor, setHistoryCursor] = useState<string | null>(null);
+  const [loadingEarlier, setLoadingEarlier] = useState(false);
+  const readingLoad = useRef(false);
   const [notFound, setNotFound] = useState(false);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -980,10 +993,10 @@ export function DeepProjectPageClient({ projectId }: { projectId: string }) {
   function refresh() {
     void (async () => {
       try {
-        const [loadedProjects, loadedProject, loadedReadings] = await Promise.all([loadProjects(), loadProject(projectId), loadReadings(projectId)]);
+        const [loadedProjects, loadedProject, page] = await Promise.all([loadProjects(), loadProject(projectId), loadReadingsPage(projectId)]);
         setProjects(loadedProjects);
         setProject(loadedProject);
-        setReadings(loadedReadings);
+        setReadings(page.items); setHistoryCursor(page.nextCursor);
         setNotFound(!loadedProject);
         setLoadError("");
       } catch (error) {
@@ -996,6 +1009,23 @@ export function DeepProjectPageClient({ projectId }: { projectId: string }) {
         setLoadError(getDeepLoadErrorMessage(error));
       }
     })();
+  }
+
+  const refreshReadings = useCallback(() => {
+    if (readingLoad.current) return;
+    readingLoad.current = true;
+    void loadReadingsPage(projectId).then(page => { setReadings(page.items); setHistoryCursor(page.nextCursor); })
+      .catch(() => setLoadError("暂时无法读取解读，请稍后重试。"))
+      .finally(() => { readingLoad.current = false; });
+  }, [projectId]);
+  async function loadEarlier() {
+    if (!historyCursor || readingLoad.current) return;
+    readingLoad.current = true; setLoadingEarlier(true);
+    try {
+      const page = await loadReadingsPage(projectId, historyCursor);
+      setReadings(current => Array.from(new Map([...current, ...page.items].map(item => [item.id, item])).values())); setHistoryCursor(page.nextCursor);
+    } catch { setLoadError("更早的记录暂时无法读取，请重试。"); }
+    finally { readingLoad.current = false; setLoadingEarlier(false); }
   }
 
   useEffect(() => {
@@ -1018,12 +1048,12 @@ export function DeepProjectPageClient({ projectId }: { projectId: string }) {
         }
 
         await saveProjectTouch(projectId);
-        const [refreshedProject, loadedProjects, loadedReadings] = await Promise.all([loadProject(projectId), loadProjects(), loadReadings(projectId)]);
+        const [loadedProjects, page] = await Promise.all([loadProjects(), loadReadingsPage(projectId)]);
         if (cancelled) return;
 
-        setProject(refreshedProject);
+        setProject(loadedProject);
         setProjects(loadedProjects);
-        setReadings(loadedReadings);
+        setReadings(page.items); setHistoryCursor(page.nextCursor);
         setNotFound(false);
       } catch (error) {
         if (cancelled) return;
@@ -1075,7 +1105,7 @@ export function DeepProjectPageClient({ projectId }: { projectId: string }) {
 
   return (
     <Shell title={project?.title ?? "Deep Reading"} currentProject={project} projects={projects} email={email} onProjectsChange={refresh}>
-      {project ? <ReadingWorkspace key={project.id} project={project} readings={readings} onReadingsChange={refresh} /> : null}
+      {project ? <ReadingWorkspace key={project.id} project={project} readings={readings} onReadingsChange={refreshReadings} onLoadEarlier={historyCursor ? () => void loadEarlier() : undefined} loadingEarlier={loadingEarlier} /> : null}
     </Shell>
   );
 }

@@ -151,7 +151,7 @@ printHits("SENSITIVE_VALUE_SCAN", sensitiveValueHits, ["name", "file"]);
 printHits("CLIENT_SENSITIVE_VALUE_SCAN", clientSensitiveValueHits, ["name", "file"]);
 printHits("SECRET_PATTERN_REVIEW_SCAN", patternHits, ["pattern", "file"]);
 
-const privateArtifactPaths = scanRoots.flatMap(walk).filter(file => /[\\/]\.local-paid[\\/]|[\\/]\.env(?:[\\/.]|$)|[\\/]\.env\.|\.sqlite(?:-|$)|admin-access\.txt|cloud-api-secrets/.test(file));
+const privateArtifactPaths = scanRoots.flatMap(walk).filter(file => /[\\/]\.local-paid[\\/]|[\\/]\.env(?:[\\/.]|$)|[\\/]\.env\.|\.sqlite(?:-|$)|admin-access\.txt|cloud-api-secrets/.test(path.relative(root, file)));
 console.log(`PRIVATE_FILE_SCAN: ${privateArtifactPaths.length ? "FAIL" : "PASS"} count=${privateArtifactPaths.length}`);
 if (sensitiveValueHits.length > 0 || clientSensitiveValueHits.length > 0 || privateArtifactPaths.length > 0) {
   process.exit(1);

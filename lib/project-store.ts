@@ -1234,6 +1234,12 @@ export async function loadReadings(projectId: string): Promise<ReadingWithCards[
   }));
 }
 
+export async function loadReadingsPage(projectId: string, cursor = ""): Promise<{items: ReadingWithCards[]; nextCursor: string | null}> {
+  if (!paidOnlineSiteEnabled) return {items: await loadReadings(projectId), nextCursor: null};
+  const page = await paidSiteRequest<import("./paid-local/types").PaidReadingPage>(`projects/${encodeURIComponent(projectId)}/reading-page${cursor ? `?cursor=${encodeURIComponent(cursor)}` : ""}`);
+  return { items: page.items.map(reading => paidReadingForSite(reading)), nextCursor: page.nextCursor };
+}
+
 export function getFollowUpMessages(readingId: string): FollowUpMessage[] {
   const session = getSession();
   if (!session) return [];

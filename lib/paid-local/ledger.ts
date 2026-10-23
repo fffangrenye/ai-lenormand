@@ -14,18 +14,23 @@ import type { PaidCard, PaidDrawSession, PaidOverview, PaidProject, PaidReading,
 type Row = Record<string, string | number | null>;
 
 export class PaidLedger {
+  private initializedUsers = new Map<string, string>();
   readonly redemptions: LocalRedemptions;
   constructor(protected db: DatabaseSync, private transaction: <T>(work: () => T) => T, protected clock: () => number = Date.now, codeConfig?: { key: () => string; prefix: string }) {
     this.redemptions = new LocalRedemptions(this.port(), codeConfig);
   }
   protected port() { return { one:(sql: string,...params: SQLInputValue[])=>this.one(sql,...params), all:(sql: string,...params: SQLInputValue[])=>this.all(sql,...params), run:(sql: string,...params: SQLInputValue[])=>this.run(sql,...params), tx:<T>(action:()=>T)=>this.tx(action), clock:()=>this.clock(), grant:(user: string,count: number,source: string,event: string,reason?: string)=>this.grant(user,count,source,event,reason), ledger:(user: string,batch: string,event: string,kind: string,available: number,reserved: number,consumed: number,reason: string)=>this.ledger(user,batch,event,kind,available,reserved,consumed,reason) }; }
   ensureUser(id: string, email: string) {
-    return this.tx(() => {
-      this.run("INSERT OR IGNORE INTO local_users VALUES (?,?,?,?)", id, email, "new", this.now());
-      this.run("UPDATE local_users SET label=? WHERE id=?", email, id);
+    if (this.initializedUsers.get(id) === email) return;
+    this.tx(() => {
+      const previous = this.one("SELECT label FROM local_users WHERE id=?", id);
+      if (!previous) this.run("INSERT INTO local_users VALUES (?,?,?,?)", id, email, "new", this.now());
+      else if (previous.label !== email) this.run("UPDATE local_users SET label=? WHERE id=?", email, id);
       this.grant(id, paidConfig.welcomeCredits, "welcome", `${paidConfig.grantVersion}:onboarding:${id}`);
       this.adjustTrialCredits(id);
     });
+    if (this.initializedUsers.size >= 2000) this.initializedUsers.clear();
+    this.initializedUsers.set(id, email);
   }
   protected now() { return new Date(this.clock()).toISOString(); }
   restoreLegacy(snapshot:LegacySnapshot,jobId:string,dryRun:boolean){return restoreLegacyHistory(this.port(),snapshot,jobId,dryRun);}
@@ -62,7 +67,6 @@ export class PaidLedger {
     if (!this.one("SELECT id FROM local_users WHERE id=?", userId)) throw new LocalPaidError("UNAUTHORIZED", "请先登录，保存你的签到与今日牌。", 401);
     const today = beijingDateKey(timestamp); const month = requestedMonth || today.slice(0, 7);
     if (!validCalendarMonth(month)) throw new LocalPaidError("INVALID_MONTH", "请选择有效月份。");
-    this.recoverExpired(userId);
     const todayRow = this.one("SELECT * FROM daily_check_ins WHERE user_id=? AND date_key=?", userId, today);
     const dates = this.all("SELECT date_key FROM daily_check_ins WHERE user_id=?", userId).map((row) => String(row.date_key));
     const totalDays = dates.length;
@@ -74,6 +78,10 @@ export class PaidLedger {
       todayEntry: todayRow ? this.dailyEntry(todayRow) : null, entries: this.all("SELECT * FROM daily_check_ins WHERE user_id=? AND date_key LIKE ? ORDER BY date_key", userId, `${month}-%`).map((row) => this.dailyEntry(row)),
       totalDays, currentStreak, totalRewards, rewardEvery, cycleDays: currentStreak === 0 ? 0 : (currentStreak - 1) % rewardEvery + 1, nextRewardIn: rewardEvery - currentStreak % rewardEvery,
       balance: { available: Number(balance.available), reserved: Number(balance.reserved), consumed: Number(balance.consumed) } };
+  }
+  dailyStatus(userId: string) {
+    const today = beijingDateKey(this.clock());
+    return { today, signed: Boolean(this.one("SELECT date_key FROM daily_check_ins WHERE user_id=? AND date_key=?", userId, today)) };
   }
   checkIn(userId: string): DailyCheckInResult {
     const timestamp = this.clock(); const today = beijingDateKey(timestamp);
@@ -105,8 +113,8 @@ export class PaidLedger {
     if (!project) throw new LocalPaidError("NOT_FOUND", "找不到这个项目。", 404);
     return project;
   }
-  protected serializeProject(row: Row): PaidProject {
-    return { id: String(row.id), userEmail: String(this.one("SELECT label FROM local_users WHERE id=?", row.user_id)?.label || row.user_id), title: String(row.title), background: String(row.background), memorySummary: String(row.memory_summary), createdAt: String(row.created_at), updatedAt: String(row.updated_at), lastOpenedAt: String(row.last_opened_at) };
+  protected serializeProject(row: Row, email?: string): PaidProject {
+    return { id: String(row.id), userEmail: email || String(this.one("SELECT label FROM local_users WHERE id=?", row.user_id)?.label || row.user_id), title: String(row.title), background: String(row.background), memorySummary: String(row.memory_summary), createdAt: String(row.created_at), updatedAt: String(row.updated_at), lastOpenedAt: String(row.last_opened_at) };
   }
   projects(userId: string) {
     // Preserve records created in the earlier isolated prototype, without
@@ -119,7 +127,8 @@ export class PaidLedger {
         this.run("INSERT INTO local_reading_projects SELECT id,? FROM paid_readings WHERE user_id=? AND id NOT IN (SELECT reading_id FROM local_reading_projects)", id, userId);
       }
     });
-    return this.all("SELECT * FROM local_projects WHERE user_id=? AND archived_at IS NULL ORDER BY last_opened_at DESC,id", userId).map((row) => this.serializeProject(row));
+    const email = String(this.one("SELECT label FROM local_users WHERE id=?", userId)?.label || userId);
+    return this.all("SELECT * FROM local_projects WHERE user_id=? AND archived_at IS NULL ORDER BY last_opened_at DESC,id", userId).map((row) => this.serializeProject(row, email));
   }
   project(userId: string, id: string) { return this.serializeProject(this.ownedProject(userId, id)); }
   ensureDefaultProject(userId: string) {
@@ -144,11 +153,51 @@ export class PaidLedger {
       return this.project(userId, projectId);
     });
   }
-  touchProject(userId: string, id: string) { this.ownedProject(userId, id); this.run("UPDATE local_projects SET last_opened_at=? WHERE id=?", this.now(), id); }
+  touchProject(userId: string, id: string) { const row = this.ownedProject(userId, id); if(this.clock()-Date.parse(String(row.last_opened_at))>=300_000)this.run("UPDATE local_projects SET last_opened_at=? WHERE id=?", this.now(), id); }
   archiveProject(userId: string, id: string) { this.ownedProject(userId, id); this.run("UPDATE local_projects SET archived_at=? WHERE id=?", this.now(), id); }
   projectReadings(userId: string, projectId: string) {
     this.ownedProject(userId, projectId); this.recoverExpired(userId);
     return this.all("SELECT p.* FROM paid_readings p JOIN local_reading_projects l ON l.reading_id=p.id WHERE p.user_id=? AND l.project_id=? ORDER BY p.created_at DESC,p.id DESC", userId, projectId).map((row) => this.serialize(row));
+  }
+  projectReadingPage(userId: string, projectId: string, cursor = "") {
+    this.ownedProject(userId, projectId); this.recoverExpired(userId);
+    const before = this.readCursor(cursor);
+    const rows = this.all("SELECT p.* FROM paid_readings p JOIN local_reading_projects l ON l.reading_id=p.id WHERE p.user_id=? AND l.project_id=?" + (before ? " AND (p.created_at<? OR (p.created_at=? AND p.id<?))" : "") + " ORDER BY p.created_at DESC,p.id DESC LIMIT 21", userId, projectId, ...(before ? [before.time, before.time, before.id] : []));
+    return this.readingPage(rows, false);
+  }
+  private readCursor(cursor: string) {
+    if (!cursor) return null;
+    const parts = cursor.split("|");
+    if (parts.length !== 2 || parts[0].length > 40 || !Number.isFinite(Date.parse(parts[0])) || !/^[a-zA-Z0-9_-]{1,100}$/.test(parts[1])) throw new LocalPaidError("INVALID_CURSOR", "记录位置无效，请重新打开页面。");
+    return { time: parts[0], id: parts[1] };
+  }
+  private readingPage(rows: Row[], compact: boolean) {
+    const selected = rows.slice(0, 20);
+    const items = selected.map(row => compact ? {
+      id: String(row.id), projectId: String(row.project_id || ""), question: String(row.question), spread: row.spread as PaidSpread,
+      state: row.state as PaidReading["state"], createdAt: String(row.created_at), completedAt: String(row.created_at),
+      cards: [], result: null, followUps: [], legacyRestored: Boolean(row.is_legacy), followUpsRemaining: row.is_legacy ? 0 : Math.max(0, paidConfig.followUpsPerReading - Number(row.follow_count || 0))
+    } : this.serialize(row));
+    const last = selected.at(-1);
+    return { items, nextCursor: rows.length > 20 && last ? `${last.created_at}|${last.id}` : null };
+  }
+  usagePage(userId: string, cursor = "", days = "all") {
+    const before = this.readCursor(cursor);
+    if (!["all", "7", "30"].includes(days)) throw new LocalPaidError("INVALID_PERIOD", "请选择有效时间范围。");
+    const since = days === "all" ? "" : new Date(this.clock() - Number(days) * 86400000).toISOString();
+    const rows = this.all("SELECT p.id,p.question,p.spread,p.state,p.created_at,l.project_id,json_type(p.result_json,'$.legacy')='object' is_legacy,(SELECT count(*) FROM paid_follow_ups f WHERE f.reading_id=p.id AND f.state IN ('reserved','completed')) follow_count FROM paid_readings p LEFT JOIN local_reading_projects l ON l.reading_id=p.id WHERE p.user_id=? AND p.state='completed'" + (since ? " AND p.created_at>=?" : "") + (before ? " AND (p.created_at<? OR (p.created_at=? AND p.id<?))" : "") + " ORDER BY p.created_at DESC,p.id DESC LIMIT 21", userId, ...(since ? [since] : []), ...(before ? [before.time, before.time, before.id] : []));
+    return this.readingPage(rows, true);
+  }
+  summary(userId: string) {
+    this.recoverExpired(userId);
+    const user = this.one("SELECT id,label,kind FROM local_users WHERE id=?", userId);
+    if (!user) throw new LocalPaidError("UNAUTHORIZED", "账号不存在。", 401);
+    const balance = this.one("SELECT coalesce(sum(quantity-reserved-consumed-revoked),0) available,coalesce(sum(reserved),0) reserved,coalesce(sum(consumed),0) consumed FROM credit_batches WHERE user_id=?", userId)!;
+    return { user: { id: userId, label: String(user.label), kind: String(user.kind) }, balance: { available: Number(balance.available), reserved: Number(balance.reserved), consumed: Number(balance.consumed) } };
+  }
+  profileOverview(userId: string): PaidOverview {
+    const summary = this.summary(userId), page = this.usagePage(userId);
+    return { ...summary, readings: page.items, historyCursor: page.nextCursor, ledger: this.all("SELECT * FROM credit_ledger WHERE user_id=? ORDER BY created_at DESC,rowid DESC LIMIT 200", userId).map(row => ({ id: String(row.id), kind: String(row.kind), availableDelta: Number(row.available_delta), reservedDelta: Number(row.reserved_delta), consumedDelta: Number(row.consumed_delta), reason: String(row.reason), createdAt: String(row.created_at) })) };
   }
   protected owned(userId: string, readingId: string) {
     const row = this.one("SELECT * FROM paid_readings WHERE id=? AND user_id=?", readingId, userId);
@@ -341,10 +390,12 @@ export class PaidLedger {
   }
   recoverExpired(userId: string) {
     this.tx(() => {
-      for (const run of this.all("SELECT r.* FROM reading_runs r JOIN paid_readings p ON p.id=r.reading_id WHERE p.user_id=? AND r.state='reserved' AND r.lease_until<=?", userId, this.clock())) {
+      // CROSS JOIN keeps the tiny expired-task index first, instead of scanning
+      // every historical reading belonging to the account just to show a balance.
+      for (const run of this.all("SELECT r.* FROM reading_runs r CROSS JOIN paid_readings p ON p.id=r.reading_id WHERE p.user_id=? AND r.state='reserved' AND r.lease_until<=?", userId, this.clock())) {
         this.releaseRun(userId, String(run.reading_id), run, "任务超时，自动释放预留");
       }
-      this.run("UPDATE paid_follow_ups SET state='released' WHERE state='reserved' AND lease_until<=? AND reading_id IN (SELECT id FROM paid_readings WHERE user_id=?)", this.clock(), userId);
+      for (const follow of this.all("SELECT f.id FROM paid_follow_ups f CROSS JOIN paid_readings p ON p.id=f.reading_id WHERE f.state='reserved' AND f.lease_until<=? AND p.user_id=?", this.clock(), userId)) this.run("UPDATE paid_follow_ups SET state='released' WHERE id=? AND state='reserved'", follow.id);
       this.adjustTrialCredits(userId);
     });
   }
