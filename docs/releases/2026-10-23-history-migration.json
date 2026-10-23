@@ -1,0 +1,22 @@
+{
+  "completedAt": "2026-10-23T02:51:51.526Z",
+  "sourceProject": "pgivpvywizvtxjgqkvya",
+  "sourcePreserved": true,
+  "sourceCommit": "6a576f92e487723890b708a4977fc7d4472660af",
+  "backendVersion": "a1d98342-de60-4cde-b501-e379c5e5ba16",
+  "frontendVersionUnchanged": "2a7289b5-c618-4cd6-ac90-d5fd57aa14f3",
+  "totals": {
+    "users": 9394,
+    "projects": 12410,
+    "readings": 55216,
+    "cards": 238864,
+    "messages": 25560
+  },
+  "verifiedReadings": 55216,
+  "verifiedTransactions": 9628,
+  "financialUnchanged": true,
+  "insertedProjects": 12407,
+  "insertedReadings": 55203,
+  "preservedExistingReadings": 13,
+  "temporaryBridgeDeleted": true
+}
