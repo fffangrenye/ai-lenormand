@@ -1,4 +1,4 @@
-const PRODUCTION_SITE_URL = "https://flora.soul-ai-frontend.workers.dev";
+const PRODUCTION_SITE_URL = "https://floralenormand.site";
 
 function normalizeSiteUrl(value: string) {
   return value.replace(/\/+$/, "");

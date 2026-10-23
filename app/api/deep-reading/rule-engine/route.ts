@@ -32,6 +32,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ code: "RULE_ENGINE_TRIAL_FORBIDDEN", error: access.reason }, { status: 403 });
     }
     input = (await request.json()) as DeepReadingRequest;
+    if (input.reading.spreadType !== "three_card" && input.reading.spreadType !== "five_card_linear") {
+      return NextResponse.json({ code: "RULE_ENGINE_NOT_AVAILABLE", error: "unsupported_spread" }, { status: 400 });
+    }
     const resolution = resolveInterpretationSource({
       flags: getRuleEngineFeatureFlags(),
       spreadSize: spreadSizeForSpreadType(input.reading.spreadType),

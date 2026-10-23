@@ -4,6 +4,10 @@ import { LenormandCard, lenormandCards } from "./lenormand-cards";
 import { DeepFollowUpResult, DeepReadingResult, assertDeepFollowUpResult, assertDeepReadingResult } from "./deep-reading-result";
 import { InterpretationSource, getRuleEngineFeatureFlags, resolveInterpretationSource, spreadSizeForSpreadType } from "./reading-source";
 import { getPasswordResetRedirectUrl, getPublicSiteUrl } from "./site-config";
+import { FREE_DEEP_READING_LIMIT } from "./reading-quota";
+import { paidLocalSiteEnabled, paidOnlineSiteEnabled, paidSiteEnabled, getPaidSiteSession, logoutPaidSite, paidSiteRequest, paidSiteQuota, paidReadingForSite, paidFollowUpsForSite, stablePaidRequestKey, completePaidRequestKey } from "./paid-local/site-bridge";
+import type { PaidReading } from "./paid-local/types";
+export { FREE_DEEP_READING_LIMIT } from "./reading-quota";
 
 export type AuthSession = {
   email: string;
@@ -24,7 +28,7 @@ export type DeepProject = {
   lastOpenedAt: string;
 };
 
-export type SpreadType = "three_card" | "five_card_linear";
+export type SpreadType = import("./deep-spreads").DeepSpreadId;
 
 export type ReadingStatus = "drawing" | "generating" | "completed" | "failed" | "quota_limited";
 
@@ -45,6 +49,8 @@ export type DeepReading = {
   ruleEngineSchemaVersion?: string | null;
   ruleEngineResult?: unknown;
   generationErrorCode?: string | null;
+  generationModel?: string | null;
+  legacyRestored?:boolean;
   createdAt: string;
   completedAt: string | null;
 };
@@ -61,6 +67,7 @@ export type DeepReadingCard = {
 
 export type ReadingWithCards = DeepReading & {
   cards: DeepReadingCard[];
+  choices?: string[];
 };
 
 export type FollowUpMessage = {
@@ -99,7 +106,6 @@ const READINGS_KEY = "ai-lenormand:deep-readings";
 const READING_CARDS_KEY = "ai-lenormand:deep-reading-cards";
 const FOLLOW_UP_MESSAGES_KEY = "ai-lenormand:deep-follow-up-messages";
 const DAILY_QUOTA_EVENTS_KEY = "ai-lenormand:daily-quota-events";
-export const FREE_DEEP_READING_LIMIT = 5;
 export const FREE_FOLLOW_UP_LIMIT = 1;
 const FOLLOW_UP_FAILURE_MESSAGE = "这次追问暂时没有生成成功。你的问题已经保留，可以稍后再问一次。";
 const FOLLOW_UP_QUOTA_MESSAGE = "这次解读的 1 次免费 AI 追问已经用完。";
@@ -312,7 +318,7 @@ async function refreshSupabaseAuthSession(session: AuthSession) {
   }
 }
 
-async function getValidSession() {
+export async function getValidSession() {
   const session = getSession();
 
   if (!session?.accessToken) {
@@ -742,6 +748,16 @@ function writeAllProjects(projects: DeepProject[]) {
   window.localStorage.setItem(PROJECTS_KEY, JSON.stringify(projects));
 }
 
+export async function loadDeepReadingQuota(): Promise<DeepQuota> {
+  if (paidSiteEnabled) return paidSiteQuota();
+  const response = await fetch("/api/deep-reading/quota", {
+    headers: await authHeaders(),
+    cache: "no-store"
+  });
+  if (!response.ok) throw new Error("暂时无法读取今日额度，请稍后重试。");
+  return response.json() as Promise<DeepQuota>;
+}
+
 export function getDeepReadingQuota(): DeepQuota {
   const session = getSession();
   if (!session) return emptyQuota(FREE_DEEP_READING_LIMIT);
@@ -777,6 +793,7 @@ export function getDeepReadingQuota(): DeepQuota {
 }
 
 export function getFollowUpQuota(readingId: string): DeepQuota {
+  if (paidSiteEnabled) return { used: 0, limit: 2, remaining: 2, resetLabel: "每次解读" };
   const session = getSession();
   if (!session) return emptyQuota(FREE_FOLLOW_UP_LIMIT);
   if (hasUnlimitedAiAccess(session)) {
@@ -805,6 +822,7 @@ export function getFollowUpQuota(readingId: string): DeepQuota {
 }
 
 export function getSession(): AuthSession | null {
+  if (paidLocalSiteEnabled) return getPaidSiteSession();
   if (!canUseStorage()) return null;
 
   try {
@@ -829,7 +847,7 @@ export async function signIn(email: string, password: string) {
     password
   });
   const session = saveSupabaseAuthSession(payload, normalizedEmail);
-  await syncUserProfile(session);
+  if (!paidOnlineSiteEnabled) await syncUserProfile(session);
   return session;
 }
 
@@ -840,7 +858,7 @@ export async function signUp(email: string, password: string) {
     password
   });
   const session = saveSupabaseAuthSession(payload, normalizedEmail);
-  await syncUserProfile(session);
+  if (!paidOnlineSiteEnabled) await syncUserProfile(session);
   return session;
 }
 
@@ -872,7 +890,7 @@ export async function resetPasswordWithRecoveryCode(email: string, code: string,
   }
 
   await updateSupabaseUser(session.accessToken, { password });
-  await syncUserProfile(session);
+  if (!paidOnlineSiteEnabled) await syncUserProfile(session);
   return session;
 }
 
@@ -889,7 +907,7 @@ export async function resetPasswordWithRecoverySession(accessToken: string, refr
     },
     typeof user.email === "string" ? user.email : ""
   );
-  await syncUserProfile(session);
+  if (!paidOnlineSiteEnabled) await syncUserProfile(session);
   return session;
 }
 
@@ -920,11 +938,12 @@ export async function completePasswordReset(input: {
   const sessionPayload = payload.session;
   const user = sessionPayload.user && typeof sessionPayload.user === "object" ? (sessionPayload.user as Record<string, unknown>) : null;
   const session = saveSupabaseAuthSession(sessionPayload, typeof user?.email === "string" ? user.email : "");
-  await syncUserProfile(session);
+  if (!paidOnlineSiteEnabled) await syncUserProfile(session);
   return session;
 }
 
 export function signOut() {
+  if (paidLocalSiteEnabled) { logoutPaidSite(); return; }
   if (canUseStorage()) {
     window.localStorage.removeItem(SESSION_KEY);
   }
@@ -940,6 +959,7 @@ export function getProjects() {
 }
 
 export async function loadProjects() {
+  if (paidSiteEnabled) return paidSiteRequest<DeepProject[]>("projects");
   if (!canUseRemoteStore()) return getProjects();
 
   const rows = await supabaseRest<RemoteProjectRow[]>("/deep_projects?select=*&order=last_opened_at.desc");
@@ -954,6 +974,7 @@ export function getProject(projectId: string) {
 }
 
 export async function loadProject(projectId: string) {
+  if (paidSiteEnabled) return paidSiteRequest<DeepProject>(`projects/${encodeURIComponent(projectId)}`);
   if (!canUseRemoteStore()) return getProject(projectId);
 
   const rows = await supabaseRest<RemoteProjectRow[]>(`/deep_projects?select=*&id=eq.${encodeURIComponent(projectId)}&limit=1`);
@@ -981,6 +1002,7 @@ export function createProject(input: { title: string; background?: string }) {
 }
 
 export async function saveProject(input: { title: string; background?: string }) {
+  if (paidSiteEnabled) return paidSiteRequest<DeepProject>("projects", input);
   if (!canUseRemoteStore()) return createProject(input);
 
   const session = getSession();
@@ -1029,6 +1051,7 @@ export function updateProject(projectId: string, input: { title?: string; backgr
 }
 
 export async function saveProjectUpdate(projectId: string, input: { title?: string; background?: string; memorySummary?: string }): Promise<DeepProject | null> {
+  if (paidSiteEnabled) return paidSiteRequest<DeepProject>("project-update", { projectId, ...input });
   if (!canUseRemoteStore()) return updateProject(projectId, input);
 
   const patch: Record<string, string> = {
@@ -1060,6 +1083,7 @@ export function touchProject(projectId: string) {
 }
 
 export async function saveProjectTouch(projectId: string) {
+  if (paidSiteEnabled) { await paidSiteRequest("project-touch", { projectId }); return; }
   if (!canUseRemoteStore()) {
     touchProject(projectId);
     return;
@@ -1088,6 +1112,10 @@ export function deleteProject(projectId: string) {
 }
 
 export async function removeProject(projectId: string) {
+  if (paidSiteEnabled) {
+    await paidSiteRequest("project-remove", { projectId });
+    return (await loadProjects())[0] ?? null;
+  }
   if (!canUseRemoteStore()) return deleteProject(projectId);
 
   await supabaseRest<null>(`/deep_projects?id=eq.${encodeURIComponent(projectId)}`, {
@@ -1187,6 +1215,7 @@ function trimForAi(value: string, limit: number) {
 }
 
 export async function loadReadings(projectId: string): Promise<ReadingWithCards[]> {
+  if (paidSiteEnabled) return (await paidSiteRequest<PaidReading[]>(`projects/${encodeURIComponent(projectId)}/readings`)).map((reading) => paidReadingForSite(reading));
   if (!canUseRemoteStore()) return getReadings(projectId);
 
   const readingRows = await supabaseRest<RemoteReadingRow[]>(
@@ -1215,6 +1244,7 @@ export function getFollowUpMessages(readingId: string): FollowUpMessage[] {
 }
 
 export async function loadFollowUpMessages(readingId: string): Promise<FollowUpMessage[]> {
+  if (paidSiteEnabled) return paidFollowUpsForSite(await paidSiteRequest<PaidReading>(`readings/${encodeURIComponent(readingId)}`));
   if (!canUseRemoteStore()) return getFollowUpMessages(readingId);
 
   const rows = await supabaseRest<RemoteFollowUpMessageRow[]>(
@@ -1372,6 +1402,7 @@ async function resolveReadingSourceForCreation(spreadType: SpreadType, explicitS
 }
 
 export async function getRuleEngineOwnerTrialAccess() {
+  if (paidSiteEnabled) return { allowed: false, enabled: false, reason: "local_paid_preview" };
   if (!canUseRemoteStore()) return { allowed: false, enabled: false, reason: "local_store" };
 
   try {
@@ -1534,6 +1565,12 @@ export function createReading(input: { projectId: string; spreadType: SpreadType
 }
 
 export async function saveReading(input: { projectId: string; spreadType: SpreadType; question: string; explicitSource?: InterpretationSource }) {
+  if (paidSiteEnabled) {
+    const scope = `draw:${input.projectId}:${input.spreadType}:${input.question.trim()}`;
+    const reading = await paidSiteRequest<PaidReading>("draw", { projectId: input.projectId, spread: input.spreadType, question: input.question, requestKey: stablePaidRequestKey(scope) });
+    completePaidRequestKey(scope);
+    return paidReadingForSite(reading);
+  }
   await assertNotDuplicateReading(input);
 
   if (!canUseRemoteStore()) return createReading(input);
@@ -1625,6 +1662,7 @@ export async function saveReading(input: { projectId: string; spreadType: Spread
 }
 
 export async function generateDeepReading(readingId: string) {
+  if (paidSiteEnabled) { await paidSiteRequest<PaidReading>("unlock", { readingId }); return; }
   const existingReading = await loadReadingWithCards(readingId);
   if (!existingReading || existingReading.status !== "drawing") return;
 
@@ -1724,6 +1762,10 @@ async function buildFollowUpPayload(readingId: string) {
 }
 
 export async function sendFollowUpMessage(input: { readingId: string; content: string }) {
+  if (paidSiteEnabled) {
+    const reading = await paidSiteRequest<PaidReading>("follow-up", { readingId: input.readingId, question: input.content, requestKey: stablePaidRequestKey(`follow:${input.readingId}:${input.content.trim()}`) });
+    return paidFollowUpsForSite(reading).filter((item) => item.role === "assistant").slice(-1)[0];
+  }
   const session = getSession();
   if (!session) throw new Error("Not signed in");
 
@@ -1897,6 +1939,7 @@ function formatPromptMessages(messages: FollowUpMessage[]) {
 }
 
 export async function buildExternalReadingPrompt(readingId: string, includeRecentContext = true) {
+  if (paidSiteEnabled) throw new Error("付费解读预览不提供内部 Prompt。");
   const reading = await loadReadingWithCards(readingId);
   if (!reading) throw new Error("Reading not found");
 

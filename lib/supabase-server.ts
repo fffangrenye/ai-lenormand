@@ -95,6 +95,7 @@ export async function requireSupabaseUser(request: Request): Promise<SupabaseUse
 
   const { url, anonKey } = getServerSupabaseConfig();
   const response = await fetch(`${url}/auth/v1/user`, {
+    cache: "no-store",
     headers: {
       apikey: anonKey,
       Authorization: `Bearer ${token}`
@@ -120,6 +121,7 @@ async function callQuotaRpc(name: string, body: Record<string, unknown>) {
   const { url, serviceRoleKey } = getServerSupabaseConfig();
   const response = await fetch(`${url}/rest/v1/rpc/${name}`, {
     method: "POST",
+    cache: "no-store",
     headers: {
       "Content-Type": "application/json",
       ...getSupabaseServiceHeaders()
@@ -140,19 +142,19 @@ async function callQuotaRpc(name: string, body: Record<string, unknown>) {
   };
 }
 
-export async function reserveDailyQuota(userId: string, kind: ServerQuotaKind, limit: number) {
+export async function reserveDailyQuota(userId: string, kind: ServerQuotaKind, limit: number, dateKey = getBeijingDateKey()) {
   return callQuotaRpc("reserve_daily_ai_quota", {
     p_user_id: userId,
-    p_date_key: getBeijingDateKey(),
+    p_date_key: dateKey,
     p_kind: kind,
     p_limit: limit
   });
 }
 
-export async function refundDailyQuota(userId: string, kind: ServerQuotaKind) {
+export async function refundDailyQuota(userId: string, kind: ServerQuotaKind, dateKey = getBeijingDateKey()) {
   return callQuotaRpc("refund_daily_ai_quota", {
     p_user_id: userId,
-    p_date_key: getBeijingDateKey(),
+    p_date_key: dateKey,
     p_kind: kind
   });
 }

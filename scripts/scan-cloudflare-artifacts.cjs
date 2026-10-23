@@ -6,6 +6,7 @@ const envPath = path.join(root, ".env.local");
 const scanRoots = [".open-next", ".next"].map((item) => path.join(root, item));
 
 const publicValueNames = new Set([
+  "NEXT_PUBLIC_SITE_URL",
   "NEXT_PUBLIC_SUPABASE_URL",
   "NEXT_PUBLIC_SUPABASE_ANON_KEY",
   "DEEPSEEK_MODEL",
@@ -150,6 +151,8 @@ printHits("SENSITIVE_VALUE_SCAN", sensitiveValueHits, ["name", "file"]);
 printHits("CLIENT_SENSITIVE_VALUE_SCAN", clientSensitiveValueHits, ["name", "file"]);
 printHits("SECRET_PATTERN_REVIEW_SCAN", patternHits, ["pattern", "file"]);
 
-if (sensitiveValueHits.length > 0 || clientSensitiveValueHits.length > 0) {
+const privateArtifactPaths = scanRoots.flatMap(walk).filter(file => /[\\/]\.local-paid[\\/]|[\\/]\.env(?:[\\/.]|$)|[\\/]\.env\.|\.sqlite(?:-|$)|admin-access\.txt|cloud-api-secrets/.test(file));
+console.log(`PRIVATE_FILE_SCAN: ${privateArtifactPaths.length ? "FAIL" : "PASS"} count=${privateArtifactPaths.length}`);
+if (sensitiveValueHits.length > 0 || clientSensitiveValueHits.length > 0 || privateArtifactPaths.length > 0) {
   process.exit(1);
 }

@@ -95,6 +95,7 @@ function getFirstTouchMetadata(channel: string, searchMetadata: Record<string, s
 }
 
 export function trackAnalyticsEvent(eventName: AnalyticsEventName, metadata?: Record<string, unknown>) {
+  if (process.env.NEXT_PUBLIC_PAID_LOCAL_MODE === "1" || process.env.NEXT_PUBLIC_PAID_ONLINE_MODE === "1") return;
   if (typeof window === "undefined") return;
 
   const session = getSession();

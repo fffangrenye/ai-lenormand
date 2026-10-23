@@ -1,0 +1,47 @@
+{
+  "schemaVersion": 1,
+  "environment": "production",
+  "domain": "https://floralenormand.site",
+  "sourceRef": "refs/tags/flora-production-baseline-20261023",
+  "verification": "Existing deployed Worker JavaScript modules equal freshly bundled local modules; public static assets equal local build assets. No redeployment performed.",
+  "capturedAt": "2026-10-23T02:15:52.354Z",
+  "workers": [
+    {
+      "name": "flora-domain-info",
+      "version": "2a7289b5-c618-4cd6-ac90-d5fd57aa14f3",
+      "deployedAt": "2026-10-23T01:50:19.30147Z",
+      "config": "wrangler.flora-v3-site.jsonc",
+      "modules": [
+        {
+          "name": "entry.js",
+          "bytes": 5264833,
+          "sha256": "9cbe04b7e1bdd4357a639a53063f5cdbb491b9f3127cc5ab8665d8526910fe61"
+        }
+      ]
+    },
+    {
+      "name": "flora-v3-api",
+      "version": "f9b7addd-ab8a-4793-b4b6-b5c1502bebf5",
+      "deployedAt": "2026-10-23T01:39:40.205091Z",
+      "config": "wrangler.flora-v3-api.jsonc",
+      "modules": [
+        {
+          "name": "index.js",
+          "bytes": 131359,
+          "sha256": "addbecdd2a5bd3de9b41493c49119916d6ca0b367fa6f3d9b5b778fc70b57043"
+        }
+      ]
+    }
+  ],
+  "assets": {
+    "verifiedPublicFiles": 232,
+    "configurationOnly": [
+      "_headers"
+    ],
+    "manifestSha256": "c2fdcc9c518dafaf7bb353fee908fb972afa9042147ec197a0958a8bbd6dc0c9"
+  },
+  "notes": [
+    "Baseline commit includes release tooling added after production deployment; runtime source was not changed.",
+    "Cloudflare runtime secrets and mutable business data are excluded from Git and from this manifest."
+  ]
+}

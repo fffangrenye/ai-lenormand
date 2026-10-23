@@ -18,3 +18,5 @@ pnpm-debug.log*
 .open-next/
 .wrangler/
 .codex-cf-artifact/
+.local-paid/
+.next-paid-local/

@@ -104,6 +104,18 @@ function run(command, args, env) {
   }
 }
 
+function prunePrivateBuildArtifacts(directory) {
+  if (!fs.existsSync(directory)) return;
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const target = path.join(directory, entry.name);
+    if (entry.isSymbolicLink()) continue;
+    if (entry.name === ".local-paid" || entry.name.startsWith(".env")) {
+      assertInsideRoot(target);
+      fs.rmSync(target, { recursive: entry.isDirectory(), force: true });
+    } else if (entry.isDirectory()) prunePrivateBuildArtifacts(target);
+  }
+}
+
 if (fs.existsSync(holdPath)) {
   throw new Error("Refusing to build: .env.local.codex-build-hold already exists.");
 }
@@ -117,6 +129,7 @@ try {
 
 const localEnv = parseEnvFile(envPath);
 const buildEnv = {};
+const floraV3 = process.argv.includes("--flora-v3");
 
 for (const name of requiredHostEnv) {
   if (process.env[name]) buildEnv[name] = process.env[name];
@@ -131,6 +144,10 @@ buildEnv.RULE_ENGINE_ENABLED = buildEnv.RULE_ENGINE_ENABLED || "true";
 buildEnv.RULE_ENGINE_DEFAULT = buildEnv.RULE_ENGINE_DEFAULT || "false";
 buildEnv.RULE_ENGINE_ALLOW_EXPLICIT = buildEnv.RULE_ENGINE_ALLOW_EXPLICIT || "true";
 buildEnv.RULE_ENGINE_ROLLOUT_PERCENT = buildEnv.RULE_ENGINE_ROLLOUT_PERCENT || "0";
+if (floraV3) {
+  buildEnv.NEXT_PUBLIC_PAID_ONLINE_MODE = "1";
+  buildEnv.NEXT_PUBLIC_SITE_URL = "https://floralenormand.site";
+}
 
 removeGeneratedDirs();
 
@@ -144,6 +161,7 @@ try {
 
   run("npm", ["run", "cf:patch"], buildEnv);
   run("opennextjs-cloudflare", ["build", "--dangerouslyUseUnsupportedNextVersion"], buildEnv);
+  for (const directory of generatedDirs) prunePrivateBuildArtifacts(path.join(root, directory));
 } finally {
   if (movedEnv && fs.existsSync(holdPath)) {
     fs.renameSync(holdPath, envPath);

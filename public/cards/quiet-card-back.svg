@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="168" height="252" viewBox="0 0 168 252" fill="none">
+  <defs>
+    <pattern id="paper" width="4" height="4" patternUnits="userSpaceOnUse"><path d="M0 .5h4M.5 0v4" stroke="#A79580" stroke-opacity=".035" stroke-width=".4"/><circle cx="2.6" cy="2.2" r=".35" fill="#A79580" fill-opacity=".12"/></pattern>
+    <pattern id="damask" width="28" height="40" patternUnits="userSpaceOnUse">
+      <g stroke="#8D9586" stroke-opacity=".19" stroke-width=".55">
+        <path d="M14 0C14 9 4 8 4 16c0 5 6 7 10 12 4-5 10-7 10-12C24 8 14 9 14 0Zm0 7c-1 7-7 7-7 11s5 5 7 8c2-3 7-4 7-8s-6-4-7-11Z"/>
+        <path d="M14 13v27M14 28c-6-1-11 1-11 6 6 0 10-1 11-6Zm0 0c6-1 11 1 11 6-6 0-10-1-11-6ZM0 3c4 0 7 2 7 5-4 0-7-2-7-5Zm28 0c-4 0-7 2-7 5 4 0 7-2 7-5Z"/>
+      </g>
+      <path d="m14 35 2 2-2 2-2-2 2-2Z" stroke="#AD8F7F" stroke-opacity=".2" stroke-width=".5"/>
+    </pattern>
+    <g id="corner" stroke="#A28E7D" stroke-width=".65" stroke-linecap="round">
+      <path d="M18 54V23q0-5 5-5h31M22 45V26q0-4 4-4h19"/>
+      <path d="M25 41c10-4 17-11 16-16-5-1-12 6-16 16Zm0 0c-1-9 0-14 5-16 3 6 1 11-5 16Zm0 0c9 1 14 0 16-5-6-3-11-1-16 5Z"/>
+      <path d="m25 25 3 3m9-1 3-3m-13 13-3 3M19 48l3 3-3 3-3-3 3-3Zm29-29 3 3 3-3-3-3-3 3Z"/>
+    </g>
+    <g id="petal"><path d="M84 83c-12 12-12 29 0 43 12-14 12-31 0-43Z"/><path d="M84 91c-6 10-6 22 0 35 6-13 6-25 0-35Z"/></g>
+  </defs>
+  <rect x=".5" y=".5" width="167" height="251" rx="5" fill="#FFFDF8" stroke="#D8D3C5"/>
+  <rect x="6.5" y="6.5" width="155" height="239" rx="2" fill="#F7F4EC" stroke="#A59784" stroke-opacity=".34" stroke-width=".65"/>
+  <rect x="10" y="10" width="148" height="232" fill="url(#damask)"/>
+  <rect x=".5" y=".5" width="167" height="251" rx="5" fill="url(#paper)"/>
+  <rect x="10" y="10" width="148" height="232" rx="1" stroke="#A28E7D" stroke-opacity=".25" stroke-width=".5"/>
+  <rect x="14" y="14" width="140" height="224" rx="1" stroke="#8D9586" stroke-opacity=".25" stroke-width=".5"/>
+  <g opacity=".53"><use href="#corner"/><use href="#corner" transform="translate(168 0) scale(-1 1)"/><use href="#corner" transform="translate(0 252) scale(1 -1)"/><use href="#corner" transform="translate(168 252) scale(-1 -1)"/></g>
+  <ellipse cx="84" cy="126" rx="48" ry="71" fill="#F7F4EC" fill-opacity=".9" stroke="#929B8D" stroke-opacity=".36" stroke-width=".65"/>
+  <ellipse cx="84" cy="126" rx="44" ry="67" stroke="#B19B88" stroke-opacity=".4" stroke-width=".5"/>
+  <ellipse cx="84" cy="126" rx="41" ry="64" stroke="#929B8D" stroke-opacity=".25" stroke-width=".5" stroke-dasharray="1 2"/>
+  <g stroke="#A28C7A" stroke-opacity=".33" stroke-width=".65">
+    <use href="#petal"/><use href="#petal" transform="rotate(45 84 126)"/><use href="#petal" transform="rotate(90 84 126)"/><use href="#petal" transform="rotate(135 84 126)"/><use href="#petal" transform="rotate(180 84 126)"/><use href="#petal" transform="rotate(225 84 126)"/><use href="#petal" transform="rotate(270 84 126)"/><use href="#petal" transform="rotate(315 84 126)"/>
+  </g>
+  <g stroke="#8C9686" stroke-opacity=".32" stroke-width=".6">
+    <path d="M84 68c-2 9-9 11-9 18 6 0 9-7 9-18Zm0 0c2 9 9 11 9 18-6 0-9-7-9-18Zm0 116c-2-9-9-11-9-18 6 0 9 7 9 18Zm0 0c2-9 9-11 9-18-6 0-9 7-9 18Z"/>
+    <path d="m84 100 20 26-20 26-20-26 20-26Zm0 7 14 19-14 19-14-19 14-19Z"/>
+    <circle cx="84" cy="126" r="6"/><circle cx="84" cy="126" r="3"/>
+    <path d="M39 126h9m72 0h9M84 57v6m0 126v6"/>
+  </g>
+  <g fill="#AB9582" fill-opacity=".42"><circle cx="84" cy="51" r="1"/><circle cx="84" cy="201" r="1"/><circle cx="32" cy="126" r="1"/><circle cx="136" cy="126" r="1"/></g>
+</svg>

@@ -6,6 +6,42 @@ import { FormEvent, Suspense, useEffect, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { trackAnalyticsEvent } from "@/components/AnalyticsTracker";
 import { getSession, signIn, signUp } from "@/lib/project-store";
+import { paidLocalSiteEnabled, loginPaidSite, restorePaidSiteSession } from "@/lib/paid-local/site-bridge";
+
+function LocalSiteLogin() {
+  const router = useRouter();
+  const params = useSearchParams();
+  const target = params.get("returnTo") || "/deep";
+  const returnTo = target.startsWith("/") && !target.startsWith("//") ? target : "/deep";
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  useEffect(() => {
+    let cancelled = false;
+    void restorePaidSiteSession().then((session) => { if (session && !cancelled) router.replace(returnTo); });
+    return () => { cancelled = true; };
+  }, [returnTo, router]);
+  async function login(account: string) {
+    setBusy(true); setError("");
+    try { await loginPaidSite(account); router.replace(returnTo); }
+    catch (failure) { setError(failure instanceof Error ? failure.message : "本地登录失败。"); }
+    finally { setBusy(false); }
+  }
+  return (
+    <main className="min-h-dvh bg-paper px-5 py-5 text-ink">
+      <section className="mx-auto flex min-h-[calc(100dvh-40px)] w-full max-w-[430px] flex-col">
+        <Link href="/" className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-ink/10 bg-ivory/70 text-ink/70 shadow-sm"><ArrowLeft size={18} /><span className="sr-only">返回首页</span></Link>
+        <div className="flex flex-1 items-center"><section className="w-full rounded-[6px] border border-ink/10 bg-[#FFFDF8]/86 p-6 shadow-paper">
+          <p className="text-[12px] uppercase tracking-[0.2em] text-clay/70">Deep Reading</p>
+          <h1 className="mt-4 font-serif text-[32px] leading-[1.05] text-ink">登录后进入你的故事</h1>
+          <p className="mt-4 text-[14px] leading-6 text-ink/58">保留原来的项目、抽牌和追问体验。本地预览使用独立测试账号，无需输入真实邮箱或密码。</p>
+          <div className="mt-7 space-y-3">{[["new", "新用户体验账号"], ["legacy", "老用户体验账号"], ["other", "独立测试账号"]].map(([id, label]) => <button key={id} disabled={busy} onClick={() => void login(id)} className={`h-12 w-full rounded-full px-5 text-[13px] disabled:opacity-50 ${id === "new" ? "bg-[#6E2638] text-[#FFF9F2] shadow-soft" : "border border-ink/12 text-ink/56"}`}>{label}</button>)}</div>
+          <p className="mt-5 text-[12px] leading-6 text-ink/45">首次赠送 1 次，重复登录不重复领取。本地体验账号不连接线上账户。</p>
+          {error ? <p role="status" className="mt-3 text-[13px] text-[#8E4D4A]">{error}</p> : null}
+        </section></div>
+      </section>
+    </main>
+  );
+}
 
 function LoginClient() {
   const router = useRouter();
@@ -194,7 +230,7 @@ function LoginClient() {
 export default function LoginPage() {
   return (
     <Suspense fallback={<main className="min-h-dvh bg-paper" />}>
-      <LoginClient />
+      {paidLocalSiteEnabled ? <LocalSiteLogin /> : <LoginClient />}
     </Suspense>
   );
 }

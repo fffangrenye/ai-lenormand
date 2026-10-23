@@ -8,8 +8,7 @@ import "./globals.css";
 const siteUrl = getPublicSiteUrl();
 const siteTitle = "花语雷诺曼 · Flora Lenormand · 深度占卜";
 const siteDescription = "每日运势 · 是与否 · 深度占卜";
-const ogImageUrl = `${siteUrl}/og-image-live-20260930.jpg`;
-const ogCanonicalUrl = `${siteUrl}/?og_refresh=20260930b`;
+const ogImageUrl = `${siteUrl}/og-flora-v3-20261022.jpg`;
 
 const titleSerif = Noto_Serif_SC({
   weight: "500",
@@ -25,10 +24,11 @@ export const metadata: Metadata = {
     template: "%s · Flora Lenormand"
   },
   description: siteDescription,
+  alternates: { canonical: "/" },
   openGraph: {
     title: siteTitle,
     description: siteDescription,
-    url: ogCanonicalUrl,
+    url: siteUrl,
     siteName: "Flora Lenormand",
     locale: "zh_CN",
     type: "website",
@@ -55,9 +55,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="zh-CN">
       <body className={titleSerif.variable}>
-        <RecoveryRedirector />
+        {process.env.PAID_LOCAL_MODE !== "1" && <RecoveryRedirector />}
         {children}
-        <CookieConsent />
+        {process.env.PAID_LOCAL_MODE === "1" && <div className="pointer-events-none fixed inset-x-0 bottom-1 z-[100] text-center text-[10px] text-ink/40">雷诺曼 V3 · 支付为模拟 · {process.env.PAID_LOCAL_MODEL === "deepseek" ? "真实 AI · 记录仅存本机" : "本地模拟预览"} · 未部署</div>}
+        {process.env.PAID_LOCAL_MODE !== "1" && <CookieConsent />}
       </body>
     </html>
   );

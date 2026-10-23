@@ -2,21 +2,25 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { CSSProperties, FormEvent, ReactNode, TouchEvent, useEffect, useMemo, useState } from "react";
-import { BookOpen, Check, ChevronDown, Copy, Menu, Pencil, Plus, Send, Sparkles, Trash2, X } from "lucide-react";
+import { FormEvent, ReactNode, TouchEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { BookOpen, Check, ChevronDown, Copy, Menu, Pencil, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { trackAnalyticsEvent } from "@/components/AnalyticsTracker";
 import { getLenormandCardImagePath, preloadLenormandCardImages } from "@/lib/lenormand-cards";
 import { useCardSpreadLongPressSave } from "@/lib/use-card-spread-save";
+import { paidOnlineSiteEnabled, paidLocalAIEnabled, paidSiteEnabled, paidSiteRequest, restorePaidSiteSession } from "@/lib/paid-local/site-bridge";
+import { getDeepSpread } from "@/lib/deep-spreads";
+import { SpreadLayout } from "@/components/deep/SpreadLayout";
+import { DivinationExperience } from "@/components/deep/DivinationExperience";
+import { AccountMenu, PetalTopUp } from "@/components/AccountMenu";
 import {
   DeepProject,
   DeepQuota,
   FollowUpMessage,
   ReadingWithCards,
-  SpreadType,
   buildExternalReadingPrompt,
   formatProjectDate,
   generateDeepReading,
-  getDeepReadingQuota,
+  loadDeepReadingQuota,
   getFollowUpQuota,
   getRuleEngineOwnerTrialAccess,
   getSession,
@@ -28,13 +32,12 @@ import {
   saveProject,
   saveProjectTouch,
   saveProjectUpdate,
-  saveReading,
   sendFollowUpMessage,
   signOut,
 } from "@/lib/project-store";
 
 type SheetMode = "create" | "edit";
-type ReadingFlowStep = "idle" | "spread" | "question" | "drawing";
+type ReadingFlowStep = "idle" | "drawing";
 type DrawingPhase = "shuffle" | "draw" | "interpret" | "reveal";
 
 type ProjectFormState = {
@@ -47,12 +50,6 @@ type ProjectActionTarget = {
   mode: "edit" | "delete";
   project: DeepProject;
 };
-
-function wait(ms: number) {
-  return new Promise((resolve) => {
-    window.setTimeout(resolve, ms);
-  });
-}
 
 function defaultForm(project?: DeepProject | null): ProjectFormState {
   return {
@@ -67,15 +64,14 @@ function useDeepSession(returnTo: string) {
   const [email, setEmail] = useState("");
 
   useEffect(() => {
-    const session = getSession();
-
-    if (!session) {
-      router.replace(`/login?returnTo=${encodeURIComponent(returnTo)}`);
-      return;
-    }
-
-    setEmail(session.email);
-    setReady(true);
+    let cancelled = false;
+    void (async () => {
+      const session = paidSiteEnabled ? await restorePaidSiteSession() : getSession();
+      if (cancelled) return;
+      if (!session) { router.replace(`/login?returnTo=${encodeURIComponent(returnTo)}`); return; }
+      setEmail(session.email); setReady(true);
+    })();
+    return () => { cancelled = true; };
   }, [returnTo, router]);
 
   return { ready, email };
@@ -353,7 +349,7 @@ function ProjectSheet({
       />
       <section
         aria-label={mode === "create" ? "创建新项目" : "编辑项目"}
-        className={`fixed inset-x-0 bottom-0 z-[60] mx-auto w-full max-w-[430px] rounded-t-[18px] border border-ink/10 bg-[#FFFDF8] px-5 pb-[calc(env(safe-area-inset-bottom)+22px)] pt-5 shadow-paper transition-transform duration-300 ${
+        className={`fixed inset-x-0 bottom-0 z-[60] mx-auto max-h-[90dvh] w-full max-w-[560px] overflow-y-auto rounded-t-[18px] border border-ink/10 bg-[#FFFDF8] px-5 pb-[calc(env(safe-area-inset-bottom)+22px)] pt-5 shadow-paper transition-transform duration-300 ${
           open ? "translate-y-0" : "translate-y-full"
         }`}
       >
@@ -412,18 +408,13 @@ function MobileHeader({
   onOpenDrawer: () => void;
 }) {
   return (
-    <header className="sticky top-0 z-30 -mx-5 flex h-[64px] items-center justify-between border-b border-ink/8 bg-paper/92 px-5 backdrop-blur">
+    <header className="sticky top-0 z-30 -mx-4 flex h-[64px] shrink-0 items-center justify-between border-b border-ink/8 bg-paper/95 px-4 backdrop-blur sm:-mx-6 sm:px-6">
       <button type="button" onClick={onOpenDrawer} className="grid h-11 w-11 place-items-center rounded-full border border-ink/10 bg-ivory/72 text-ink/68">
         <Menu size={19} aria-hidden="true" />
         <span className="sr-only">打开项目抽屉</span>
       </button>
       <p className="mx-3 min-w-0 flex-1 truncate text-center font-serif text-[19px] leading-none text-ink">{title}</p>
-      <Link
-        href="/"
-        className="grid h-11 min-w-11 place-items-center rounded-full border border-ink/10 bg-ivory/72 px-3 text-[12px] uppercase tracking-[0.12em] text-ink/62"
-      >
-        Home
-      </Link>
+      <AccountMenu />
     </header>
   );
 }
@@ -509,13 +500,13 @@ function ProjectMemory({ project, onSaved }: { project: DeepProject; onSaved: ()
   }
 
   return (
-    <section className="border-b border-ink/10 py-3">
+    <section className="max-h-[max(3rem,calc(100dvh-320px))] shrink-0 overflow-y-auto py-2">
       <form onSubmit={handleSubmit} className="overflow-hidden rounded-[6px] border border-ink/8 bg-[#FFFDF8]/72">
         <button
           type="button"
           aria-expanded={open}
           onClick={() => setOpen((current) => !current)}
-          className="flex min-h-[58px] w-full items-center justify-between gap-4 px-4 py-3 text-left"
+          className="flex min-h-[46px] w-full items-center justify-between gap-4 px-4 py-3 text-left"
         >
           <div>
             <p className="text-[12px] uppercase tracking-[0.17em] text-clay/64">Memory</p>
@@ -558,291 +549,25 @@ function ProjectMemory({ project, onSaved }: { project: DeepProject; onSaved: ()
   );
 }
 
-function QuotaNotice({ quota, message }: { quota: DeepQuota; message?: string }) {
+function QuotaNotice({ quota, message, readingId }: { quota: DeepQuota | null; message?: string; readingId?: string }) {
   return (
-    <section className="border-b border-ink/10 py-3">
-      <div className="rounded-[6px] border border-ink/8 bg-[#FFFDF8]/72 px-4 py-3">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-[12px] uppercase tracking-[0.17em] text-clay/64">Daily Free</p>
-            <p className="mt-1 text-[13px] leading-5 text-ink/50">今日 AI 深度解读剩余 {quota.remaining}/{quota.limit} 次。用完后仍可抽牌、保存牌面和复制解读 Prompt。</p>
-            <p className="mt-1 text-[12px] leading-5 text-ink/36">每日 {quota.resetLabel} 后刷新。</p>
-          </div>
-          <span className="shrink-0 rounded-full border border-ink/10 bg-ivory/70 px-3 py-1 text-[12px] text-ink/46">{quota.used}/{quota.limit}</span>
-        </div>
-        {message ? <p className="mt-3 text-[13px] leading-5 text-[#8E4D4A]">{message}</p> : null}
+    <div className="flex min-h-11 flex-wrap items-center justify-between gap-x-3 border-b border-ink/8 py-1 text-xs text-ink/45">
+      <span>{paidSiteEnabled ? "DEEP READING" : "Daily Free"}</span>
+      <div className="flex items-center gap-2">
+        <span aria-live="polite">{quota ? paidSiteEnabled ? `${quota.remaining} 花瓣可用` : `今日剩余 ${quota.remaining} 次` : "同步余额中…"}</span>
+        {paidSiteEnabled && <PetalTopUp readingId={readingId} />}
       </div>
-    </section>
-  );
-}
-
-function CardBackMini({ className = "", style }: { className?: string; style?: CSSProperties }) {
-  return (
-    <span style={style} className={`relative block overflow-hidden rounded-[3px] border border-ink/12 bg-[#FFFDF8] shadow-sm ${className}`}>
-      <span className="pointer-events-none absolute inset-0 opacity-[0.16] [background-image:linear-gradient(rgba(33,31,27,0.08)_1px,transparent_1px),linear-gradient(90deg,rgba(33,31,27,0.05)_1px,transparent_1px)] [background-size:9px_9px]" />
-      <span className="absolute inset-1.5 rounded-[2px] border border-ink/14">
-        <span className="absolute inset-2 border border-clay/20" />
-        <span className="absolute left-1/2 top-1/2 h-[44%] w-[62%] -translate-x-1/2 -translate-y-1/2 rounded-full border border-sage/24" />
-        <span className="absolute left-1/2 top-1/2 h-px w-[52%] -translate-x-1/2 bg-ink/12" />
-        <span className="absolute left-1/2 top-1/2 h-[42%] w-px -translate-y-1/2 bg-ink/12" />
-      </span>
-    </span>
-  );
-}
-
-function SpreadMini({ count }: { count: 3 | 5 }) {
-  return (
-    <div className="mt-4 flex items-center gap-1.5">
-      {Array.from({ length: count }).map((_, index) => (
-        <CardBackMini
-          key={index}
-          className={`h-12 w-8 ${count === 5 && index === 2 ? "-translate-y-1 border-clay/35" : ""}`}
-        />
-      ))}
+      {message && <p role="status" className="w-full pb-2 leading-5 text-[#8E4D4A]">{message}</p>}
     </div>
   );
 }
 
-function SpreadSelection({
-  selectedSpread,
-  onSelect,
-  onNext,
-  onCancel
-}: {
-  selectedSpread: SpreadType;
-  onSelect: (spread: SpreadType) => void;
-  onNext: () => void;
-  onCancel: () => void;
-}) {
-  const options: Array<{ spread: SpreadType; title: string; subtitle: string; count: 3 | 5 }> = [
-    {
-      spread: "three_card",
-      title: "Three Cards",
-      subtitle: "适合聚焦一个具体问题，看当前发展与后续趋势。",
-      count: 3
-    },
-    {
-      spread: "five_card_linear",
-      title: "Five-card Linear",
-      subtitle: "适合更完整地看一件事如何发展，以及中间转折和最终倾向。",
-      count: 5
-    }
-  ];
-
-  return (
-    <div className="py-6">
-      <p className="text-[12px] uppercase tracking-[0.2em] text-clay/68">New Reading</p>
-      <h1 className="mt-3 font-serif text-[32px] leading-tight text-ink">选择这次的牌阵</h1>
-      <div className="mt-7 space-y-4">
-        {options.map((option) => {
-          const active = option.spread === selectedSpread;
-
-          return (
-            <button
-              key={option.spread}
-              type="button"
-              onClick={() => onSelect(option.spread)}
-              className={`w-full rounded-[6px] border p-5 text-left transition ${
-                active ? "border-clay/42 bg-[#FFFDF8] shadow-entry" : "border-ink/10 bg-[#FFFDF8]/62"
-              }`}
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div>
-                  <p className="font-serif text-[24px] leading-tight text-ink">{option.title}</p>
-                  <p className="mt-2 text-[13px] leading-6 text-ink/56">{option.subtitle}</p>
-                </div>
-                <span className={`mt-1 grid h-5 w-5 shrink-0 place-items-center rounded-full border ${active ? "border-clay bg-clay text-white" : "border-ink/16"}`}>
-                  {active ? <Check size={13} aria-hidden="true" /> : null}
-                </span>
-              </div>
-              <SpreadMini count={option.count} />
-            </button>
-          );
-        })}
-      </div>
-
-      <div className="mt-8 flex gap-3">
-        <button type="button" onClick={onCancel} className="h-12 flex-1 rounded-full border border-ink/12 text-[13px] uppercase tracking-[0.12em] text-ink/58">
-          取消
-        </button>
-        <button type="button" onClick={onNext} className="h-12 flex-1 rounded-full bg-[#6E2638] text-[13px] uppercase tracking-[0.12em] text-[#FFF9F2] shadow-soft">
-          下一步
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function QuestionStep({
-  spreadType,
-  question,
-  error,
-  ruleEngineTrialAllowed,
-  useRuleEngineTrial,
-  onUseRuleEngineTrialChange,
-  onQuestionChange,
-  onBack,
-  onSubmit,
-  submitting
-}: {
-  spreadType: SpreadType;
-  question: string;
-  error: string;
-  ruleEngineTrialAllowed: boolean;
-  useRuleEngineTrial: boolean;
-  onUseRuleEngineTrialChange: (enabled: boolean) => void;
-  onQuestionChange: (question: string) => void;
-  onBack: () => void;
-  onSubmit: () => void;
-  submitting: boolean;
-}) {
-  return (
-    <div className="py-6">
-      <p className="text-[12px] uppercase tracking-[0.2em] text-clay/68">{spreadType === "three_card" ? "Three Cards" : "Five-card Linear"}</p>
-      <h1 className="mt-3 font-serif text-[32px] leading-tight text-ink">你现在最想知道什么？</h1>
-      <p className="mt-4 text-[14px] leading-6 text-ink/58">一个明确的问题通常比多个问题放在一起更容易得到清晰的牌面。</p>
-
-      <textarea
-        value={question}
-        maxLength={300}
-        onChange={(event) => onQuestionChange(event.target.value)}
-        placeholder="例如：最近1个月会有什么好消息？"
-        rows={7}
-        className="mt-7 w-full resize-none rounded-[6px] border border-ink/12 bg-[#FFFDF8]/82 px-4 py-4 text-[16px] leading-7 outline-none shadow-entry focus:border-ink/35"
-      />
-      <div className="mt-2 flex items-center justify-between text-[12px] text-ink/38">
-        <span>{error}</span>
-        <span>{question.length}/300</span>
-      </div>
-
-      {ruleEngineTrialAllowed ? (
-        <label className="mt-5 flex items-start gap-3 rounded-[6px] border border-clay/18 bg-[#FFFDF8]/72 p-4">
-          <input
-            type="checkbox"
-            checked={useRuleEngineTrial}
-            onChange={(event) => onUseRuleEngineTrialChange(event.target.checked)}
-            className="mt-1 h-4 w-4 accent-[#6E2638]"
-          />
-          <span>
-            <span className="block text-[14px] font-medium leading-5 text-ink">试用 V2 规则解读</span>
-            <span className="mt-1 block text-[12px] leading-5 text-ink/48">仅当前授权测试账号可用；普通用户路径仍保持 AI 解读。</span>
-          </span>
-        </label>
-      ) : null}
-
-      <div className="mt-8 flex gap-3">
-        <button type="button" onClick={onBack} disabled={submitting} className="h-12 flex-1 rounded-full border border-ink/12 text-[13px] uppercase tracking-[0.12em] text-ink/58 disabled:opacity-50">
-          返回
-        </button>
-        <button type="button" onClick={onSubmit} disabled={submitting} className="h-12 flex-1 rounded-full bg-[#6E2638] text-[13px] uppercase tracking-[0.12em] text-[#FFF9F2] shadow-soft disabled:opacity-50">
-          {submitting ? "正在抽牌" : "开始占卜"}
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function DrawingState({ spreadType, cards }: { spreadType: SpreadType; cards: ReadingWithCards["cards"] }) {
-  const count = spreadType === "three_card" ? 3 : 5;
-  const [phase, setPhase] = useState<DrawingPhase>("shuffle");
-
-  useEffect(() => {
-    setPhase("shuffle");
-    const timers = [
-      window.setTimeout(() => setPhase("draw"), 1200),
-      window.setTimeout(() => setPhase("interpret"), 2800),
-      window.setTimeout(() => setPhase("reveal"), 4300)
-    ];
-
-    return () => timers.forEach((timer) => window.clearTimeout(timer));
-  }, [cards]);
-
-  const drawnCards = cards.slice(0, count);
-
-  return (
-    <div className="flex flex-1 items-center py-10">
-      <section className="w-full rounded-[6px] border border-ink/10 bg-[#FFFDF8]/82 p-6 text-center shadow-paper">
-        <div className="relative mx-auto flex h-[184px] w-full max-w-[320px] items-center justify-center overflow-hidden">
-          {phase === "shuffle" ? (
-            <div className="relative h-full w-full">
-              {Array.from({ length: 16 }).map((_, index) => (
-                <CardBackMini
-                  key={index}
-                  className="absolute h-[104px] w-[68px] animate-pulse"
-                  style={{
-                    left: `${18 + (index % 8) * 8}%`,
-                    top: `${20 + (index % 3) * 14}%`,
-                    transform: `translate(-50%, -50%) rotate(${(index % 2 === 0 ? -1 : 1) * (8 + index * 3)}deg)`,
-                    animationDelay: `${index * 70}ms`
-                  }}
-                />
-              ))}
-            </div>
-          ) : null}
-
-          {phase === "draw" || phase === "interpret" ? (
-            <div className={`reading-card-scroll w-full overflow-x-auto pb-2 ${count === 5 ? "" : "flex justify-center"}`}>
-              <div className={`mx-auto flex min-w-max items-center justify-center ${count === 5 ? "gap-1.5 px-2" : "gap-3"}`}>
-              {Array.from({ length: count }).map((_, index) => (
-                <CardBackMini
-                  key={index}
-                  className={`${count === 5 ? "h-[112px] w-[72px]" : "h-[124px] w-[80px]"} animate-[cardDraw_520ms_ease-out_both]`}
-                  style={{ animationDelay: `${index * 180}ms` }}
-                />
-              ))}
-              </div>
-            </div>
-          ) : null}
-
-          {phase === "reveal" ? (
-            <div className={`reading-card-scroll w-full overflow-x-auto pb-2 ${count === 5 ? "" : "flex justify-center"}`}>
-              <div className={`mx-auto flex min-w-max items-center justify-center ${count === 5 ? "gap-1.5 px-2" : "gap-3"}`}>
-              {drawnCards.map((card, index) => (
-                <div
-                  key={card.id}
-                  className={`${count === 5 ? "h-[112px] w-[72px]" : "h-[124px] w-[80px]"} overflow-hidden rounded-[4px] border border-ink/12 bg-[#FFFDF8] shadow-entry animate-[cardFlip_640ms_ease-out_both]`}
-                  style={{ animationDelay: `${index * 120}ms` }}
-                >
-                  <img src={getLenormandCardImagePath(card.cardNumber, card.cardSlug)} alt={`${card.nameEn} / ${card.nameZh}`} className="h-full w-full object-fill [-webkit-touch-callout:default]" />
-                </div>
-              ))}
-              </div>
-            </div>
-          ) : null}
-
-          {phase === "interpret" ? (
-            <div className="pointer-events-none absolute inset-0 grid place-items-center">
-              <div className="relative mt-[150px] flex items-center gap-2 text-clay/70">
-                <Sparkles size={17} className="animate-pulse" aria-hidden="true" />
-                <span className="text-[13px] uppercase tracking-[0.2em]">正在解读中</span>
-                <Sparkles size={14} className="animate-pulse" aria-hidden="true" />
-              </div>
-            </div>
-          ) : null}
-        </div>
-        <p className="mt-6 font-serif text-[26px] leading-tight text-ink">
-          {phase === "shuffle" ? "洗牌中" : phase === "draw" ? "正在抽牌" : phase === "interpret" ? "正在解读" : "牌面已显现"}
-        </p>
-        <p className="mt-3 text-[14px] leading-6 text-ink/54">
-          {phase === "shuffle" ? "让牌面重新排列，聚焦你的问题。" : phase === "draw" ? "属于这次问题的牌正在被抽出。" : phase === "interpret" ? "正在结合牌面与项目记忆生成解读。" : "解读完成后会进入结果。"}
-        </p>
-      </section>
-    </div>
-  );
-}
-
-function ReadingCardFace({ card, compact = false }: { card: ReadingWithCards["cards"][number]; compact?: boolean }) {
-  return (
-    <div className={`${compact ? "h-[132px] w-[88px]" : "h-[150px] w-[98px]"} shrink-0 overflow-hidden rounded-[5px] border border-ink/12 bg-[#FFFDF8] shadow-entry`}>
-      <img src={getLenormandCardImagePath(card.cardNumber, card.cardSlug)} alt={`${card.nameEn} / ${card.nameZh} - ${card.position}`} className="h-full w-full object-fill [-webkit-touch-callout:default]" />
-    </div>
-  );
-}
-
-function ReadingChapter({ reading }: { reading: ReadingWithCards }) {
+function ReadingChapter({ reading, onUnlock, unlocking = false }: { reading: ReadingWithCards; onUnlock?: () => Promise<void>; unlocking?: boolean }) {
   const paragraphs = reading.interpretation.split("\n\n").filter(Boolean);
   const [copyState, setCopyState] = useState<"idle" | "current" | "recent" | "failed">("idle");
+  const [unlockError, setUnlockError] = useState("");
   const isVerifiedRuleReading = reading.interpretationSource === "rule_engine" && Boolean(reading.ruleEngineVersion) && Boolean(reading.ruleEngineResult);
+  const isLocalRealAI = paidSiteEnabled && Boolean(reading.generationModel) && reading.generationModel !== "local_mock";
   const cardSaveHandlers = useCardSpreadLongPressSave(
     () =>
       reading.cards.map((card) => ({
@@ -881,33 +606,27 @@ function ReadingChapter({ reading }: { reading: ReadingWithCards }) {
   }
 
   return (
-    <article className="border-b border-ink/10 py-8">
+    <article className="break-words py-6 sm:py-8" data-reading-id={reading.id}>
       <p className="text-[12px] uppercase tracking-[0.17em] text-ink/36">{formatProjectDate(reading.createdAt)}</p>
+      <h2 className="mt-4 whitespace-pre-wrap font-serif text-[27px] leading-relaxed text-ink sm:text-[32px]">{reading.question}</h2>
       <div className="mt-3 flex items-center justify-between gap-3">
-        <h2 className="font-serif text-[27px] leading-tight text-ink">{reading.spreadType === "three_card" ? "Three Cards" : "Five-card Linear"}</h2>
+        <p className="text-sm leading-6 text-clay/65">{getDeepSpread(reading.spreadType).name}</p>
         <span className="shrink-0 rounded-full border border-ink/10 bg-ivory/70 px-3 py-1 text-[11px] uppercase tracking-[0.12em] text-ink/44">
-          {isVerifiedRuleReading ? `Rule-based / ${reading.ruleEngineVersion}` : "AI"}
+          {paidSiteEnabled ? reading.status === "completed" ? isLocalRealAI ? paidOnlineSiteEnabled ? "AI 解读" : "DeepSeek · 本地测试" : "本地模拟" : "原牌已保存" : isVerifiedRuleReading ? `Rule-based / ${reading.ruleEngineVersion}` : "AI"}
         </span>
       </div>
-      <p className="mt-3 text-[16px] leading-7 text-ink/72">“{reading.question}”</p>
 
-      <div {...cardSaveHandlers} className="reading-card-scroll mt-6 overflow-x-auto pb-3">
-        <div className={`flex w-max min-w-full ${reading.cards.length === 3 ? "justify-center gap-3" : "gap-3 px-1"}`}>
-          {reading.cards.map((card) => (
-            <ReadingCardFace key={card.id} card={card} compact={reading.cards.length === 5} />
-          ))}
-        </div>
-      </div>
+      <div {...cardSaveHandlers} className="mt-7 pb-2"><SpreadLayout spreadId={reading.spreadType} cards={reading.cards} choices={reading.choices} /></div>
 
       <section className="mt-7">
         <p className="text-[12px] uppercase tracking-[0.17em] text-clay/64">核心结论</p>
         <p className="mt-3 font-serif text-[22px] leading-8 text-ink">
-          {reading.status === "failed"
+          {paidSiteEnabled && reading.status === "drawing" ? "原问题和牌面已保存。解锁后可查看完整主解读，并获得 2 次追问。" : reading.status === "failed"
             ? "这次解读暂时没有生成成功，但你的问题和抽到的牌已经保留。"
             : reading.status === "quota_limited"
-              ? "已为你抽出牌面。今天的免费 AI 解读次数已经休息了，但牌面仍然完整保留。"
+              ? paidSiteEnabled ? "解读次数不足，原问题和牌面已保存，获得次数后可以沿用这组牌。" : "已为你抽出牌面。今天的免费 AI 解读次数已经休息了，但牌面仍然完整保留。"
             : reading.status === "generating"
-              ? "正在生成真实 Deep Reading 解读，请稍候。"
+              ? paidSiteEnabled && !paidLocalAIEnabled && !paidOnlineSiteEnabled ? "正在生成本地模拟解读，请稍候。" : "正在生成真实 AI 解读，请稍候。"
               : reading.coreConclusion}
         </p>
       </section>
@@ -915,15 +634,26 @@ function ReadingChapter({ reading }: { reading: ReadingWithCards }) {
       {reading.status === "completed" ? (
         <section className="mt-7 space-y-4 text-[16px] leading-8 text-ink/72">
           {paragraphs.map((paragraph) => (
-            <p key={paragraph}>{paragraph}</p>
+            <p key={paragraph} className="whitespace-pre-line">{paragraph}</p>
           ))}
           <p className="rounded-[5px] border border-ink/8 bg-ivory/58 p-4 text-[12px] leading-6 text-ink/42">
-            {isVerifiedRuleReading ? `本次解读由站内规则引擎 ${reading.ruleEngineVersion} 根据问题与牌面生成。` : "本次解读由 AI 根据你提供的上下文与牌面生成。"}仅供娱乐和自我梳理，不构成心理、医疗、法律、财务等专业建议。
+            {paidSiteEnabled ? isLocalRealAI ? paidOnlineSiteEnabled ? "本次由 AI 生成，已保存到你的账户。" : "本次由真实 DeepSeek 生成，记录仅保存在本机。" : "这是一份此前保存的本地模拟解读。" : isVerifiedRuleReading ? `本次解读由站内规则引擎 ${reading.ruleEngineVersion} 根据问题与牌面生成。` : "本次解读由 AI 根据你提供的上下文与牌面生成。"}仅供娱乐和自我梳理，不构成心理、医疗、法律、财务等专业建议。
           </p>
         </section>
       ) : null}
 
-      {reading.status === "quota_limited" || reading.status === "failed" ? (
+      {paidSiteEnabled && reading.status !== "completed" ? (
+        <section className="mt-7 rounded-[6px] border border-clay/14 bg-[#FFFDF8]/72 p-4">
+          <p className="font-serif text-[20px] leading-7 text-ink">解锁本次深度解读</p>
+          <p className="mt-3 text-[14px] leading-6 text-ink/58">使用 1 花瓣，包含完整解读与 2 次追问。</p>
+          <Link href={`/recharge?readingId=${encodeURIComponent(reading.id)}`} className="mt-3 inline-flex min-h-11 items-center text-sm text-[#6E2638] underline underline-offset-4">充值并返回本问题</Link>
+          <button disabled={unlocking || reading.status === "generating"} onClick={() => {
+            setUnlockError("");
+            void onUnlock?.().catch((error: unknown) => setUnlockError(error instanceof Error ? error.message : "解读暂未完成，请重试。"));
+          }} className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[#6E2638] text-[13px] text-[#FFF9F2] disabled:opacity-50"><Sparkles size={15} />{unlocking || reading.status === "generating" ? "正在解读…" : "解锁深度解读 · 1 花瓣"}</button>
+          {unlockError ? <p role="status" className="mt-3 text-[13px] leading-6 text-[#8E4D4A]">{unlockError}</p> : null}
+        </section>
+      ) : reading.status === "quota_limited" || reading.status === "failed" ? (
         <section className="mt-7 rounded-[6px] border border-clay/14 bg-[#FFFDF8]/72 p-4">
           <p className="font-serif text-[20px] leading-7 text-ink">{reading.status === "quota_limited" ? "你还可以这样继续" : "这次 AI 没有成功回复"}</p>
           <p className="mt-3 text-[14px] leading-6 text-ink/58">明天北京时间 00:00 后会获得新的免费 AI 解读次数。现在也可以复制 Prompt，去 ChatGPT / Claude / DeepSeek 等模型自行解读。</p>
@@ -958,336 +688,78 @@ function ReadingChapter({ reading }: { reading: ReadingWithCards }) {
   );
 }
 
-function FollowUpChat({ reading }: { reading: ReadingWithCards }) {
+function ReadingFollowUps({ reading }: { reading: ReadingWithCards }) {
   const [messages, setMessages] = useState<FollowUpMessage[]>([]);
   const [draft, setDraft] = useState("");
-  const [sending, setSending] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-
-  async function refreshMessages() {
-    setMessages(await loadFollowUpMessages(reading.id));
+  const refresh = useCallback(async () => { setMessages(await loadFollowUpMessages(reading.id)); }, [reading.id]);
+  useEffect(() => { let active = true; void loadFollowUpMessages(reading.id).then((value) => { if (active) setMessages(value); }).catch(() => { if (active) setError("追问记录暂时未读取成功，请稍后重试。"); }); return () => { active = false; }; }, [reading.id]);
+  const used = messages.filter((message) => message.role === "assistant" && !message.content.startsWith("这次追问暂时没有生成成功")).length;
+  const remaining = reading.legacyRestored ? 0 : Math.max(getFollowUpQuota(reading.id).limit - used, 0);
+  async function submit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault(); if (busy || !draft.trim() || remaining <= 0) return;
+    setBusy(true); setError("");
+    try { await sendFollowUpMessage({ readingId: reading.id, content: draft.trim() }); setDraft(""); await refresh(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : "追问未完成，请稍后重试。"); }
+    finally { setBusy(false); }
   }
-
-  useEffect(() => {
-    void refreshMessages();
-  }, [reading.id]);
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-
-    const content = draft.trim();
-    if (!content) {
-      setError("先写下你想追问的内容。");
-      return;
-    }
-
-    if (quota.remaining <= 0) {
-      setError("这次解读的 1 次免费 AI 追问已经用完。你可以复制牌面 Prompt 自行继续解读。");
-      return;
-    }
-
-    setDraft("");
-    setError("");
-    setSending(true);
-    trackAnalyticsEvent("follow_up_submit", {
-      readingId: reading.id,
-      projectId: reading.projectId,
-      contentLength: content.length
-    });
-
-    try {
-      await sendFollowUpMessage({ readingId: reading.id, content });
-    } catch (submitError) {
-      setError(submitError instanceof Error && submitError.name === "QuotaExceededError" ? submitError.message : "这次回复没有生成成功，你的问题已保留。");
-    } finally {
-      setSending(false);
-      void refreshMessages();
-    }
-  }
-
-  const successfulReplies = messages.filter(
-    (message) => message.role === "assistant" && message.content !== "这次追问暂时没有生成成功。你的问题已经保留，可以稍后再问一次。"
-  ).length;
-  const quota = {
-    used: Math.min(successfulReplies, getFollowUpQuota(reading.id).limit),
-    limit: getFollowUpQuota(reading.id).limit,
-    remaining: Math.max(getFollowUpQuota(reading.id).limit - successfulReplies, 0),
-    resetLabel: "每次解读"
-  };
-
-  return (
-    <section className="border-b border-ink/10 pb-8 pt-1">
-      <div className="rounded-[6px] border border-ink/8 bg-[#FFFDF8]/72 p-4">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <p className="text-[12px] uppercase tracking-[0.17em] text-clay/64">Follow-up Chat</p>
-            <p className="mt-1 text-[13px] leading-5 text-ink/48">围绕这次牌面继续追问，本次免费剩余 {quota.remaining}/{quota.limit} 次。</p>
-            <p className="mt-1 text-[12px] leading-5 text-ink/36">每次 Deep Reading 最多 1 次 AI 追问。</p>
-          </div>
-          <div className="grid h-9 w-9 shrink-0 place-items-center rounded-full border border-clay/16 bg-[#F5F1E8] text-clay/70">
-            <Send size={15} aria-hidden="true" />
-          </div>
-        </div>
-
-        <div className="mt-5 space-y-3">
-          {messages.length ? (
-            messages.map((message) => (
-              <div key={message.id} className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}>
-                <p
-                  className={`max-w-[86%] whitespace-pre-wrap rounded-[6px] px-4 py-3 text-[14px] leading-6 ${
-                    message.role === "user" ? "bg-[#6E2638] text-[#FFF9F2]" : "border border-ink/8 bg-ivory/64 text-ink/66"
-                  }`}
-                >
-                  {message.content}
-                  {message.role === "assistant" && message.content !== "这次追问暂时没有生成成功。你的问题已经保留，可以稍后再问一次。" ? (
-                    <span className="mt-2 block text-[11px] leading-5 opacity-60">AI 生成，仅供娱乐和自我梳理。</span>
-                  ) : null}
-                </p>
-              </div>
-            ))
-          ) : (
-            <p className="rounded-[5px] border border-dashed border-ink/12 px-4 py-3 text-[13px] leading-6 text-ink/42">
-              可以问“他现在的态度更像哪张牌？”或“这个结论落到行动上该怎么理解？”
-            </p>
-          )}
-
-          {sending ? <p className="text-[13px] leading-6 text-ink/42">正在结合这次牌面回复...</p> : null}
-          {error ? <p className="text-[13px] leading-6 text-[#8E4D4A]">{error}</p> : null}
-        </div>
-
-        <form onSubmit={handleSubmit} className="mt-4 flex items-end gap-2">
-          <textarea
-            value={draft}
-            maxLength={500}
-            rows={2}
-            onChange={(event) => {
-              setDraft(event.target.value);
-              setError("");
-            }}
-            placeholder="继续追问这次解读..."
-            disabled={sending || quota.remaining <= 0}
-            className="min-h-[48px] flex-1 resize-none rounded-[5px] border border-ink/12 bg-white/72 px-3 py-3 text-[14px] leading-5 outline-none focus:border-ink/35 disabled:opacity-55"
-          />
-          <button
-            type="submit"
-            disabled={sending || quota.remaining <= 0}
-            className="grid h-12 w-12 shrink-0 place-items-center rounded-full bg-[#6E2638] text-[#FFF9F2] shadow-soft disabled:opacity-50"
-          >
-            <Send size={17} aria-hidden="true" />
-            <span className="sr-only">发送追问</span>
-          </button>
-        </form>
-      </div>
-    </section>
-  );
+  return <section className="border-t border-ink/10 pb-6 pt-4" aria-label="这次解读的附属追问">
+    <details open={messages.length > 0 || undefined}>
+      <summary className="cursor-pointer py-2 text-sm text-[#6E2638]">{reading.legacyRestored ? "旧站追问记录 · 仅供回看" : `围绕这次解读追问 · 剩余 ${remaining} 次`}</summary>
+      <div className="mt-3 space-y-4">{messages.map((message, index) => <div key={message.id} className={message.role === "user" ? "border-l-2 border-[#6E2638]/30 pl-3" : "pl-3"}>
+        {message.role === "user" && <p className="mb-1 text-xs text-clay/65">追问 {Math.floor(index / 2) + 1}</p>}
+        <p className={`whitespace-pre-wrap break-words text-sm leading-7 ${message.role === "user" ? "text-ink/85" : "text-ink/65"}`}>{message.content}</p>
+      </div>)}</div>
+      {remaining > 0 && <form onSubmit={(event) => void submit(event)} className="mt-4 rounded-xl border border-ink/12 bg-paper/60 p-3">
+        <label htmlFor={`follow-${reading.id}`} className="sr-only">追问这次解读</label><textarea id={`follow-${reading.id}`} value={draft} rows={2} maxLength={paidSiteEnabled ? 300 : 500} disabled={busy} onChange={(event) => setDraft(event.target.value)} placeholder="针对上面的牌面，再问一个具体问题…" className="w-full resize-y bg-transparent text-base leading-6 outline-none" />
+        <div className="mt-2 flex items-center justify-between gap-3"><p className="text-xs leading-5 text-ink/40">沿用本次原牌，{paidSiteEnabled ? "不再扣花瓣。" : "继续解读。"}</p><button type="submit" disabled={busy || !draft.trim()} className="min-h-10 shrink-0 rounded-full bg-[#6E2638] px-4 text-xs text-[#FFF9F2] disabled:opacity-40">{busy ? "正在回复…" : "发送追问"}</button></div>
+      </form>}
+      {error && <p role="alert" className="mt-3 text-sm text-[#8E4D4A]">{error}</p>}
+    </details>
+  </section>;
 }
 
-function Timeline({ readings, onNewReading }: { readings: ReadingWithCards[]; generatingReadingId: string | null; onNewReading: () => void; onRetryReading: (readingId: string) => void }) {
-  return (
-    <div className="pb-28 pt-3">
-      <button
-        type="button"
-        onClick={onNewReading}
-        className="sticky top-[76px] z-20 mb-3 flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[#6E2638] text-[13px] uppercase tracking-[0.12em] text-[#FFF9F2] shadow-soft"
-      >
-        <Plus size={16} aria-hidden="true" />
-        继续占卜
-      </button>
-
-      {readings.map((reading) => (
-        <div key={reading.id}>
-          <ReadingChapter reading={reading} />
-          {reading.status === "completed" ? <FollowUpChat reading={reading} /> : null}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function ReadingWorkspace({
-  project,
-  readings,
-  onReadingsChange
-}: {
-  project: DeepProject;
-  readings: ReadingWithCards[];
-  onReadingsChange: () => void;
-}) {
-  const [step, setStep] = useState<ReadingFlowStep>("idle");
-  const [spreadType, setSpreadType] = useState<SpreadType>("three_card");
-  const [question, setQuestion] = useState("");
-  const [error, setError] = useState("");
-  const [quotaMessage, setQuotaMessage] = useState("");
-  const [generatingReadingId, setGeneratingReadingId] = useState<string | null>(null);
-  const [drawingReading, setDrawingReading] = useState<ReadingWithCards | null>(null);
-  const [submittingQuestion, setSubmittingQuestion] = useState(false);
+function ReadingWorkspace({ project, readings, onReadingsChange }: { project: DeepProject; readings: ReadingWithCards[]; onReadingsChange: () => void }) {
+  const [view, setView] = useState<"compose" | "history">("compose");
+  const [quota, setQuota] = useState<DeepQuota | null>(null);
+  const [notice, setNotice] = useState("");
+  const [generatingId, setGeneratingId] = useState<string | null>(null);
+  const [activeId, setActiveId] = useState<string | null>(null);
   const [ruleEngineTrialAllowed, setRuleEngineTrialAllowed] = useState(false);
-  const [useRuleEngineTrial, setUseRuleEngineTrial] = useState(false);
-  const quota = getDeepReadingQuota();
-
+  const scroll = useRef<HTMLDivElement>(null);
+  const ordered = useMemo(() => [...readings].sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt) || a.id.localeCompare(b.id)), [readings]);
+  useEffect(() => { const params = new URLSearchParams(window.location.search); if (params.get("view") === "history") setView("history"); const id = params.get("reading"); if (id && readings.some(item => item.id === id)) setActiveId(id); }, [readings]);
+  useEffect(() => { let active = true; void loadDeepReadingQuota().then((value) => { if (active) setQuota(value); }).catch(() => { if (active) setNotice("暂时无法读取花瓣余额，解读前会重新核验。"); }); return () => { active = false; }; }, [readings, generatingId]);
+  useEffect(() => { let active = true; void getRuleEngineOwnerTrialAccess().then((value) => { if (active) setRuleEngineTrialAllowed(value.allowed); }); return () => { active = false; }; }, []);
+  const latestId = ordered.at(-1)?.id;
   useEffect(() => {
-    let cancelled = false;
-    void getRuleEngineOwnerTrialAccess().then((access) => {
-      if (!cancelled) setRuleEngineTrialAllowed(access.allowed);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  async function generateAndRefresh(readingId: string) {
-    setGeneratingReadingId(readingId);
-    try {
-      await generateDeepReading(readingId);
-    } catch {
-      // The reading is already marked failed or cards-only; the timeline will show the right state.
-    } finally {
-      setGeneratingReadingId(null);
-      onReadingsChange();
-    }
+    if (view !== "history") { if (scroll.current) scroll.current.scrollTop = 0; return; }
+    const id = activeId || latestId;
+    requestAnimationFrame(() => { const chapter = scroll.current?.querySelector(`[data-reading-id="${id}"]`); if (chapter && scroll.current) scroll.current.scrollTop = (chapter as HTMLElement).offsetTop - scroll.current.offsetTop - 10; });
+  }, [view, activeId, latestId]);
+  useEffect(() => {
+    if (view !== "history" || !readings.some((reading) => reading.status === "generating")) return;
+    const timer = window.setInterval(() => { if (document.visibilityState === "visible") onReadingsChange(); }, 8000);
+    return () => window.clearInterval(timer);
+  }, [view, readings, onReadingsChange]);
+  async function unlock(id: string) {
+    setNotice("");
+    setGeneratingId(id);
+    try { await generateDeepReading(id); }
+    finally { setGeneratingId(null); onReadingsChange(); }
   }
-
-  function startReading() {
-    setStep("spread");
-    setError("");
-    setUseRuleEngineTrial(false);
-    setQuotaMessage(quota.remaining <= 0 ? "今天的免费 AI 解读次数已经用完。你仍然可以抽牌、长按保存牌面，并在结果里复制专业 Prompt 自行解读。" : "");
-    trackAnalyticsEvent("deep_start", {
-      projectId: project.id,
-      quotaRemaining: quota.remaining
-    });
-  }
-
-  function submitQuestion() {
-    if (!question.trim()) {
-      setError("请先写下你这次想问的问题。");
-      return;
-    }
-
-    setStep("drawing");
-    setTimeout(() => {
-      void (async () => {
-        let reading: ReadingWithCards;
-        try {
-          reading = await saveReading({ projectId: project.id, spreadType, question, explicitSource: ruleEngineTrialAllowed && useRuleEngineTrial ? "rule_engine" : undefined });
-          trackAnalyticsEvent("deep_submit", {
-            projectId: project.id,
-            readingId: reading.id,
-            spreadType,
-            questionLength: question.trim().length
-          });
-        } catch (createError) {
-        setError(createError instanceof Error ? createError.message : "今日免费额度已用完，明天 00:00 后刷新。");
-        setStep("question");
-        return;
-      }
-      setQuestion("");
-      setError("");
-      setStep("idle");
-      onReadingsChange();
-      void generateAndRefresh(reading.id);
-      })();
-    }, 900);
-  }
-
-  async function submitQuestionWithAnimation() {
-    if (submittingQuestion) return;
-
-    const submittedQuestion = question.trim();
-
-    if (!submittedQuestion) {
-      setError("请先写下你这次想问的问题。");
-      return;
-    }
-
-    setSubmittingQuestion(true);
-    let reading: ReadingWithCards;
-    try {
-      reading = await saveReading({
-        projectId: project.id,
-        spreadType,
-        question: submittedQuestion,
-        explicitSource: ruleEngineTrialAllowed && useRuleEngineTrial ? "rule_engine" : undefined
-      });
-      trackAnalyticsEvent("deep_submit", {
-        projectId: project.id,
-        readingId: reading.id,
-        spreadType,
-        questionLength: submittedQuestion.length
-      });
-    } catch (createError) {
-      setError(createError instanceof Error ? createError.message : "今日免费额度已用完，明天 00:00 后刷新。");
-      setSubmittingQuestion(false);
-      return;
-    }
-    const minimumAnimation = wait(5400);
-
-    setDrawingReading(reading);
-    setQuestion("");
-    setError("");
-    setStep("drawing");
-    setGeneratingReadingId(reading.id);
-
-    void (async () => {
-      try {
-        await Promise.all([generateDeepReading(reading.id), minimumAnimation]);
-      } catch {
-        await minimumAnimation;
-      } finally {
-        setGeneratingReadingId(null);
-        setDrawingReading(null);
-        setStep("idle");
-        setSubmittingQuestion(false);
-        onReadingsChange();
-      }
-    })();
-  }
-
-  if (step === "spread") {
-    return <SpreadSelection selectedSpread={spreadType} onSelect={setSpreadType} onNext={() => setStep("question")} onCancel={() => setStep("idle")} />;
-  }
-
-  if (step === "question") {
-    return (
-      <QuestionStep
-        spreadType={spreadType}
-        question={question}
-        error={error}
-        ruleEngineTrialAllowed={ruleEngineTrialAllowed}
-        useRuleEngineTrial={useRuleEngineTrial}
-        onUseRuleEngineTrialChange={setUseRuleEngineTrial}
-        onQuestionChange={(value) => {
-          setQuestion(value);
-          setError("");
-        }}
-        onBack={() => setStep("spread")}
-        onSubmit={() => void submitQuestionWithAnimation()}
-        submitting={submittingQuestion}
-      />
-    );
-  }
-
-  if (step === "drawing") {
-    return <DrawingState spreadType={spreadType} cards={drawingReading?.cards ?? []} />;
-  }
-
-  if (!readings.length) {
-    return (
-      <>
-        <ProjectMemory project={project} onSaved={onReadingsChange} />
-        <QuotaNotice quota={quota} message={quotaMessage} />
-        <EmptyState project={project} onStartReading={startReading} />
-      </>
-    );
-  }
-
-  return (
-    <>
-      <ProjectMemory project={project} onSaved={onReadingsChange} />
-      <QuotaNotice quota={quota} message={quotaMessage} />
-      <Timeline readings={readings} generatingReadingId={generatingReadingId} onNewReading={startReading} onRetryReading={(readingId) => void generateAndRefresh(readingId)} />
-    </>
-  );
+  return <div className="flex min-h-0 flex-1 flex-col">
+    <div className="relative z-20 shrink-0"><QuotaNotice quota={quota} message={notice} readingId={activeId || latestId} />{view === "history" && <ProjectMemory project={project} onSaved={onReadingsChange} />}</div>
+    <div ref={scroll} data-divination-scroll="true" className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain pb-10 [scrollbar-gutter:stable]" aria-label={view === "compose" ? "开始深度占卜" : "项目解读记录"}>
+      {view === "compose" ? <DivinationExperience key={project.id} projectId={project.id} historyCount={readings.length} ruleEngineTrialAllowed={ruleEngineTrialAllowed} onHistory={() => setView("history")} onComplete={(id, message) => { setActiveId(id); setNotice(message || ""); setView("history"); onReadingsChange(); }} /> : <div className="mx-auto w-full max-w-[760px] px-1 sm:px-4">
+        <div className="flex items-center justify-between gap-3 py-5"><p className="text-xs text-ink/45">按时间排列 · 最新问题在下方</p><button type="button" onClick={() => setView("compose")} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[#6E2638] px-5 text-sm text-[#FFF9F2]"><Plus size={15} />新的占卜</button></div>
+        {ordered.map((reading) => <div key={reading.id} id={`reading-${reading.id}`} className="mb-6 rounded-xl border border-ink/10 bg-[#FFFDF8]/70 px-4 shadow-sm sm:px-7"><ReadingChapter reading={reading} onUnlock={() => unlock(reading.id)} unlocking={generatingId === reading.id} />{reading.status === "completed" && <ReadingFollowUps reading={reading} />}</div>)}
+        {!ordered.length && <EmptyState project={project} onStartReading={() => setView("compose")} />}
+        <button type="button" onClick={() => setView("compose")} className="mx-auto mb-3 mt-3 flex min-h-12 items-center gap-2 rounded-full border border-[#6E2638]/25 px-7 text-sm text-[#6E2638]"><Plus size={15} />带着新问题，再抽一次牌</button>
+      </div>}
+    </div>
+  </div>;
 }
 
 function Shell({
@@ -1348,13 +820,13 @@ function Shell({
   }
 
   return (
-    <main className="min-h-dvh bg-paper px-5 text-ink">
-      <section className="mx-auto flex min-h-dvh w-full max-w-[430px] flex-col">
+    <main className="h-dvh overflow-hidden bg-paper px-4 text-ink sm:px-6">
+      <section className="mx-auto flex h-full min-h-0 w-full max-w-[960px] flex-col">
         <MobileHeader title={title} onOpenDrawer={() => setDrawerOpen(true)} />
         {typeof children === "function" ? children({ openCreate }) : children}
       </section>
 
-      <ProjectDrawer
+      {drawerOpen && <ProjectDrawer
         open={drawerOpen}
         projects={projects}
         currentProjectId={currentProject?.id}
@@ -1364,15 +836,15 @@ function Shell({
         onEditProject={openEdit}
         onDeleteProject={(project) => setPendingDeleteProject(project)}
         onLogout={handleLogout}
-      />
-      <ProjectSheet
+      />}
+      {sheetOpen && <ProjectSheet
         open={sheetOpen}
         mode={sheetMode}
         initialProject={sheetMode === "edit" ? selectedProject : null}
         onClose={() => setSheetOpen(false)}
         onSaved={handleSaved}
-      />
-      <>
+      />}
+      {pendingDeleteProject && <>
         <button
           type="button"
           aria-label="关闭删除确认"
@@ -1381,7 +853,7 @@ function Shell({
         />
         <section
           aria-label="删除项目确认"
-          className={`fixed inset-x-0 bottom-0 z-[60] mx-auto w-full max-w-[430px] rounded-t-[18px] border border-ink/10 bg-[#FFFDF8] px-5 pb-[calc(env(safe-area-inset-bottom)+22px)] pt-5 shadow-paper transition-transform duration-300 ${
+          className={`fixed inset-x-0 bottom-0 z-[60] mx-auto max-h-[90dvh] w-full max-w-[560px] overflow-y-auto rounded-t-[18px] border border-ink/10 bg-[#FFFDF8] px-5 pb-[calc(env(safe-area-inset-bottom)+22px)] pt-5 shadow-paper transition-transform duration-300 ${
             pendingDeleteProject ? "translate-y-0" : "translate-y-full"
           }`}
         >
@@ -1405,7 +877,7 @@ function Shell({
             </button>
           </div>
         </section>
-      </>
+      </>}
     </main>
   );
 }
@@ -1445,6 +917,9 @@ export function DeepLandingClient() {
 
         if (loadedProjects[0]) {
           router.replace(`/deep/project/${loadedProjects[0].id}`);
+        } else if (paidSiteEnabled) {
+          const project = await paidSiteRequest<DeepProject>("project-default", {});
+          if (!cancelled) router.replace(`/deep/project/${project.id}`);
         }
       } catch (error) {
         if (cancelled) return;
@@ -1600,7 +1075,7 @@ export function DeepProjectPageClient({ projectId }: { projectId: string }) {
 
   return (
     <Shell title={project?.title ?? "Deep Reading"} currentProject={project} projects={projects} email={email} onProjectsChange={refresh}>
-      {project ? <ReadingWorkspace project={project} readings={readings} onReadingsChange={refresh} /> : null}
+      {project ? <ReadingWorkspace key={project.id} project={project} readings={readings} onReadingsChange={refresh} /> : null}
     </Shell>
   );
 }

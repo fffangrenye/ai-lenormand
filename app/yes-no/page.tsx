@@ -1,66 +1,20 @@
 "use client";
 
 import Link from "next/link";
+import { QuietCardBack } from "@/components/QuietCardBack";
+import { AccountMenu } from "@/components/AccountMenu";
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { trackAnalyticsEvent } from "@/components/AnalyticsTracker";
 import { getLenormandCardImagePath, preloadLenormandCardImages } from "@/lib/lenormand-cards";
 import { useCardSpreadLongPressSave } from "@/lib/use-card-spread-save";
 
-type CardTone = "positive" | "negative" | "neutral";
+import { yesNoDeck, getYesNoResult, ResultKind, LenormandCard } from "@/lib/yes-no";
 
-type LenormandCard = {
-  number: number;
-  nameEn: string;
-  nameZh: string;
-  tone: CardTone;
-  score: number;
-};
-
-type ResultKind = "YES" | "NO" | "UNCLEAR";
 type Stage = "input" | "drawing" | "result";
 
-const deck: LenormandCard[] = [
-  { number: 1, nameEn: "Rider", nameZh: "骑士", tone: "positive", score: 1 },
-  { number: 2, nameEn: "Clover", nameZh: "三叶草", tone: "positive", score: 1 },
-  { number: 3, nameEn: "Ship", nameZh: "船", tone: "neutral", score: 0 },
-  { number: 4, nameEn: "House", nameZh: "房子", tone: "positive", score: 1 },
-  { number: 5, nameEn: "Tree", nameZh: "树", tone: "neutral", score: 0 },
-  { number: 6, nameEn: "Clouds", nameZh: "云", tone: "negative", score: -1 },
-  { number: 7, nameEn: "Snake", nameZh: "蛇", tone: "negative", score: -1 },
-  { number: 8, nameEn: "Coffin", nameZh: "棺材", tone: "negative", score: -1 },
-  { number: 9, nameEn: "Bouquet", nameZh: "花束", tone: "positive", score: 1 },
-  { number: 10, nameEn: "Scythe", nameZh: "镰刀", tone: "negative", score: -1 },
-  { number: 11, nameEn: "Whip", nameZh: "鞭子", tone: "negative", score: -1 },
-  { number: 12, nameEn: "Birds", nameZh: "鸟", tone: "neutral", score: 0 },
-  { number: 13, nameEn: "Child", nameZh: "孩子", tone: "positive", score: 1 },
-  { number: 14, nameEn: "Fox", nameZh: "狐狸", tone: "negative", score: -1 },
-  { number: 15, nameEn: "Bear", nameZh: "熊", tone: "positive", score: 1 },
-  { number: 16, nameEn: "Stars", nameZh: "星星", tone: "positive", score: 1 },
-  { number: 17, nameEn: "Stork", nameZh: "鹳", tone: "positive", score: 1 },
-  { number: 18, nameEn: "Dog", nameZh: "狗", tone: "positive", score: 1 },
-  { number: 19, nameEn: "Tower", nameZh: "塔", tone: "neutral", score: 0 },
-  { number: 20, nameEn: "Garden", nameZh: "花园", tone: "positive", score: 1 },
-  { number: 21, nameEn: "Mountain", nameZh: "山", tone: "negative", score: -1 },
-  { number: 22, nameEn: "Crossroads", nameZh: "岔路", tone: "neutral", score: 0 },
-  { number: 23, nameEn: "Mice", nameZh: "老鼠", tone: "negative", score: -1 },
-  { number: 24, nameEn: "Heart", nameZh: "心", tone: "positive", score: 1 },
-  { number: 25, nameEn: "Ring", nameZh: "戒指", tone: "positive", score: 1 },
-  { number: 26, nameEn: "Book", nameZh: "书", tone: "neutral", score: 0 },
-  { number: 27, nameEn: "Letter", nameZh: "信", tone: "positive", score: 1 },
-  { number: 28, nameEn: "Man", nameZh: "男人", tone: "neutral", score: 0 },
-  { number: 29, nameEn: "Woman", nameZh: "女人", tone: "neutral", score: 0 },
-  { number: 30, nameEn: "Lily", nameZh: "百合", tone: "positive", score: 1 },
-  { number: 31, nameEn: "Sun", nameZh: "太阳", tone: "positive", score: 1 },
-  { number: 32, nameEn: "Moon", nameZh: "月亮", tone: "neutral", score: 0 },
-  { number: 33, nameEn: "Key", nameZh: "钥匙", tone: "positive", score: 1 },
-  { number: 34, nameEn: "Fish", nameZh: "鱼", tone: "positive", score: 1 },
-  { number: 35, nameEn: "Anchor", nameZh: "锚", tone: "positive", score: 1 },
-  { number: 36, nameEn: "Cross", nameZh: "十字架", tone: "negative", score: -1 }
-];
-
 function drawCards() {
-  const pool = [...deck];
+  const pool = [...yesNoDeck];
   const picked: LenormandCard[] = [];
 
   while (picked.length < 3) {
@@ -71,38 +25,15 @@ function drawCards() {
   return picked;
 }
 
-function getResult(cards: LenormandCard[]): ResultKind {
-  const score = cards.reduce((sum, card) => sum + card.score, 0);
-  if (score >= 2) return "YES";
-  if (score <= -2) return "NO";
-  return "UNCLEAR";
-}
-
 function isUnsuitable(question: string) {
   const patterns = ["怎么办", "怎么看", "为什么", "未来会怎么样", "人生", "关系未来", "几个月", "长期"];
   return patterns.some((pattern) => question.includes(pattern));
 }
 
-function CardBack() {
-  return (
-    <div className="relative h-full w-full overflow-hidden rounded-[4px] border border-[#D8D3C5] bg-[#FFFDF8] p-1.5 shadow-entry">
-      <div className="relative h-full w-full overflow-hidden rounded-[2px] border border-ink/14">
-        <div className="absolute inset-3 border border-clay/20" />
-        <div className="absolute left-1/2 top-1/2 h-[44%] w-[62%] -translate-x-1/2 -translate-y-1/2 rounded-full border border-sage/24" />
-        <div className="absolute left-1/2 top-1/2 h-px w-[52%] -translate-x-1/2 bg-ink/12" />
-        <div className="absolute left-1/2 top-1/2 h-[42%] w-px -translate-y-1/2 bg-ink/12" />
-        <p className="absolute inset-x-0 top-1/2 -translate-y-1/2 text-center font-serif text-[10px] italic tracking-[0.14em] text-ink/46">
-          Lenormand
-        </p>
-      </div>
-    </div>
-  );
-}
-
 function MiniCard({ card, revealed, index }: { card: LenormandCard; revealed: boolean; index: number }) {
   return (
     <motion.div
-      className="h-[148px] w-[101px] [perspective:900px]"
+      className="aspect-[101/148] w-full max-w-[120px] min-w-0 [perspective:900px]"
       initial={{ opacity: 0, y: 18 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.45, delay: index * 0.1 }}
@@ -113,7 +44,7 @@ function MiniCard({ card, revealed, index }: { card: LenormandCard; revealed: bo
         transition={{ duration: 0.68, delay: revealed ? index * 0.14 : 0, ease: [0.22, 1, 0.36, 1] }}
       >
         <div className="absolute inset-0 [backface-visibility:hidden]">
-          <CardBack />
+          <QuietCardBack />
         </div>
         <div className="absolute inset-0 overflow-hidden rounded-[4px] border border-[#D8D3C5] bg-[#FFFDF8] shadow-entry [backface-visibility:hidden] [transform:rotateY(180deg)]">
           <img src={getLenormandCardImagePath(card.number)} alt={`${card.nameEn} / ${card.nameZh}`} className="h-full w-full object-fill [-webkit-touch-callout:default]" />
@@ -200,7 +131,7 @@ export default function YesNoPage() {
     }
 
     const picked = drawCards();
-    const tendency = getResult(picked);
+    const tendency = getYesNoResult(picked);
     trackAnalyticsEvent("yes_no_submit", {
       questionLength: trimmed.length,
       result: tendency,
@@ -219,14 +150,12 @@ export default function YesNoPage() {
 
   return (
     <main className="min-h-dvh bg-paper text-ink">
-      <section className="mx-auto flex min-h-dvh w-full max-w-[430px] flex-col px-5 pb-8 pt-5">
+      <section className="mx-auto flex min-h-dvh w-full max-w-[760px] flex-col px-5 pb-8 pt-5">
         <header className="flex items-center justify-between">
           <Link href="/" className="font-serif text-[18px] leading-none tracking-[0.04em] text-ink/86">
             Flora Lenormand
           </Link>
-          <Link href="/" className="border-b border-ink/22 pb-1 text-[12px] uppercase tracking-[0.13em] text-ink/56">
-            Home
-          </Link>
+          <AccountMenu />
         </header>
 
         {stage === "input" ? (
@@ -275,7 +204,7 @@ export default function YesNoPage() {
             <p className="text-center text-[12px] uppercase tracking-[0.28em] text-sage">Yes or No</p>
             <p className="mx-auto mt-5 max-w-[320px] text-center font-serif text-[22px] leading-7 text-ink">{question}</p>
 
-            <div {...(cards.length ? cardSaveHandlers : {})} className="mt-8 flex justify-center gap-3">
+            <div {...(cards.length ? cardSaveHandlers : {})} className="mx-auto mt-8 flex w-full max-w-[400px] justify-center gap-2 sm:gap-4">
               {cards.map((card, index) => (
                 <MiniCard key={`${card.number}-${card.nameEn}`} card={card} revealed={revealed} index={index} />
               ))}

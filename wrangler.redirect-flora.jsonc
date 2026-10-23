@@ -1,0 +1,9 @@
+{
+  "$schema":"./node_modules/wrangler/config-schema.json",
+  "name":"flora",
+  "account_id":"ba9ee3a5752bb83f8bb97f3b60dfa88b",
+  "main":"workers/redirect-final/worker.js",
+  "compatibility_date":"2026-09-04",
+  "workers_dev":true,
+  "observability":{"enabled":true}
+}

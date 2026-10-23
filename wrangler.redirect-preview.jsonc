@@ -1,6 +1,6 @@
 {
   "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "ai-lenormand-cloudflare-preview",
-  "main": "workers/redirect-old/worker.js",
+  "main": "workers/redirect-final/worker.js",
   "compatibility_date": "2026-09-04"
 }

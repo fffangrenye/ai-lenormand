@@ -1,0 +1,96 @@
+import assert from "node:assert/strict";
+import test from "node:test";
+import path from "node:path";
+import { randomUUID } from "node:crypto";
+import { NextRequest } from "next/server";
+import { GET, POST } from "../../app/api/local-paid/[[...path]]/route";
+import { getPaidLocalStore } from "../paid-local/store";
+
+test("the original site project-store uses isolated paid APIs end to end", async () => {
+  const savedEnv = { ...process.env };
+  const fetchBefore = globalThis.fetch;
+  const windowBefore = Object.getOwnPropertyDescriptor(globalThis, "window");
+  const sessionBefore = Object.getOwnPropertyDescriptor(globalThis, "sessionStorage");
+  const storage = () => {
+    const values = new Map<string, string>();
+    return { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value), removeItem: (key: string) => values.delete(key) };
+  };
+  Object.assign(process.env, { NODE_ENV: "test", PAID_LOCAL_MODE: "1", NEXT_PUBLIC_PAID_LOCAL_MODE: "1", PAID_LOCAL_MODEL: "mock", PAID_LOCAL_DB: path.join(process.cwd(), ".local-paid", `site-${randomUUID()}.sqlite`), NEXT_PUBLIC_SUPABASE_URL: "http://127.0.0.1:9", SUPABASE_SERVICE_ROLE_KEY: "", DEEPSEEK_API_KEY: "" });
+  Object.defineProperty(globalThis, "window", { configurable: true, value: { location: { hostname: "127.0.0.1" }, localStorage: storage() } });
+  Object.defineProperty(globalThis, "sessionStorage", { configurable: true, value: storage() });
+  let cookie = "";
+  const requested: string[] = [];
+  globalThis.fetch = async (input, init) => {
+    const route = String(input);
+    requested.push(route);
+    assert.ok(route.startsWith("/api/local-paid"), `unexpected non-isolated request: ${route}`);
+      const request = new NextRequest(`http://localhost:3100${route}`, { method: init?.method || "GET", body: typeof init?.body === "string" ? init.body : undefined, headers: { "Content-Type": "application/json", host: "127.0.0.1:3100", origin: "http://127.0.0.1:3100", "x-local-paid": "1", cookie } });
+    const context = { params: { path: route.replace(/^\/api\/local-paid\/?/, "").split("/").filter(Boolean) } };
+    const response = init?.method === "POST" ? await POST(request, context) : await GET(request, context);
+    const changed = response.headers.get("set-cookie");
+    if (changed) cookie = changed.split(";")[0];
+    return response;
+  };
+  try {
+    // Load only after enabling the public build flag, just as the local launcher does.
+    const bridge = require("../paid-local/site-bridge") as typeof import("../paid-local/site-bridge");
+    const site = require("../project-store") as typeof import("../project-store");
+    await bridge.loginPaidSite("new");
+    assert.equal(site.getSession()?.userId, "local-new");
+    assert.equal((await site.loadDeepReadingQuota()).remaining, 1);
+    const project = await site.saveProject({ title: "原站项目", background: "本地背景" });
+    assert.equal((await site.loadProjects())[0].id, project.id);
+    await site.saveProjectUpdate(project.id, { memorySummary: "保留长期记忆" });
+    assert.equal((await site.loadProject(project.id))?.memorySummary, "保留长期记忆");
+    const reading = await site.saveReading({ projectId: project.id, spreadType: "three_card", question: "接下来会如何发展？" });
+    assert.equal(reading.status, "drawing");
+    assert.equal((await site.loadDeepReadingQuota()).remaining, 1);
+    assert.equal((await site.loadReadings(project.id))[0].projectId, project.id);
+    await site.generateDeepReading(reading.id);
+    await site.generateDeepReading(reading.id);
+    const completed = (await site.loadReadings(project.id))[0];
+    assert.equal(completed.status, "completed");
+    assert.ok(completed.interpretation);
+    assert.deepEqual(completed.cards, reading.cards);
+    assert.equal((await site.loadDeepReadingQuota()).remaining, 0);
+    const account = await bridge.paidSiteRequest<import("../paid-local/types").PaidOverview>();
+    assert.deepEqual(account.balance, { available: 0, reserved: 0, consumed: 1 });
+    assert.equal(account.readings.filter((item) => item.state === "completed").length, 1);
+    assert.ok(account.readings[0].completedAt);
+    await site.sendFollowUpMessage({ readingId: reading.id, content: "可以先做什么？" });
+    await site.sendFollowUpMessage({ readingId: reading.id, content: "可以先做什么？" });
+    assert.equal((await site.loadFollowUpMessages(reading.id)).length, 2);
+    await site.sendFollowUpMessage({ readingId: reading.id, content: "观察什么信号？" });
+    assert.equal((await site.loadFollowUpMessages(reading.id)).length, 4);
+    await assert.rejects(() => site.sendFollowUpMessage({ readingId: reading.id, content: "第三次追问？" }));
+    await assert.rejects(() => site.buildExternalReadingPrompt(reading.id));
+    assert.equal(site.getFollowUpQuota(reading.id).limit, 2);
+    const manual = await bridge.paidSiteRequest<import("../paid-local/types").PaidDrawSession>("draw-session", { projectId: project.id, question: "两个工作机会如何选择？", spread: "choice_two", choices: ["原公司", "新公司"], requestKey: randomUUID() });
+    let selected = manual;
+    for (let index = 0; index < 6; index++) selected = await bridge.paidSiteRequest("draw-pick", { sessionId: manual.id, token: manual.deck[index * 2].token, expectedCount: index });
+    assert.equal(selected.state, "completed"); assert.ok(selected.readingId);
+    assert.equal((await site.loadDeepReadingQuota()).remaining, 0);
+    await assert.rejects(() => site.generateDeepReading(selected.readingId!));
+    assert.equal((await site.loadDeepReadingQuota()).remaining, 0);
+    assert.equal((await site.loadReadings(project.id)).find((item) => item.id === selected.readingId)?.cards.length, 6);
+    await bridge.loginPaidSite("other");
+    const otherAccount = await bridge.paidSiteRequest<import("../paid-local/types").PaidOverview>();
+    assert.equal(otherAccount.readings.length, 0);
+    assert.equal(otherAccount.balance.consumed, 0);
+    assert.equal(otherAccount.ledger.length, 1);
+    await assert.rejects(() => bridge.paidSiteRequest(`draw-sessions/${manual.id}`));
+    await assert.rejects(() => site.loadProject(project.id));
+    await assert.rejects(() => site.saveReading({ projectId: project.id, spreadType: "three_card", question: "越权问题" }));
+    await assert.rejects(() => site.generateDeepReading(reading.id));
+    const own = await site.saveProject({ title: "自己的项目" });
+    await site.removeProject(own.id);
+    assert.equal((await site.loadProjects()).length, 0);
+    assert.ok(requested.length > 20);
+  } finally {
+    getPaidLocalStore().close(); globalThis.fetch = fetchBefore;
+    if (windowBefore) Object.defineProperty(globalThis, "window", windowBefore); else Reflect.deleteProperty(globalThis, "window");
+    if (sessionBefore) Object.defineProperty(globalThis, "sessionStorage", sessionBefore); else Reflect.deleteProperty(globalThis, "sessionStorage");
+    for (const key of Object.keys(process.env)) if (!(key in savedEnv)) delete process.env[key];
+    Object.assign(process.env, savedEnv);
+  }
+});

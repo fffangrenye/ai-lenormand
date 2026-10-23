@@ -4,17 +4,18 @@ import { parseAiJsonObject } from "@/lib/ai-json";
 import { DeepReadingRequest, assertDeepReadingResult } from "@/lib/deep-reading-result";
 import {
   AiFailureReason,
-  checkDailyQuota,
-  consumeDailyQuota,
+  reserveDailyQuota,
+  refundDailyQuota,
+  getBeijingDateKey,
   isAdminEmail,
   requireSupabaseUser,
   trackServerAnalyticsEvent
 } from "@/lib/supabase-server";
+import { FREE_DEEP_READING_LIMIT } from "@/lib/reading-quota";
 
 export const runtime = "nodejs";
 
 const DEEPSEEK_URL = "https://api.deepseek.com/chat/completions";
-const FREE_DEEP_READING_LIMIT = 5;
 const DEEPSEEK_MODEL = process.env.DEEPSEEK_MODEL || "deepseek-v4-flash";
 
 class AiProviderError extends Error {
@@ -226,6 +227,7 @@ async function callDeepSeek(input: DeepReadingRequest) {
 }
 
 export async function POST(request: Request) {
+  let reservation: { userId: string; dateKey: string } | undefined;
   try {
     const user = await requireSupabaseUser(request);
     const input = (await request.json()) as DeepReadingRequest;
@@ -241,7 +243,8 @@ export async function POST(request: Request) {
     });
 
     if (!isAdminEmail(user.email)) {
-      const quota = await checkDailyQuota(user.id, "deep_reading", FREE_DEEP_READING_LIMIT);
+      const dateKey = getBeijingDateKey();
+      const quota = await reserveDailyQuota(user.id, "deep_reading", FREE_DEEP_READING_LIMIT, dateKey);
       if (!quota.allowed) {
         await trackServerAnalyticsEvent({
           eventName: "quota_exceeded",
@@ -263,12 +266,18 @@ export async function POST(request: Request) {
           { status: 429 }
         );
       }
+      reservation = { userId: user.id, dateKey };
     }
 
     let result;
     try {
       result = await callDeepSeek(input);
     } catch (error) {
+      if (reservation) {
+        const failedReservation = reservation;
+        reservation = undefined;
+        await refundDailyQuota(failedReservation.userId, "deep_reading", failedReservation.dateKey);
+      }
       const reason = classifyAIError(error);
       await trackServerAnalyticsEvent({
         eventName: "ai_failed",
@@ -311,30 +320,8 @@ export async function POST(request: Request) {
       );
     }
 
-    if (!isAdminEmail(user.email)) {
-      const consumed = await consumeDailyQuota(user.id, "deep_reading", FREE_DEEP_READING_LIMIT);
-      if (!consumed.allowed) {
-        await trackServerAnalyticsEvent({
-          eventName: "quota_exceeded",
-          userId: user.id,
-          readingId: input.reading.id,
-          spreadType: input.reading.spreadType,
-          path: "/api/deep-reading",
-          request,
-          properties: { kind: "deep_reading", quota: consumed, after_ai_success: true }
-        });
-
-        return NextResponse.json(
-          {
-            code: "QUOTA_EXCEEDED",
-            error: "quota_exceeded",
-            message: "今日 AI 解读额度已用完",
-            quota: consumed
-          },
-          { status: 429 }
-        );
-      }
-    }
+    // The successful generation keeps the slot reserved before calling AI.
+    reservation = undefined;
 
     await trackServerAnalyticsEvent({
       eventName: "ai_success",
@@ -364,6 +351,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json(result);
   } catch (error) {
+    if (reservation) {
+      await refundDailyQuota(reservation.userId, "deep_reading", reservation.dateKey).catch(console.error);
+    }
     console.error(error);
     if (error instanceof Error && error.message === "Unauthorized") {
       return NextResponse.json({ code: "UNAUTHORIZED", error: "请重新登录后再生成 AI 解读。" }, { status: 401 });

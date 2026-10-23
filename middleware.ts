@@ -1,10 +1,10 @@
 import type { NextRequest } from "next/server";
 
-const SITE_URL = "https://flora.soul-ai-frontend.workers.dev";
-const OG_CANONICAL_URL = `${SITE_URL}/?og_refresh=20260930b`;
+const SITE_URL = "https://floralenormand.site";
+const OG_CANONICAL_URL = `${SITE_URL}/`;
 const SITE_TITLE = "花语雷诺曼 · Flora Lenormand · 深度占卜";
 const SITE_DESCRIPTION = "每日运势 · 是与否 · 深度占卜";
-const OG_IMAGE_URL = `${SITE_URL}/og-image-live-20260930.jpg`;
+const OG_IMAGE_URL = `${SITE_URL}/og-flora-v3-20261022.jpg`;
 
 const SOCIAL_BOT_PATTERN =
   /facebookexternalhit|facebot|meta-externalagent|meta-externalfetcher|twitterbot|slackbot|discordbot|whatsapp|telegrambot|linkedinbot|pinterest|embedly|quora link preview|redditbot/i;
@@ -55,6 +55,12 @@ function createSocialPreviewHtml() {
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
+  if (process.env.PAID_LOCAL_MODE === "1") {
+    if (pathname.startsWith("/api/") && !pathname.startsWith("/api/local-paid")) {
+      return new Response("本地付费测试环境仅开放独立测试入口。", { status: 403 });
+    }
+    return;
+  }
   if (pathname !== "/") return;
 
   const userAgent = request.headers.get("user-agent") ?? "";
@@ -69,5 +75,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: "/"
+  matcher: ["/", "/((?!_next/static|_next/image|cards/|favicon.ico).*)"]
 };

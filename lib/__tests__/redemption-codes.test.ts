@@ -1,0 +1,124 @@
+import test from "node:test";
+import assert from "node:assert/strict";
+import { randomUUID } from "node:crypto";
+import { rmSync } from "node:fs";
+import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
+import { spawn } from "node:child_process";
+import { NextRequest } from "next/server";
+import { PaidLocalStore, getPaidLocalStore } from "../paid-local/store";
+import { LocalPaidError } from "../paid-local/guard";
+import { localAdminKey } from "../paid-local/admin-auth";
+import { GET,POST } from "../../app/api/local-paid/[[...path]]/route";
+import type { RedemptionResult, CodeReceipt } from "../paid-local/types";
+
+const fails=(code:string)=>(e:unknown)=>e instanceof LocalPaidError && e.code===code;
+test("pre-stored card codes redeem atomically, survive retries, enforce ownership and refund only their own credits",async t=>{
+  const saved={...process.env},file=path.join(process.cwd(),".local-paid",`redeem-${randomUUID()}.sqlite`);
+  Object.assign(process.env,{NODE_ENV:"test",PAID_LOCAL_MODE:"1",PAID_LOCAL_MODEL:"mock",PAID_LOCAL_DB:file,NEXT_PUBLIC_SUPABASE_URL:"http://127.0.0.1:9",SUPABASE_SERVICE_ROLE_KEY:"",DEEPSEEK_API_KEY:""});
+  let time=Date.now(),store=new PaidLocalStore(file,()=>time),apiStore:PaidLocalStore|undefined;const db=new DatabaseSync(file);
+  const user=store.login("new").userId,other=store.login("other").userId;
+  const generate=(pack="five",quantity=1)=>{const batch=store.redemptions.createBatch("local-admin",pack,quantity,randomUUID(),"自动化本地测试");return {...batch,...store.redemptions.exportBatch("local-admin",batch.id,randomUUID(),"测试导出")};};
+  try{
+    await t.test("three fixed tiers generate one-use stock and re-export only remaining codes without plaintext persistence",()=>{
+      const key=randomUUID(),batch=store.redemptions.createBatch("local-admin","single",3,key,"测试批次");
+      assert.equal(store.redemptions.createBatch("local-admin","single",3,key,"测试批次").id,batch.id);
+      assert.throws(()=>store.redemptions.createBatch("local-admin","five",3,key,"测试批次"),fails("REQUEST_CONFLICT"));
+      const exported=store.redemptions.exportBatch("local-admin",batch.id,randomUUID(),"导出库存");
+      assert.equal(exported.previouslyExported,false);
+      assert.ok(store.redemptions.adminOverview().batches.find(item=>item.id===batch.id)?.exportedAt);
+      assert.equal(new Set(exported.codes).size,3);assert.ok(exported.codes.every(x=>/^FLLOCAL-[A-F0-9]{32}$/.test(x)));
+      assert.deepEqual(store.redemptions.exportBatch("local-admin",batch.id,randomUUID(),"再次导出").codes,exported.codes);
+      assert.equal(store.redemptions.exportBatch("local-admin",batch.id,randomUUID(),"核对重复下载提醒").previouslyExported,true);
+      const snapshot=JSON.stringify(store.redemptions.adminOverview())+JSON.stringify(db.prepare("SELECT * FROM local_recharge_codes").all());
+      assert.ok(exported.codes.every(x=>!snapshot.includes(x)));
+      const before=store.overview(user).balance.available;
+      assert.equal(store.redemptions.redeem(user,`  ${exported.codes[0].toLowerCase()}  `).balance.available,before+1);
+      assert.equal(store.redemptions.exportBatch("local-admin",batch.id,randomUUID(),"未兑换库存").codes.length,2);
+      const five=generate(),ten=generate("ten");
+      assert.equal(store.redemptions.redeem(user,five.codes[0]).receipt.credits,5);
+      assert.equal(store.redemptions.redeem(user,ten.codes[0]).receipt.credits,10);
+      assert.deepEqual(store.redemptions.history(user).map(x=>x.priceCents).sort((a,b)=>a-b),[499,1499,2499]);
+      assert.throws(()=>store.redemptions.createBatch("local-admin","ten",0,randomUUID(),"测试"),fails("INVALID_QUANTITY"));
+      assert.throws(()=>store.redemptions.createBatch("local-admin","ten",501,randomUUID(),"测试"),fails("INVALID_QUANTITY"));
+      assert.throws(()=>store.redemptions.createBatch("local-admin","none",1,randomUUID(),"测试"),fails("INVALID_PACKAGE"));
+      assert.throws(()=>store.redemptions.createBatch("local-admin","ten",1,randomUUID(),""),fails("REASON_REQUIRED"));
+    });
+    await t.test("same-account retries after restart do not duplicate grants and another account learns no owner",()=>{
+      time+=61000;const stock=generate(),raw=stock.codes[0],before=store.overview(user).balance.available;
+      const first=store.redemptions.redeem(user,raw);assert.equal(first.alreadyRedeemed,false);
+      store.close();store=new PaidLocalStore(file,()=>time);
+      const again=store.redemptions.redeem(user,raw);assert.equal(again.alreadyRedeemed,true);assert.equal(again.balance.available,before+5);
+      assert.throws(()=>store.redemptions.redeem(other,raw),fails("INVALID_RECHARGE_CODE"));
+      assert.equal(db.prepare("SELECT count(*) n FROM credit_batches WHERE event_key=?").get(`redeem:card:${first.receipt.id}`)!.n,1);
+      assert.equal(store.redemptions.history(other).length,0);
+    });
+    await t.test("failed ledger transaction rolls back both the code and credits; invalid code attempts are limited",()=>{
+      time+=61000;const stock=generate(),before=store.overview(user).balance.available;
+      db.exec("CREATE TRIGGER reject_card_grant BEFORE INSERT ON credit_ledger WHEN NEW.reason LIKE '闲鱼充值码%' BEGIN SELECT RAISE(ABORT,'test failure'); END;");
+      assert.throws(()=>store.redemptions.redeem(user,stock.codes[0]));
+      assert.equal(store.overview(user).balance.available,before);
+      assert.equal(db.prepare("SELECT count(*) n FROM local_recharge_codes WHERE code_batch_id=? AND state='active'").get(stock.batchId)!.n,1);
+      db.exec("DROP TRIGGER reject_card_grant;");
+      assert.equal(store.redemptions.redeem(user,stock.codes[0]).balance.available,before+5);
+      time+=61000;
+      for(let i=0;i<10;i++)assert.throws(()=>store.redemptions.redeem(user,"bad code"),fails("INVALID_RECHARGE_CODE"));
+      assert.throws(()=>store.redemptions.redeem(user,"bad code"),fails("REDEEM_RATE_LIMIT"));
+      time+=61000;assert.throws(()=>store.redemptions.redeem(user,"bad code"),fails("INVALID_RECHARGE_CODE"));
+    });
+    await t.test("original question return is owned, saved once and not replaced by a retry",()=>{
+      time+=61000;const project=store.saveProject(user,{title:"卡密付款后继续",background:""});
+      const reading=store.draw(user,{projectId:project.id,question:"下一步应该如何规划？",spread:"three_card",requestKey:randomUUID()});
+      const stock=generate("single");
+      assert.throws(()=>store.redemptions.redeem(other,stock.codes[0],reading.id),fails("NOT_FOUND"));
+      const result=store.redemptions.redeem(user,stock.codes[0],reading.id);
+      assert.equal(result.receipt.readingId,reading.id);assert.ok(result.receipt.returnPath.includes(project.id));
+      assert.equal(store.redemptions.redeem(user,stock.codes[0]).receipt.returnPath,result.receipt.returnPath);
+    });
+    await t.test("deactivation stops unused codes; full refund only revokes this code's unused credits and flags used/reserved",()=>{
+      time+=61000;const unused=generate("single");const unusedId=String(db.prepare("SELECT id FROM local_recharge_codes WHERE code_batch_id=?").get(unused.batchId)!.id);
+      const key=randomUUID();store.redemptions.disable("local-admin",unusedId,key,"退款前停用");store.redemptions.disable("local-admin",unusedId,key,"退款前停用");
+      assert.throws(()=>store.redemptions.redeem(user,unused.codes[0]),fails("INVALID_RECHARGE_CODE"));
+      const stock=generate(),result=store.redemptions.redeem(user,stock.codes[0]);
+      const batch=String(db.prepare("SELECT credit_batch_id FROM local_recharge_codes WHERE id=?").get(result.receipt.id)!.credit_batch_id);
+      db.prepare("UPDATE credit_batches SET reserved=1,consumed=2 WHERE id=?").run(batch);
+      const before=store.overview(user).balance.available,otherBefore=store.overview(other).balance.available;
+      store.redemptions.recordRefund("local-admin",result.receipt.id,key+"refund","已核实闲鱼全额退款");
+      assert.equal(store.overview(user).balance.available,before-2);assert.equal(store.overview(other).balance.available,otherBefore);
+      let code=db.prepare("SELECT * FROM local_recharge_codes WHERE id=?").get(result.receipt.id)!;
+      assert.equal(code.refunded_credits,2);assert.equal(code.refund_review,1);
+      store.redemptions.recordRefund("local-admin",result.receipt.id,key+"refund","已核实闲鱼全额退款");assert.equal(store.overview(user).balance.available,before-2);
+      db.prepare("UPDATE credit_batches SET reserved=0 WHERE id=?").run(batch);
+      store.redemptions.recordRefund("local-admin",result.receipt.id,randomUUID(),"预留已释放，继续核对");
+      code=db.prepare("SELECT * FROM local_recharge_codes WHERE id=?").get(result.receipt.id)!;assert.equal(code.refunded_credits,3);assert.equal(code.refund_review,1);
+      assert.throws(()=>store.redemptions.redeem(user,stock.codes[0]),fails("INVALID_RECHARGE_CODE"));
+    });
+    await t.test("separate processes racing across accounts can claim a code exactly once",async()=>{
+      const stock=generate("ten"),before=store.overview(user).balance.available+store.overview(other).balance.available;
+      const run=(account:string)=>new Promise<string>((resolve,reject)=>{const worker=spawn(process.execPath,["scripts/redeem-worker.cjs",account,stock.codes[0]],{cwd:process.cwd(),env:process.env,windowsHide:true});let out="";worker.stdout.on("data",x=>out+=x);worker.on("error",reject);worker.on("exit",n=>n ? reject(new Error("Redeem worker failed")) : resolve(out));});
+      const outcomes=await Promise.all([run(user),run(other),run(user),run(other)]);
+      assert.equal(outcomes.filter(x=>x==="granted").length,1);
+      assert.equal(store.overview(user).balance.available+store.overview(other).balance.available,before+10);
+    });
+    await t.test("authenticated APIs enforce CSRF, admin-only export, owner history and server-selected benefits",async()=>{
+      const api=getPaidLocalStore();apiStore=api;const session=api.login("legacy"),otherSession=api.login("other");
+      const request=(action:string,body?:object,cookie=`flora_paid_local_session=${session.token}`,validOrigin=true)=>new NextRequest(`http://127.0.0.1:3100/api/local-paid/${action}`,{method:body ? "POST" : "GET",headers:{host:"127.0.0.1:3100",origin:validOrigin ? "http://127.0.0.1:3100" : "https://attacker.invalid","x-local-paid":"1","content-type":"application/json",cookie},...(body ? {body:JSON.stringify(body)} : {})});
+      const get=(action:string,cookie?:string)=>GET(request(action,undefined,cookie),{params:{path:action.split("/")}});
+      const post=(action:string,body:object,cookie?:string,validOrigin=true)=>POST(request(action,body,cookie,validOrigin),{params:{path:action.split("/")}});
+      assert.equal((await get("card-catalog","")).status,401);
+      assert.equal((await get("admin/codes")).status,401);
+      assert.equal((await post("admin/codes/export",{batchId:"none",requestKey:randomUUID(),reason:"测试"})).status,401);
+      const login=await post("admin/session",{key:localAdminKey()});const admin=login.headers.get("set-cookie")!.split(";")[0];
+      const batch=await (await post("admin/codes/generate",{packageId:"single",quantity:1,requestKey:randomUUID(),reason:"API 测试"},admin)).json() as {id:string};
+      const exported=await (await post("admin/codes/export",{batchId:batch.id,requestKey:randomUUID(),reason:"API 测试导出"},admin)).json() as {codes:string[]};
+      assert.equal((await post("redeem",{code:exported.codes[0]},undefined,false)).status,403);
+      assert.equal((await post("redeem",{code:exported.codes[0],expectedUserId:otherSession.userId})).status,409);
+      const before=api.overview(session.userId).balance.available;
+      const result=await (await post("redeem",{code:exported.codes[0],credits:10000,packageId:"ten",userId:otherSession.userId})).json() as RedemptionResult;
+      assert.equal(result.receipt.credits,1);assert.equal(result.balance.available,before+1);
+      const history=await (await get("redemptions")).json() as CodeReceipt[];assert.equal(history.length,1);assert.ok(!JSON.stringify(history).includes(exported.codes[0]));
+      const adminView=await (await get("admin/codes",admin)).json();assert.ok(!JSON.stringify(adminView).includes(exported.codes[0]));
+      const otherReply=await post("redeem",{code:exported.codes[0]},`flora_paid_local_session=${otherSession.token}`);assert.equal(otherReply.status,409);
+    });
+  }finally{apiStore?.close();db.close();store.close();for(const key of Object.keys(process.env))if(!(key in saved))delete process.env[key];Object.assign(process.env,saved);for(const suffix of ["","-wal","-shm"])rmSync(file+suffix,{force:true});}
+});

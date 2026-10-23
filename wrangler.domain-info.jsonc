@@ -1,0 +1,13 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "flora-domain-info",
+  "account_id": "ba9ee3a5752bb83f8bb97f3b60dfa88b",
+  "main": "workers/domain-info/worker.mjs",
+  "compatibility_date": "2026-09-04",
+  "workers_dev": true,
+  "routes": [
+    { "pattern": "floralenormand.site", "custom_domain": true },
+    { "pattern": "www.floralenormand.site", "custom_domain": true }
+  ],
+  "observability": { "enabled": true }
+}

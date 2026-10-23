@@ -63,7 +63,7 @@ test("direct rule engine APIs are protected by the same owner trial gate", () =>
 });
 
 test("owner trial UI uses server access and records explicit rule source", () => {
-  const client = read("app/deep/DeepProjectClient.tsx");
+  const client = read("app/deep/DeepProjectClient.tsx") + read("components/deep/DivinationExperience.tsx");
   const store = read("lib/project-store.ts");
 
   assert.match(client, /getRuleEngineOwnerTrialAccess\(\)/);

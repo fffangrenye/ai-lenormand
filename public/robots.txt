@@ -1,4 +1,17 @@
 User-agent: *
 Allow: /
+Disallow: /api/
+Disallow: /admin
+Disallow: /profile
+Disallow: /deep/project/
+Disallow: /login
+Disallow: /reset-password
+Disallow: /forgot-password
+Disallow: /recharge
+Disallow: /redeem
+Disallow: /local-paid
+Disallow: /dev/
 Crawl-delay: 10
+
+Sitemap: https://floralenormand.site/sitemap.xml
 

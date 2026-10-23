@@ -120,8 +120,8 @@ test("project-store routes rule readings without AI or quota fallback", () => {
 test("AI route keeps quota while rule route uses only guarded verbalizer without AI initial quota", () => {
   const aiRoute = read("app/api/deep-reading/route.ts");
   const ruleRoute = read("app/api/deep-reading/rule-engine/route.ts");
-  assert.match(aiRoute, /checkDailyQuota/);
-  assert.match(aiRoute, /consumeDailyQuota/);
+  assert.match(aiRoute, /reserveDailyQuota/);
+  assert.match(aiRoute, /refundDailyQuota/);
   assert.match(aiRoute, /callDeepSeek/);
   assert.match(aiRoute, /eventName: "ai_success"/);
   assert.match(aiRoute, /eventName: "reading_generation_success"/);

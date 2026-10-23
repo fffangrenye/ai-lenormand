@@ -1,0 +1,12 @@
+{
+  "name": "flora-v3-api",
+  "account_id": "ba9ee3a5752bb83f8bb97f3b60dfa88b",
+  "main": "workers/flora-api/index.ts",
+  "compatibility_date": "2026-09-04",
+  "compatibility_flags": ["nodejs_compat"],
+  "workers_dev": false,
+  "durable_objects": {"bindings": [{"name":"LEDGER","class_name":"FloraLedger"}]},
+  "migrations": [{"tag":"v1","new_sqlite_classes":["FloraLedger"]}],
+  "vars": {"AI_MODEL":"deepseek-v4-flash","SALES_ENABLED":"1"},
+  "observability": {"enabled":true}
+}

@@ -1,0 +1,10 @@
+const fs=require('node:fs');
+let s=fs.readFileSync('lib/paid-local/provider.ts','utf8');
+s=s.replace('assertLocalEnvironment, ','').replace('generateLocalFollowUp, generateLocalMain, ','').replace('import { recordLocalAiUsage } from "./ai-usage";','');
+s=s.replace(/  assertLocalEnvironment\(\);\r?\n/g,'').replace(/  if \(process.env.PAID_LOCAL_MODEL[^\n]*\n/g,'').replace(/  recordLocalAiUsage[^\n]*\n/g,'');
+s=s.replace('process.env.PAID_LOCAL_AI_MODEL','config.model').replace('process.env.PAID_LOCAL_AI_KEY','config.key');
+s=s.replace('cache: "no-store", ', '');
+s=s.replace('redirect: "error"', 'redirect: "manual"');
+s=s.replace('const endpoint =','export function createCloudProvider(config: {key: string; model: string}) {\nconst endpoint =').replace(/export async function/g,'async function');
+s+='\nreturn {generatePaidMain,generatePaidFollowUp};\n}\n';
+fs.writeFileSync('lib/paid-local/cloud-provider.ts',s);

@@ -1,0 +1,10 @@
+ALTER TABLE local_xianyu_intents ADD COLUMN reading_id TEXT;
+ALTER TABLE local_xianyu_intents ADD COLUMN return_path TEXT NOT NULL DEFAULT '/profile';
+ALTER TABLE local_xianyu_intents ADD COLUMN refund_status INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE local_xianyu_intents ADD COLUMN refunded_cents INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE local_xianyu_intents ADD COLUMN held_credits INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE local_xianyu_intents ADD COLUMN refunded_credits INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE local_xianyu_intents ADD COLUMN refund_review INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE local_xianyu_intents ADD COLUMN sync_at INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE local_xianyu_intents ADD COLUMN provider_updated_at INTEGER NOT NULL DEFAULT 0;
+INSERT INTO local_schema_versions VALUES(8,strftime('%Y-%m-%dT%H:%M:%fZ','now'));
