@@ -1,0 +1,83 @@
+{
+  "release": "quota-efficiency-20261023",
+  "environment": "production",
+  "sourceCommit": "ee04d326563fbd5c4bb7f24098cd90ffffebd65b",
+  "branch": "codex/quota-efficiency-20261023",
+  "checkedAt": "2026-10-23T05:21:27.342Z",
+  "deployments": [
+    {
+      "worker": "flora-domain-info",
+      "version": "10ddd295-c947-424e-a78b-68ebe68875c5",
+      "tag": "ee04d326563f",
+      "message": "git:ee04d326563fbd5c4bb7f24098cd90ffffebd65b branch:codex/quota-efficiency-20261023"
+    },
+    {
+      "worker": "flora-v3-api",
+      "version": "0995fe82-ed75-4962-8ee3-032e5ee3f8d1",
+      "tag": "ee04d326563f",
+      "message": "git:ee04d326563fbd5c4bb7f24098cd90ffffebd65b branch:codex/quota-efficiency-20261023"
+    }
+  ],
+  "pages": [
+    {
+      "path": "/",
+      "status": 200,
+      "cacheControl": "no-store"
+    },
+    {
+      "path": "/login",
+      "status": 200,
+      "cacheControl": "no-store"
+    },
+    {
+      "path": "/profile",
+      "status": 200,
+      "cacheControl": "no-store"
+    },
+    {
+      "path": "/recharge",
+      "status": 200,
+      "cacheControl": "no-store"
+    },
+    {
+      "path": "/redeem",
+      "status": 200,
+      "cacheControl": "no-store"
+    },
+    {
+      "path": "/daily",
+      "status": 200,
+      "cacheControl": "no-store"
+    },
+    {
+      "path": "/deep",
+      "status": 200,
+      "cacheControl": "no-store"
+    }
+  ],
+  "staticAssets": {
+    "checked": 17,
+    "allHashesMatch": true
+  },
+  "quotaGate": {
+    "status": 503,
+    "code": "DATABASE_QUOTA_RESET"
+  },
+  "telemetry": {
+    "status": 204
+  },
+  "quotaResetAt": "2026-10-24T00:00:00Z",
+  "checks": {
+    "regressionTestsPassed": 47,
+    "typeScript": "passed",
+    "secureBuild": "passed",
+    "sourceSecretScan": "passed",
+    "artifactSecretScan": "passed",
+    "authenticatedBusinessFlow": "pending database quota reset",
+    "productionIndexMigration": "pending live verification",
+    "browserInteraction": "not verified; browser bridge timed out while binding the existing login tab"
+  },
+  "businessDataManuallyChanged": false,
+  "loadTestRun": false,
+  "cloudflarePlanChanged": false
+}
