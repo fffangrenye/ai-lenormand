@@ -14,7 +14,7 @@ const canonical=(value:unknown):unknown=>Array.isArray(value)?value.map(canonica
 const hash=(value:unknown)=>createHash("sha256").update(JSON.stringify(canonical(value))).digest("hex");
 
 export function restoreLegacyHistory(db:Port,s:LegacySnapshot,jobId:string,dryRun:boolean) {
-  if(s?.format!=="flora-legacy-v1" || s.sourceProject!=="pgivpvywizvtxjgqkvya" || !/^[a-f0-9-]{36}$/i.test(s.user?.id||"") || !s.user?.email_confirmed_at || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.user?.email||""))fail("历史来源或账号身份无效。");
+  if(s?.format!=="flora-legacy-v1" || s.sourceProject!=="pgivpvywizvtxjgqkvya" || !/^[a-f0-9-]{36}$/i.test(s.user?.id||"") || !s.user?.email_confirmed_at || !/^[^\s@]+@[^\s@]+$/.test(s.user?.email||""))fail("历史来源或账号身份无效。");
   if(!/^[a-zA-Z0-9_-]{8,100}$/.test(jobId))fail("恢复批次标识无效。");
   for(const key of ["projects","readings","cards","messages"] as const)if(!Array.isArray(s[key]) || s[key].length>5000)fail("历史数据格式或数量无效。");
   const uid=s.user.id,email=s.user.email.toLowerCase(),sourceHash=hash(s);

@@ -86,3 +86,7 @@ test("equivalent JSON field ordering does not duplicate or invalidate a restored
   const receipt=store.restoreLegacy(reordered,"bulk-order-test-b",false);assert.equal(receipt.verifiedReadings,1);assert.equal(receipt.inserted?.readings,0);
  }finally{db.close();}
 });
+
+test("verified legacy identities with a local-domain email preserve their original account ID",()=>{
+ const {db,store,uid,s}=setup();try{s.user.email="legacy@localdomain";store.restoreLegacy(s,"legacy-local-domain",false);assert.equal(store.projects(uid).length,1);}finally{db.close();}
+});
