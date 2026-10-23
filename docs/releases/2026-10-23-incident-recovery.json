@@ -1,0 +1,24 @@
+{
+  "incidentDate": "2026-10-23",
+  "sourceCommit": "985cb33b93fab9e63bf3d6047d55fa8c0e6b27a2",
+  "frontendVersion": "665a78ea-05b6-498d-9555-4d880e9727e0",
+  "backendUnchanged": "a1d98342-de60-4cde-b501-e379c5e5ba16",
+  "quotaError": "Exceeded allowed rows read in Durable Objects free tier.",
+  "quotaResetAt": "2026-10-24T00:00:00Z",
+  "userDecision": "No paid upgrade; wait for daily quota reset",
+  "checks": {
+    "homepage": 200,
+    "login": 200,
+    "loginScripts": 9,
+    "failedLoginScripts": 0,
+    "yesNo": 200,
+    "deepMaintenance": 200,
+    "businessApiMaintenance": 503,
+    "telemetryDisabled": 204,
+    "isolatedAuthAndCacheTests": "passed",
+    "sensitiveValuesScan": "passed",
+    "privateFilesScan": "passed"
+  },
+  "businessDataChanged": false,
+  "createdAt": "2026-10-23T04:38:23.571Z"
+}
