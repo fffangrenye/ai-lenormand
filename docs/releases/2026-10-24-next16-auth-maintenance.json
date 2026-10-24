@@ -1,0 +1,276 @@
+{
+  "completedAt": "2026-10-24T12:48:18.284Z",
+  "commit": "815f868fa9d3109bd88ba5a5b5e2ca141af35da0",
+  "branch": "codex/security-next-maintenance-20261024",
+  "environment": "production",
+  "domain": "https://floralenormand.site",
+  "versions": {
+    "next": "16.4.3",
+    "react": "19.3.1",
+    "openNext": "1.20.13",
+    "wrangler": "4.152.0"
+  },
+  "workers": [
+    {
+      "commit": "815f868fa9d3109bd88ba5a5b5e2ca141af35da0",
+      "branch": "codex/security-next-maintenance-20261024",
+      "worker": "flora-v3-api",
+      "config": "wrangler.flora-v3-api.jsonc",
+      "version": "d9064b09-3602-47f7-81ec-4564127d909b",
+      "createdAt": "2026-10-24T12:41:29.438Z",
+      "rollback": {
+        "deploymentId": "c2d82876-f927-4c90-993c-ea2dfb1665bb",
+        "createdAt": "2026-10-24T08:10:00.965915Z",
+        "versions": [
+          {
+            "version": "469d040d-c106-4b73-9d63-66818816c671",
+            "percentage": 100
+          }
+        ]
+      },
+      "checks": [
+        {
+          "command": "node.exe scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 770
+        },
+        {
+          "command": "node.exe wrangler deploy --config wrangler.flora-v3-api.jsonc --dry-run --outdir .local-paid/cloud-api-build",
+          "passed": true,
+          "durationMs": 2371
+        },
+        {
+          "command": "node.exe scripts/test-cloud-ledger.cjs",
+          "passed": true,
+          "durationMs": 2049
+        },
+        {
+          "command": "node.exe scripts/test-cloud-security.cjs",
+          "passed": true,
+          "durationMs": 1233
+        },
+        {
+          "command": "node.exe scripts/test-cloud-legacy-restore.cjs",
+          "passed": true,
+          "durationMs": 1721
+        },
+        {
+          "command": "node.exe scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 828
+        }
+      ]
+    },
+    {
+      "commit": "815f868fa9d3109bd88ba5a5b5e2ca141af35da0",
+      "branch": "codex/security-next-maintenance-20261024",
+      "worker": "flora-domain-info",
+      "config": "wrangler.flora-v3-site.jsonc",
+      "version": "bc2b86d9-dd4e-4070-8b98-04cccbad5424",
+      "createdAt": "2026-10-24T12:44:33.533Z",
+      "rollback": {
+        "deploymentId": "6bf6c8ef-c77d-4ef5-a57d-52cea3cc41a7",
+        "createdAt": "2026-10-24T08:11:36.837084Z",
+        "versions": [
+          {
+            "version": "14d016f7-31f8-4b8e-bdd5-06ce1fa99ac2",
+            "percentage": 100
+          }
+        ]
+      },
+      "checks": [
+        {
+          "command": "node.exe scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 771
+        },
+        {
+          "command": "node.exe scripts/secure-cloudflare-build.cjs --flora-v3",
+          "passed": true,
+          "durationMs": 113751
+        },
+        {
+          "command": "node.exe scripts/scan-cloudflare-artifacts.cjs",
+          "passed": true,
+          "durationMs": 4235
+        },
+        {
+          "command": "node.exe scripts/test-public-assets.cjs",
+          "passed": true,
+          "durationMs": 1630
+        },
+        {
+          "command": "node.exe scripts/test-site-runtime.cjs",
+          "passed": true,
+          "durationMs": 7592
+        },
+        {
+          "command": "node.exe scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 812
+        }
+      ]
+    }
+  ],
+  "unchangedCanonicalWorker": {
+    "name": "flora-domain-canonical",
+    "version": "f03664f5-2551-478b-84b0-45658e9aeef0",
+    "commit": "9c57cd03983ef75c97a8787cc0c2c66a5b847566"
+  },
+  "localChecks": {
+    "typecheck": true,
+    "changedPageLint": true,
+    "dependencyAuditRuntime": 0,
+    "sourceSecretScan": true,
+    "artifactSecretAndPrivateFileScan": true,
+    "productionBundleInWorkerd": true,
+    "identityAndAdminIsolation": true,
+    "codeConcurrencyAndTransactionRollback": true,
+    "onePetalConcurrency": true,
+    "twoFollowUpConcurrency": true,
+    "transientAuth503And429": true,
+    "legacyRestoreRegression": true,
+    "mobileViewport391NoHorizontalOverflow": true,
+    "drawReloadResume": true
+  },
+  "liveChecks": {
+    "checkedAt": "2026-10-24T12:45:14.397Z",
+    "publicPages": [
+      {
+        "path": "/",
+        "status": 200,
+        "static": true,
+        "sha256": "66474a0ebf37db5107eefd1b019dfa8bd5a25c7c0254b2b6a9b61bddc8985173"
+      },
+      {
+        "path": "/daily",
+        "status": 200,
+        "static": true,
+        "sha256": "4171cd3b4b98c9991f876fcd9c3828e68fa53c342ea35b3096615139c8e51bc1"
+      },
+      {
+        "path": "/yes-no",
+        "status": 200,
+        "static": true,
+        "sha256": "d57b326e3bab7e0095e9fa1c4f306f3917072b858376ea22349a3af107716ca5"
+      },
+      {
+        "path": "/knowledge",
+        "status": 200,
+        "static": true,
+        "sha256": "053e0399d8df9d4fd0cc9e7d2db7beb8708c25096417743d5a68acc86004a3ed"
+      },
+      {
+        "path": "/oracle",
+        "status": 200,
+        "static": true,
+        "sha256": "ac037a5b36c60733a700b84b3d52d9db02f8243cc061eea81211c954c6729398"
+      },
+      {
+        "path": "/space",
+        "status": 200,
+        "static": true,
+        "sha256": "075bf381b011e52532a89e956d4956b73f6d58a9681f39257af1902180ae6fbc"
+      },
+      {
+        "path": "/terms",
+        "status": 200,
+        "static": true,
+        "sha256": "4322f09de860c89f187d701921c0d969bebe75b6c1bc872e566b7361d60915de"
+      },
+      {
+        "path": "/privacy",
+        "status": 200,
+        "static": true,
+        "sha256": "c8f3bd602ae689a4395d710b012ae5ba426ae3bec49d3e8173d4514b5544f15f"
+      },
+      {
+        "path": "/refunds",
+        "status": 200,
+        "static": true,
+        "sha256": "7c4a818704dbe6625df1c506ca51bbf50fb17286839c7445dd9657fa84d3e299"
+      },
+      {
+        "path": "/contact",
+        "status": 200,
+        "static": true,
+        "sha256": "5b88a65080391bf822ad08e0965f1947fde8e68572a2ffadbb4351558d4aa56e"
+      },
+      {
+        "path": "/pricing",
+        "status": 200,
+        "static": true,
+        "sha256": "f8bbb0e9e54b294c66a9b2823b7b4e681ef02a3520b89b99b29c18e4075673a5"
+      }
+    ],
+    "privatePages": [
+      {
+        "path": "/login",
+        "status": 200,
+        "static": false
+      },
+      {
+        "path": "/deep",
+        "status": 200,
+        "static": false
+      },
+      {
+        "path": "/profile",
+        "status": 200,
+        "static": false
+      },
+      {
+        "path": "/recharge",
+        "status": 200,
+        "static": false
+      },
+      {
+        "path": "/redeem",
+        "status": 200,
+        "static": false
+      }
+    ],
+    "verifiedClientChunks": 22,
+    "redirects": [
+      {
+        "url": "https://www.floralenormand.site/daily?checkin=1",
+        "status": 308,
+        "location": "https://floralenormand.site/daily?checkin=1"
+      },
+      {
+        "url": "http://floralenormand.site/",
+        "status": 308,
+        "location": "https://floralenormand.site/"
+      },
+      {
+        "url": "https://flora.soul-ai-frontend.workers.dev/",
+        "status": 301,
+        "location": "https://floralenormand.site/"
+      },
+      {
+        "url": "https://ai-lenormand.soul-ai-frontend.workers.dev/",
+        "status": 301,
+        "location": "https://floralenormand.site/"
+      },
+      {
+        "url": "https://ai-lenormand-cloudflare-preview.soul-ai-frontend.workers.dev/",
+        "status": 301,
+        "location": "https://floralenormand.site/"
+      }
+    ],
+    "telemetryStatus": 204
+  },
+  "dataScope": {
+    "supabaseSchemaChanged": false,
+    "authRegistrationSettingsChanged": false,
+    "historyMigrated": false,
+    "backupPlaintextDecrypted": false,
+    "realCustomerChargeUsedForTesting": false
+  },
+  "limitations": [
+    "Live automated browser inspection timed out; production HTML and script hashes passed independent checks.",
+    "No real customer password or production voucher used.",
+    "Physical iPhone/Android verification still requires a real device.",
+    "Source legacy delta is metadata-checked; target presence was not rechecked record by record."
+  ]
+}
