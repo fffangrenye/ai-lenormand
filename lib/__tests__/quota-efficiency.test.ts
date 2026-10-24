@@ -9,6 +9,7 @@ import { PaidLedger } from "../paid-local/ledger";
 import { schema } from "../../workers/flora-api/schema";
 import { costIndexes } from "../../workers/flora-api/cost-indexes";
 import { FloraLedger } from "../../workers/flora-api/index";
+import { measuredSql } from "../../workers/flora-api/sql-cost";
 
 function fixture() {
   const db = new DatabaseSync(":memory:"); db.exec(schema); db.exec(costIndexes);
@@ -27,6 +28,15 @@ function fixture() {
   statements.length=0;
   return {db,store,uid,other,project,statements,tx,advance:(ms:number)=>now+=ms};
 }
+
+test("scan diagnostics read engine counters without extra SQL, data values or repeated logs",()=>{
+  let calls=0,now=0;const logs:string[]=[];
+  const execute=measuredSql({exec(_query,...args){calls++;assert.equal(args[0],"private-account-value");return{toArray:()=>[{id:"private-result-value"}],rowsRead:2000,rowsWritten:0};}},()=>now,value=>logs.push(value));
+  for(let i=0;i<3;i++)assert.equal(execute("SELECT * FROM paid_readings WHERE user_id=?","private-account-value").length,1);
+  assert.equal(calls,3);assert.equal(logs.length,1);assert.equal(logs[0].includes("private-"),false);
+  assert.equal(JSON.parse(logs[0]).rowsRead,2000);
+  now+=60_000;execute("SELECT * FROM paid_readings WHERE user_id=?","private-account-value");assert.equal(logs.length,2);
+});
 
 test("large-account balance and status reads do not load historical bodies or write rows",()=>{
   const f=fixture();try{

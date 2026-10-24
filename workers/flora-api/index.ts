@@ -9,6 +9,7 @@ import { costIndexes } from "./cost-indexes";
 import { recoverPassword } from "./password-recovery";
 import { ensureTelemetrySchema, readDailyReport, recordSiteEvent, SITE_HOST, type SiteEvent } from "./telemetry";
 import {verifyRestoreJob} from "./legacy-maintenance";
+import { measuredSql } from "./sql-cost";
 
 type Environment = {
   LEDGER: {idFromName(name:string):unknown;get(id:unknown):{fetch(request:Request):Promise<Response>}};
@@ -80,7 +81,8 @@ export class FloraLedger {
     if(!sql.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='local_schema_versions'").toArray().length)ctx.storage.transactionSync(()=>sql.exec(schema));
     if(!sql.exec("SELECT version FROM local_schema_versions WHERE version=10").toArray().length)ctx.storage.transactionSync(()=>sql.exec(costIndexes));
     ensureTelemetrySchema(sql);
-    const db={prepare:(query:string)=>({all:(...args:unknown[])=>sql.exec(query,...args).toArray(),get:(...args:unknown[])=>sql.exec(query,...args).toArray()[0],run:(...args:unknown[])=>{sql.exec(query,...args).toArray();return{};}}),exec:(query:string)=>sql.exec(query).toArray(),close:()=>{}};
+    const execute=measuredSql(sql);
+    const db={prepare:(query:string)=>({all:(...args:unknown[])=>execute(query,...args),get:(...args:unknown[])=>execute(query,...args)[0],run:(...args:unknown[])=>{execute(query,...args);return{};}}),exec:(query:string)=>execute(query),close:()=>{}};
     if(!env.CODE_SIGNING_KEY || env.CODE_SIGNING_KEY.length<48)throw new Error("Missing voucher configuration");
     this.store=new PaidLedger(db as unknown as DatabaseSync,work=>ctx.storage.transactionSync(work),Date.now,{key:()=>env.CODE_SIGNING_KEY,prefix:"FLORA"});
   }
