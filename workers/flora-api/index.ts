@@ -39,6 +39,9 @@ export default {
         return recoverPassword(request,env);
       }
       if(path!=="/api/flora" && !path.startsWith("/api/flora/"))return json({code:"NOT_FOUND"},404);
+      // Prices and public purchase links contain no account data. Also support
+      // cached older clients so their menu does not repeat failed DO requests.
+      if(request.method==="GET" && ["/api/flora/card-catalog","/api/flora/catalog"].includes(path))return json(cardCatalog(false,env.SALES_ENABLED==="1"));
       if(path==="/api/flora/analytics"){
         if (env.TELEMETRY_ENABLED !== "1") return new Response(null, {status:204});
         if(request.method!=="POST" || new URL(request.url).hostname!==SITE_HOST || request.headers.get("origin")!==`https://${SITE_HOST}`)return json({code:"FORBIDDEN"},403);

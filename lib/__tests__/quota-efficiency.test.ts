@@ -8,7 +8,7 @@ import ts from "typescript";
 import { PaidLedger } from "../paid-local/ledger";
 import { schema } from "../../workers/flora-api/schema";
 import { costIndexes } from "../../workers/flora-api/cost-indexes";
-import { FloraLedger } from "../../workers/flora-api/index";
+import floraApi, { FloraLedger } from "../../workers/flora-api/index";
 import { measuredSql } from "../../workers/flora-api/sql-cost";
 
 function fixture() {
@@ -36,6 +36,13 @@ test("scan diagnostics read engine counters without extra SQL, data values or re
   assert.equal(calls,3);assert.equal(logs.length,1);assert.equal(logs[0].includes("private-"),false);
   assert.equal(JSON.parse(logs[0]).rowsRead,2000);
   now+=60_000;execute("SELECT * FROM paid_readings WHERE user_id=?","private-account-value");assert.equal(logs.length,2);
+});
+
+test("public package catalog and cached-client alias do not invoke authentication or the ledger",async()=>{
+  const env={SALES_ENABLED:"1",LEDGER:{idFromName(){throw Error("catalog must not open ledger");}}};
+  const results=[];
+  for(const path of ["card-catalog","catalog"]){const response=await floraApi.fetch(new Request(`https://floralenormand.site/api/flora/${path}`),env as never);assert.equal(response.status,200);results.push(await response.json());}
+  assert.deepEqual(results[0],results[1]);assert.deepEqual(Object.keys(results[0] as object).sort(),["localOnly","packages"]);
 });
 
 test("large-account balance and status reads do not load historical bodies or write rows",()=>{
