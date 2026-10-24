@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/SiteLink";
 import { BookOpen, Home, Sparkles, UserRound, Waves } from "lucide-react";
 
 const items = [

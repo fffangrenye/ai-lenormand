@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/SiteLink";
 import { DailyCheckInPage } from "@/components/DailyCheckInPage";
 import { paidSiteEnabled } from "@/lib/paid-local/site-bridge";
 import { dailyDeck, readingForDailyCard, type DailyFortuneCard as LenormandCard } from "@/lib/daily-fortune";

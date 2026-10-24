@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/SiteLink";
 import { AccountMenu } from "@/components/AccountMenu";
 import { QuietCardBack } from "@/components/QuietCardBack";
 import { TodayCheckIn } from "@/components/TodayCheckIn";

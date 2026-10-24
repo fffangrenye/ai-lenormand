@@ -1,6 +1,8 @@
 "use client";
 
-import Link from "next/link";
+import { replaceSiteRoute, safeSitePath } from "@/lib/public-routes";
+
+import Link from "@/components/SiteLink";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useEffect, useState } from "react";
 import { ArrowLeft } from "lucide-react";
@@ -12,17 +14,17 @@ function LocalSiteLogin() {
   const router = useRouter();
   const params = useSearchParams();
   const target = params.get("returnTo") || "/deep";
-  const returnTo = target.startsWith("/") && !target.startsWith("//") ? target : "/deep";
+  const returnTo = safeSitePath(target);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   useEffect(() => {
     let cancelled = false;
-    void restorePaidSiteSession().then((session) => { if (session && !cancelled) router.replace(returnTo); });
+    void restorePaidSiteSession().then((session) => { if (session && !cancelled) replaceSiteRoute(router, returnTo); });
     return () => { cancelled = true; };
   }, [returnTo, router]);
   async function login(account: string) {
     setBusy(true); setError("");
-    try { await loginPaidSite(account); router.replace(returnTo); }
+    try { await loginPaidSite(account); replaceSiteRoute(router, returnTo); }
     catch (failure) { setError(failure instanceof Error ? failure.message : "本地登录失败。"); }
     finally { setBusy(false); }
   }
@@ -55,7 +57,7 @@ function LoginClient() {
   const [privacyAccepted, setPrivacyAccepted] = useState(false);
   const [entertainmentAccepted, setEntertainmentAccepted] = useState(false);
   const returnTo = searchParams.get("returnTo") || "/deep";
-  const safeReturnTo = returnTo.startsWith("/") ? returnTo : "/deep";
+  const safeReturnTo = safeSitePath(returnTo);
 
   // Keep the login form usable when a cached session exists but the ledger is unavailable.
 
@@ -92,7 +94,7 @@ function LoginClient() {
         await signIn(value, password);
       }
       setFailedSignInCount(0);
-      router.replace(safeReturnTo);
+      replaceSiteRoute(router, safeReturnTo);
     } catch (submitError) {
       if (mode === "signin") {
         setFailedSignInCount((count) => count + 1);

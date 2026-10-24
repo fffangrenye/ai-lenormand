@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/SiteLink";
 import { ArrowRight, BriefcaseBusiness, Heart, Moon } from "lucide-react";
 
 const iconMap = {

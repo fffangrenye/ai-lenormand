@@ -1,6 +1,8 @@
 "use client";
 
-import Link from "next/link";
+import { replaceSiteRoute } from "@/lib/public-routes";
+
+import Link from "@/components/SiteLink";
 import { usePathname, useRouter } from "next/navigation";
 import { FormEvent, ReactNode, TouchEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BookOpen, Check, ChevronDown, Copy, Menu, Pencil, Plus, Sparkles, Trash2, X } from "lucide-react";
@@ -810,7 +812,7 @@ function Shell({
 
   function handleLogout() {
     signOut();
-    router.replace("/");
+    replaceSiteRoute(router, "/");
   }
 
   function handleSaved(project: DeepProject) {

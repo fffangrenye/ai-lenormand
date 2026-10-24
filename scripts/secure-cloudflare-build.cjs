@@ -162,6 +162,7 @@ try {
 
   run("npm", ["run", "cf:patch"], buildEnv);
   run("opennextjs-cloudflare", ["build", "--dangerouslyUseUnsupportedNextVersion"], buildEnv);
+  if(floraV3) run("node",["scripts/prepare-public-assets.cjs"],buildEnv);
   for (const directory of generatedDirs) prunePrivateBuildArtifacts(path.join(root, directory));
 } finally {
   if (movedEnv && fs.existsSync(holdPath)) {

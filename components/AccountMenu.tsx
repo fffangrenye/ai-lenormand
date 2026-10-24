@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/SiteLink";
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Flower2, Home, UserRound } from "lucide-react";
 import { paidConfig, packagePrice } from "@/lib/paid-local/config";

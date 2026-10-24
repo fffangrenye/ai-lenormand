@@ -1,9 +1,9 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/SiteLink";
 import { useCallback, useEffect, useState } from "react";
 import { CalendarDays, Check } from "lucide-react";
-import { paidSiteEnabled, paidSiteRequest } from "@/lib/paid-local/site-bridge";
+import { paidSiteEnabled, paidSiteRequest, subscribePaidSiteRefresh } from "@/lib/paid-local/site-bridge";
 
 export function TodayCheckIn() {
   const [signed, setSigned] = useState(false);
@@ -16,14 +16,14 @@ export function TodayCheckIn() {
     void refresh();
     const visible = () => { if (document.visibilityState === "visible") void refresh(); };
     // Refresh the small status on returning to the homepage and across midnight.
-    window.addEventListener("focus", visible); document.addEventListener("visibilitychange", visible);
+    const unsubscribe=subscribePaidSiteRefresh(visible);
     let timer: ReturnType<typeof setTimeout>;
     const nextMidnight = () => {
       const now = new Date(); const midnight = new Date(now); midnight.setUTCHours(16,0,0,100); if (midnight <= now) midnight.setUTCDate(midnight.getUTCDate()+1);
       timer = setTimeout(() => { visible(); nextMidnight(); }, midnight.getTime()-now.getTime());
     };
     nextMidnight();
-    return () => { window.removeEventListener("focus", visible); document.removeEventListener("visibilitychange", visible); window.clearTimeout(timer); };
+    return () => { unsubscribe(); window.clearTimeout(timer); };
   }, [refresh]);
   if (!paidSiteEnabled) return null;
   // Only the destination handles this explicit click intent. Prefetching never signs in.

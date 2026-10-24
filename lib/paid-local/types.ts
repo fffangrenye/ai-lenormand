@@ -22,6 +22,7 @@ export type PaidReading = {
 export type PaidDrawSession = {
   id: string; projectId: string; question: string; spread: PaidSpread; choices: string[];
   deck: { token: string; picked: boolean }[]; selected: PaidCard[];
+  selectedTokens?: string[];
   state: "picking" | "completed" | "abandoned"; readingId: string | null;
 };
 export type PaidProject = {
@@ -33,8 +34,11 @@ export type PaidOverview = {
   balance: { available: number; reserved: number; consumed: number };
   readings: PaidReading[];
   historyCursor?: string | null;
-  ledger: { id: string; kind: string; availableDelta: number; reservedDelta: number; consumedDelta: number; reason: string; createdAt: string }[];
+  ledger: PaidLedgerEntry[];
+  ledgerCursor?: string | null;
 };
+export type PaidLedgerEntry = { id: string; kind: string; availableDelta: number; reservedDelta: number; consumedDelta: number; reason: string; createdAt: string };
+export type PaidLedgerPage = { items: PaidLedgerEntry[]; nextCursor: string | null };
 export type PaidSummary = Pick<PaidOverview, "user" | "balance">;
 export type PaidReadingPage = { items: PaidReading[]; nextCursor: string | null };
 

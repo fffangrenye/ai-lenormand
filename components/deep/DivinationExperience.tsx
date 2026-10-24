@@ -3,7 +3,8 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Check, RotateCcw, Sparkles } from "lucide-react";
 import { deepSpreads, getDeepSpread, type DeepSpreadId } from "@/lib/deep-spreads";
-import { completePaidRequestKey, paidSiteEnabled, paidSiteRequest, stablePaidRequestKey } from "@/lib/paid-local/site-bridge";
+import { completePaidRequestKey, getPaidSiteSession, paidSiteEnabled, paidSiteRequest, stablePaidRequestKey } from "@/lib/paid-local/site-bridge";
+import { clearDrawDraft, readDrawDraft, recoverDrawTokens, saveDrawDraft } from "@/lib/paid-local/draw-draft";
 import type { PaidDrawSession } from "@/lib/paid-local/types";
 import { generateDeepReading, saveReading } from "@/lib/project-store";
 import { SpreadLayout } from "./SpreadLayout";
@@ -48,17 +49,29 @@ export function DivinationExperience({ projectId, historyCount, ruleEngineTrialA
   const [choices, setChoices] = useState(["", "", ""]);
   const [session, setSession] = useState<PaidDrawSession | null>(null);
   const [pending, setPending] = useState<PaidDrawSession | null>(null);
+  const [pendingQueuedCount, setPendingQueuedCount] = useState(0);
+  const [queued, setQueued] = useState<string[]>([]);
+  const queuedRef = useRef<string[]>([]);
+  const draftOwner = useRef("");
   const [phase, setPhase] = useState<"setup" | "shuffle" | "shuffling" | "picking" | "interpreting">("setup");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [useRuleEngineTrial, setUseRuleEngineTrial] = useState(false);
   const picking = useRef(false);
   const spread = getDeepSpread(session && (phase === "picking" || phase === "interpreting") ? session.spread : spreadId);
+  const selectedCount = (session?.selected.length || 0) + queued.length;
+  function updateQueued(tokens:string[]) { queuedRef.current=tokens; setQueued(tokens); }
   useEffect(() => { document.querySelector('[data-divination-scroll="true"]')?.scrollTo({ top: 0 }); }, [phase]);
   useEffect(() => {
     if (!paidSiteEnabled) return;
     let active = true;
-    void paidSiteRequest<PaidDrawSession | null>(`projects/${projectId}/draw-session`).then((value) => { if (active) setPending(value); }).catch(() => undefined);
+    const owner=getPaidSiteSession()?.userId||""; draftOwner.current=owner;
+    void (async()=>{
+      let value=await paidSiteRequest<PaidDrawSession|null>(`projects/${projectId}/draw-session`);
+      const draft=readDrawDraft(owner,projectId);
+      if(!value&&draft)value=await paidSiteRequest<PaidDrawSession>(`draw-sessions/${draft.sessionId}`).catch(()=>null);
+      if(active&&getPaidSiteSession()?.userId===owner){setPending(value);setPendingQueuedCount(value?recoverDrawTokens(value,draft).length:0);}
+    })().catch(() => undefined);
     return () => { active = false; };
   }, [projectId]);
 
@@ -83,11 +96,15 @@ export function DivinationExperience({ projectId, historyCount, ruleEngineTrialA
         onComplete(reading.id); return;
       }
       const values = choices.slice(0, selected.choiceCount || 0).map((value) => value.trim());
+      const owner=getPaidSiteSession()?.userId||"";
       const scope = `manual:${projectId}:${spreadId}:${question.trim()}:${JSON.stringify(values)}`;
       const [value] = await Promise.all([
         paidSiteRequest<PaidDrawSession>("draw-session", { projectId, question, spread: spreadId, choices: values, requestKey: stablePaidRequestKey(scope) }), pause(1300)
       ]);
+      if(!owner||getPaidSiteSession()?.userId!==owner)throw new Error("登录账号已变化，请重新进入这次抽牌。");
       completePaidRequestKey(scope);
+      draftOwner.current=owner;
+      updateQueued([]);setPendingQueuedCount(0);saveDrawDraft(draftOwner.current,value,[]);
       setSession(value); setPending(value); setPhase("picking");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "暂时没有洗牌成功，请重试。"); setPhase("setup"); }
     finally { setBusy(false); }
@@ -101,19 +118,50 @@ export function DivinationExperience({ projectId, historyCount, ruleEngineTrialA
       onComplete(value.readingId);
     } catch (cause) { onComplete(value.readingId, cause instanceof Error ? cause.message : "解读暂未完成，原牌已经保存，可以重试。"); }
   }
-  async function pick(token: string) {
-    if (!session || picking.current) return;
+  async function syncPicks(value:PaidDrawSession,tokens:string[],back=false) {
+    if(picking.current)return;
     picking.current = true; setBusy(true); setError("");
     try {
-      const value = await paidSiteRequest<PaidDrawSession>("draw-pick", { sessionId: session.id, token, expectedCount: session.selected.length });
-      setSession(value); setPending(value.state === "picking" ? value : null);
-      if (value.state === "completed") { await pause(600); await finish(value); }
+      if(!draftOwner.current||getPaidSiteSession()?.userId!==draftOwner.current)throw new Error("登录账号已变化，请重新进入这次抽牌。");
+      const saved = tokens.length ? await paidSiteRequest<PaidDrawSession>("draw-picks", {sessionId:value.id,tokens,expectedCount:value.selected.length}) : value;
+      if(getPaidSiteSession()?.userId!==draftOwner.current)throw new Error("登录账号已变化，请重新进入这次抽牌。");
+      updateQueued([]);setPendingQueuedCount(0);setSession(saved);setPending(saved.state==="picking"?saved:null);
+      if(saved.state==="completed"){
+        clearDrawDraft(draftOwner.current,projectId,saved.id);
+        await pause(600);await finish(saved);
+      }else{
+        saveDrawDraft(draftOwner.current,saved,[]);
+        if(back)setPhase("setup");
+      }
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "抽牌进度暂未同步，请重试。");
-      // A retry after a lost response recovers the exact same persisted card.
-      const recovered = await paidSiteRequest<PaidDrawSession>(`draw-sessions/${session.id}`).catch(() => null);
-      if (recovered) { setSession(recovered); if (recovered.state === "completed") await finish(recovered); }
+      setError(cause instanceof Error ? cause.message : "抽牌暂未同步，选择已保留，请恢复网络后重试。");
+      if(getPaidSiteSession()?.userId===draftOwner.current){
+        const recovered=await paidSiteRequest<PaidDrawSession>(`draw-sessions/${value.id}`).catch(()=>null);
+        if(recovered){
+          setSession(recovered);updateQueued(recoverDrawTokens(recovered,readDrawDraft(draftOwner.current,projectId)));
+          if(recovered.state==="completed"){clearDrawDraft(draftOwner.current,projectId,recovered.id);await finish(recovered);}
+        }
+      }
     } finally { picking.current = false; setBusy(false); }
+  }
+  function pick(token:string) {
+    if(!session||picking.current||queuedRef.current.includes(token)||session.deck.find(card=>card.token===token)?.picked)return;
+    const owner=getPaidSiteSession()?.userId||"";
+    if(!owner||owner!==draftOwner.current){setError("登录账号已变化，请重新进入这次抽牌。");return;}
+    const tokens=[...queuedRef.current,token];
+    if(session.selected.length+tokens.length>spread.positions.length)return;
+    setError("");
+    const persisted=saveDrawDraft(owner,session,tokens);
+    updateQueued(tokens);setPendingQueuedCount(tokens.length);
+    // If browser storage is unavailable, immediately sync to the server rather
+    // than claim that an in-memory selection survives a refresh.
+    if(!persisted||session.selected.length+tokens.length===spread.positions.length)void syncPicks(session,tokens);
+  }
+  async function resume(value:PaidDrawSession){
+    draftOwner.current=getPaidSiteSession()?.userId||"";
+    setSession(value);setQuestion(value.question);setSpreadId(value.spread);setChoices([...value.choices,"","",""] .slice(0,3));
+    updateQueued(recoverDrawTokens(value,readDrawDraft(draftOwner.current,projectId)));setPhase("picking");
+    if(value.state==="completed")await finish(value);
   }
 
   if (phase === "shuffle") return <ShuffleRitual question={question} spreadName={spread.name} onBack={() => setPhase("setup")} onReady={() => void start()} />;
@@ -124,13 +172,14 @@ export function DivinationExperience({ projectId, historyCount, ruleEngineTrialA
   </section>;
 
   if (phase === "picking" && session) return <section className="py-5 sm:py-8">
-    <div className="flex items-center justify-between gap-3"><button type="button" disabled={busy} onClick={() => { setPhase("setup"); setPending(session); }} className="inline-flex min-h-10 items-center gap-2 text-xs text-ink/50"><ArrowLeft size={14} />暂存并返回</button><span className="text-xs text-[#6E2638]" aria-live="polite">已抽 {session.selected.length} / {spread.positions.length} 张</span></div>
+    <div className="flex items-center justify-between gap-3"><button type="button" disabled={busy} onClick={() => void syncPicks(session,queuedRef.current,true)} className="inline-flex min-h-10 items-center gap-2 text-xs text-ink/50"><ArrowLeft size={14} />暂存并返回</button><span className="text-xs text-[#6E2638]" aria-live="polite">已抽 {selectedCount} / {spread.positions.length} 张</span></div>
     <h1 className="mt-3 font-serif text-2xl">{spread.name}</h1><p className="mt-2 break-words text-sm leading-6 text-ink/60">{session.question}</p>
     <div className="mt-6 grid items-center gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-10">
-      <div><SpreadLayout spreadId={spread.id} cards={session.selected} choices={session.choices} compact /><p className="mt-3 text-center text-xs leading-6 text-ink/45" aria-live="polite">{busy ? "牌正在归位…" : `下一张 → ${spread.positions[session.selected.length]?.label || "牌面已完整"}`}</p></div>
-      <div className="min-w-0"><CardFan session={session} busy={busy} onPick={(token) => void pick(token)} />
-        {!session.selected.length && <button type="button" disabled={busy} onClick={() => setPhase("shuffle")} className="mx-auto mt-5 flex min-h-10 items-center gap-2 text-xs text-[#6E2638]"><RotateCcw size={14} />再洗一次</button>}
-        <p className="mt-4 text-center text-[11px] leading-5 text-ink/40">选满后自动进入解读，使用 1 花瓣；解读失败不扣花瓣。</p>
+      <div><SpreadLayout spreadId={spread.id} cards={session.selected} pendingCount={queued.length} choices={session.choices} compact /><p className="mt-3 text-center text-xs leading-6 text-ink/45" aria-live="polite">{busy ? "牌正在归位…" : `下一张 → ${spread.positions[selectedCount]?.label || "牌面已完整"}`}</p></div>
+      <div className="min-w-0"><CardFan session={{...session,deck:session.deck.map(card=>({...card,picked:card.picked||queued.includes(card.token)}))}} busy={busy} onPick={pick} />
+        {!selectedCount && <button type="button" disabled={busy} onClick={() => setPhase("shuffle")} className="mx-auto mt-5 flex min-h-10 items-center gap-2 text-xs text-[#6E2638]"><RotateCcw size={14} />再洗一次</button>}
+        {selectedCount===spread.positions.length&&!busy&&<button type="button" onClick={()=>void syncPicks(session,queuedRef.current)} className="mx-auto mt-5 flex min-h-11 items-center rounded-full bg-[#6E2638] px-6 text-sm text-[#FFF9F2]">同步并开始解读</button>}
+        <p className="mt-4 text-center text-[11px] leading-5 text-ink/40">选择会在本机暂存，选满后统一翻牌并解读，使用 1 花瓣；解读失败不扣花瓣。</p>
       </div>
     </div>
     {error && <p role="alert" className="mt-5 rounded-lg border border-[#6E2638]/15 p-3 text-sm leading-6 text-[#8E4D4A]">{error}</p>}
@@ -139,7 +188,7 @@ export function DivinationExperience({ projectId, historyCount, ruleEngineTrialA
   return <form onSubmit={beginShuffle} className="py-6 sm:py-10">
     <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs uppercase tracking-[0.2em] text-clay/65">A question, a little clarity</p>{historyCount > 0 && <button type="button" onClick={onHistory} className="min-h-10 text-xs text-[#6E2638]">查看历史解读（{historyCount}）<ArrowRight size={13} className="ml-1 inline" /></button>}</div>
     <h1 className="mt-4 font-serif text-3xl sm:text-4xl">这一次，你想问什么？</h1><p className="mt-3 text-sm leading-7 text-ink/50">先放下一个具体的问题，再选择适合它的牌阵。</p>
-    {pending && <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#6E2638]/15 bg-[#FFFDF8] p-4"><div className="min-w-0"><p className="text-sm">有一次尚未完成的抽牌 · {pending.selected.length}/{getDeepSpread(pending.spread).positions.length} 张</p><p className="mt-1 max-w-xs truncate text-xs text-ink/45">{pending.question}</p></div><button type="button" onClick={() => { setSession(pending); setQuestion(pending.question); setSpreadId(pending.spread); setChoices([...pending.choices,"","",""] .slice(0,3)); setPhase("picking"); }} className="min-h-10 text-sm text-[#6E2638]">继续抽牌</button></div>}
+    {pending && <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#6E2638]/15 bg-[#FFFDF8] p-4"><div className="min-w-0"><p className="text-sm">有一次尚未完成的抽牌 · {pending.selected.length+pendingQueuedCount}/{getDeepSpread(pending.spread).positions.length} 张</p><p className="mt-1 max-w-xs truncate text-xs text-ink/45">{pending.question}</p></div><button type="button" onClick={() => void resume(pending)} className="min-h-10 text-sm text-[#6E2638]">继续抽牌</button></div>}
     <label htmlFor="deep-question" className="mt-7 block text-sm text-ink/65">你的问题</label><textarea id="deep-question" value={question} onChange={(event) => { setQuestion(event.target.value); setError(""); }} maxLength={300} required rows={3} placeholder="例如：未来一个月，这段关系会怎样发展？" className="mt-3 w-full resize-y rounded-xl border border-ink/15 bg-[#FFFDF8] p-4 text-base leading-7 outline-none focus:border-[#6E2638]/45" />
     <p className="mt-1 text-right text-xs text-ink/35">{question.length}/300</p>
     <fieldset className="mt-5"><legend className="text-sm text-ink/65">选择牌阵</legend><div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{deepSpreads.filter((item) => paidSiteEnabled || ["three_card","five_card_linear"].includes(item.id)).map((item) => <label key={item.id} className={`relative cursor-pointer rounded-xl border p-4 ${item.id === spreadId ? "border-[#6E2638]/65 bg-[#6E2638]/[0.035]" : "border-ink/10 bg-[#FFFDF8]/75"}`}>

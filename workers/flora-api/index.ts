@@ -125,7 +125,7 @@ export class FloraLedger {
       const rate=this.rates.get(user)||{at:now,n:0};rate.n++;this.rates.set(user,rate);
       if(rate.n>60)throw new LocalPaidError("RATE_LIMIT","操作太频繁，请稍后重试。",429);
       const url=new URL(request.url),parts=url.pathname.replace(/^\/api\/flora\/?/,"").split("/").filter(Boolean),action=parts.join("/"),store=this.store;
-      if (request.method === "GET" && (!action || action === "usage" || /\/(readings|reading-page)$/.test(action))) {
+      if (request.method === "GET" && (!action || ["usage","ledger","profile"].includes(action) || /\/(readings|reading-page)$/.test(action))) {
         this.historyRates.forEach((entry,id)=>{if(now-entry.at>=60000)this.historyRates.delete(id);});
         const history=this.historyRates.get(user)||{at:now,n:0};history.n++;this.historyRates.set(user,history);
         if(history.n>12)throw new LocalPaidError("RATE_LIMIT","历史记录读取较频繁，请稍后再试。",429);
@@ -146,6 +146,8 @@ export class FloraLedger {
       if(request.method==="GET"){
         if(!action)return json(store.profileOverview(user));
         if(action==="summary")return json(store.summary(user));
+        if(action==="profile")return json(store.profileSection(user,url.searchParams.get("section")||"usage",url.searchParams.get("days")||"all"));
+        if(action==="ledger")return json(store.ledgerPage(user,url.searchParams.get("cursor")||"",url.searchParams.get("days")||"all"));
         if(action==="usage")return json(store.usagePage(user,url.searchParams.get("cursor")||"",url.searchParams.get("days")||"all"));
         if(action==="daily-status")return json(store.dailyStatus(user));
         if(action==="card-catalog")return json(cardCatalog(false,this.env.SALES_ENABLED==="1"));
@@ -189,6 +191,7 @@ export class FloraLedger {
         if(action==="draw-session")return json(store.startDrawSession(user,drawInput));
         if(action==="draw")return json(store.draw(user,drawInput));
         if(action==="draw-pick")return json(store.pickDrawCard(user,field("sessionId"),field("token"),Number(input.expectedCount)));
+        if(action==="draw-picks")return json(store.pickDrawCards(user,field("sessionId"),input.tokens,Number(input.expectedCount)));
         if(action==="draw-abandon"){store.abandonDrawSession(user,field("sessionId"));return json({ok:true});}
         const provider=createCloudProvider({key:this.env.AI_KEY,model:this.env.AI_MODEL});
         if(action==="unlock"){

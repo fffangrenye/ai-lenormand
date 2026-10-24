@@ -1,4 +1,4 @@
-import Link from "next/link";
+import Link from "@/components/SiteLink";
 import type { LocalOrder } from "@/lib/paid-local/types";
 
 export const money = (cents: number) => `¥${(cents / 100).toFixed(2)}`;

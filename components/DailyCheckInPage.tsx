@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/SiteLink";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
@@ -9,7 +9,7 @@ import { AccountMenu } from "./AccountMenu";
 import { QuietCardBack } from "./QuietCardBack";
 import { calendarDaySlots, moveCalendarMonth } from "@/lib/check-in-calendar";
 import { getLenormandCardImagePath } from "@/lib/lenormand-cards";
-import { PaidSiteError, paidSiteRequest } from "@/lib/paid-local/site-bridge";
+import { PaidSiteError, paidSiteRequest, subscribePaidSiteRefresh } from "@/lib/paid-local/site-bridge";
 import type { DailyCheckInResult, DailyCheckInState, DailyFortuneEntry } from "@/lib/paid-local/types";
 
 function FortuneText({ entry }: { entry: DailyFortuneEntry }) {
@@ -67,9 +67,8 @@ export function DailyCheckInPage() {
   useEffect(() => {
     mounted.current = true; void refresh();
     const focus = () => { if (!working.current) void refresh(); };
-    const visibility = () => { if (document.visibilityState === "visible") focus(); };
-    window.addEventListener("focus", focus); document.addEventListener("visibilitychange", visibility);
-    return () => { mounted.current = false; window.removeEventListener("focus", focus); document.removeEventListener("visibilitychange", visibility); };
+    const unsubscribe=subscribePaidSiteRefresh(focus);
+    return () => { mounted.current = false; unsubscribe(); };
   }, [refresh]);
   useEffect(() => {
     if (!data) return;

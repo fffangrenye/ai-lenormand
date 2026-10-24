@@ -1,5 +1,5 @@
 "use client";
-import Link from "next/link";
+import Link from "@/components/SiteLink";
 import { useEffect, useState } from "react";
 import { paidSiteRequest } from "@/lib/paid-local/site-bridge";
 import type { CodeReceipt } from "@/lib/paid-local/types";

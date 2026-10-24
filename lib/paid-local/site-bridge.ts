@@ -16,11 +16,46 @@ function invalidate() { cacheEpoch++; cache.clear(); pending.clear(); }
 function cacheTtl(action: string) {
   if (action.startsWith("admin")) return 0;
   if (action === "daily-status") return 60_000;
-  if (action.startsWith("daily")) return 30_000;
-  if (action === "summary") return 15_000;
+  if (action.startsWith("daily")) return 60_000;
+  if (action === "summary") return 30_000;
   if (action === "card-catalog" || action === "catalog") return 300_000;
-  if (!action || action.startsWith("usage") || action === "projects" || action === "redemptions" || action === "orders") return 30_000;
+  if(action==="projects" || /^projects\/[^/]+\/reading-page/.test(action))return 120_000;
+  if (!action || action.startsWith("profile?") || action.startsWith("ledger") || action.startsWith("usage") || action === "redemptions" || action === "orders") return 60_000;
   return 10_000;
+}
+type RefreshReason="resume"|"mutation"|"account";
+const refreshListeners=new Set<(reason:RefreshReason)=>void>();
+const revisionKey="flora-paid-site:revision:v1";
+let removeRefreshEvents:(()=>void)|undefined;
+let dirtyWhileHidden=false;
+function notifyRefresh(reason:RefreshReason){
+  if(typeof document!=="undefined"&&document.visibilityState==="hidden"){if(reason!=="resume")dirtyWhileHidden=true;return;}
+  const current=dirtyWhileHidden&&reason==="resume"?"mutation":reason;dirtyWhileHidden=false;
+  refreshListeners.forEach(callback=>callback(current));
+}
+export function subscribePaidSiteRefresh(callback:(reason:RefreshReason)=>void){
+  refreshListeners.add(callback);
+  if(!removeRefreshEvents&&typeof window!=="undefined"){
+    let timer:ReturnType<typeof setTimeout>|undefined,lastResume=0;
+    const resume=()=>{if(document.visibilityState==="hidden")return;clearTimeout(timer);timer=setTimeout(()=>{if(Date.now()-lastResume<1000)return;lastResume=Date.now();notifyRefresh("resume");},100);};
+    const storage=(event:StorageEvent)=>{
+      if(event.key==="ai-lenormand:auth-session"||event.key===sessionKey){
+        try{if(JSON.parse(event.oldValue||"null")?.userId===JSON.parse(event.newValue||"null")?.userId)return;}catch{/* Unknown session shape: refresh safely. */}
+        invalidate();notifyRefresh("account");return;
+      }
+      if(event.key!==revisionKey)return;
+      try{if(JSON.parse(event.newValue||"null")?.owner!==getPaidSiteSession()?.userId)return;}catch{return;}
+      invalidate();notifyRefresh("mutation");
+    };
+    window.addEventListener("focus",resume);document.addEventListener("visibilitychange",resume);window.addEventListener("storage",storage);
+    removeRefreshEvents=()=>{clearTimeout(timer);window.removeEventListener("focus",resume);document.removeEventListener("visibilitychange",resume);window.removeEventListener("storage",storage);};
+  }
+  return()=>{refreshListeners.delete(callback);if(!refreshListeners.size){removeRefreshEvents?.();removeRefreshEvents=undefined;}};
+}
+function rememberSignedStatus(owner:string,value:unknown){
+  const item=value as {today?:string;signed?:boolean};
+  if(!owner||item.signed!==true||item.today!==new Date(Date.now()+8*3600_000).toISOString().slice(0,10))return;
+  try{window.localStorage.setItem(`flora:signed-day:v1:${owner}`,JSON.stringify({today:item.today,signed:true}));}catch{/* This is an optional read cache. */}
 }
 function save(key: string, value: unknown, ttl: number) {
   if (cache.size >= 200) cache.delete(cache.keys().next().value!);
@@ -53,6 +88,9 @@ export async function paidSiteRequest<T>(action = "", body?: Record<string, unkn
     const saved = cache.get(key);
     if (saved && saved.expires > Date.now()) return saved.value as T;
     const inflight = pending.get(key); if (inflight) return inflight as Promise<T>;
+    if(action==="daily-status"){
+      try{const value=JSON.parse(window.localStorage.getItem(`flora:signed-day:v1:${cacheOwner}`)||"null");if(value?.signed===true&&value.today===day.slice(1))return value as T;}catch{/* Fall back to the server. */}
+    }
   } else invalidate();
   const request = (async () => {
   const response = await fetch(`${paidOnlineSiteEnabled ? "/api/flora" : "/api/local-paid"}${action ? `/${action}` : ""}`, {
@@ -70,8 +108,17 @@ export async function paidSiteRequest<T>(action = "", body?: Record<string, unkn
     if (touch) {
       save(key, payload, 300_000);
       cache.delete(`${cacheOwner}:projects`);
-    } else if (body) invalidate();
+    } else if (body) {
+      invalidate();
+      if(action==="daily-check-in"){
+        const result=payload as unknown as {today:string};
+        rememberSignedStatus(cacheOwner,{today:result.today,signed:true});
+      }
+      try{window.localStorage.setItem(revisionKey,JSON.stringify({owner:cacheOwner,at:Date.now(),nonce:Math.random()}));}catch{/* Same-tab invalidation still applies. */}
+      notifyRefresh("mutation");
+    }
     else save(key, payload, cacheTtl(action));
+    if(action==="daily-status")rememberSignedStatus(cacheOwner,payload);
     const page = payload as unknown as {items?: PaidReading[]; id?: string; state?: string};
     const readings = Array.isArray(payload) ? payload as PaidReading[] : page.items || (page.id && page.state ? [payload as unknown as PaidReading] : []);
     for (const reading of readings) if (reading.id && reading.followUps) save(`${cacheOwner}:readings/${reading.id}`, reading, reading.legacyRestored ? 300_000 : 10_000);

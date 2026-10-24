@@ -52,6 +52,8 @@ export async function GET(request: NextRequest, { params }: Context) {
       return json(order);
     }
     if (segments.length === 1 && segments[0] === "summary") return json(store.summary(userId));
+    if (segments.length === 1 && segments[0] === "profile") return json(store.profileSection(userId,request.nextUrl.searchParams.get("section")||"usage",request.nextUrl.searchParams.get("days")||"all"));
+    if (segments.length === 1 && segments[0] === "ledger") return json(store.ledgerPage(userId,request.nextUrl.searchParams.get("cursor")||"",request.nextUrl.searchParams.get("days")||"all"));
     if (segments.length === 1 && segments[0] === "daily-status") return json(store.dailyStatus(userId));
     if (segments.length === 1 && segments[0] === "usage") return json(store.usagePage(userId, request.nextUrl.searchParams.get("cursor") || "", request.nextUrl.searchParams.get("days") || "all"));
     if (segments.length === 1 && segments[0] === "daily") return json(store.dailyCalendar(userId, request.nextUrl.searchParams.get("month") || undefined));
@@ -150,6 +152,7 @@ export async function POST(request: NextRequest, { params }: Context) {
     if (action === "draw") return json(store.draw(userId, { question: field("question"), spread: field("spread") as PaidSpread, requestKey: field("requestKey"), projectId: field("projectId") || undefined, choices }));
     if (action === "draw-session") return json(store.startDrawSession(userId, { projectId: field("projectId"), question: field("question"), spread: field("spread") as PaidSpread, requestKey: field("requestKey"), choices }));
     if (action === "draw-pick") return json(store.pickDrawCard(userId, field("sessionId"), field("token"), Number(input.expectedCount)));
+    if (action === "draw-picks") return json(store.pickDrawCards(userId, field("sessionId"), input.tokens, Number(input.expectedCount)));
     if (action === "draw-abandon") { store.abandonDrawSession(userId, field("sessionId")); return json({ ok: true }); }
     if (action === "unlock") {
       const readingId = field("readingId");

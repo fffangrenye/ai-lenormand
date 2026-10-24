@@ -1,5 +1,5 @@
 "use client";
-import Link from "next/link";
+import Link from "@/components/SiteLink";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { paidSiteRequest, stablePaidRequestKey, completePaidRequestKey } from "@/lib/paid-local/site-bridge";
 import type { XianyuCatalog, XianyuOrder } from "@/lib/paid-local/types";

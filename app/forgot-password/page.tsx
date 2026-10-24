@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import Link from "@/components/SiteLink";
 import { FormEvent, useEffect, useState } from "react";
 import { ArrowLeft } from "lucide-react";
 import { trackAnalyticsEvent } from "@/components/AnalyticsTracker";

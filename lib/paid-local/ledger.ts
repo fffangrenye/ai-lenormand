@@ -9,7 +9,7 @@ import type { DailyCheckInResult, DailyCheckInState, DailyFortuneEntry } from ".
 import { LocalPaidError } from "./guard";
 import { LocalRedemptions } from "./redemption-store";
 import {restoreLegacyHistory,type LegacySnapshot} from "./legacy-restore";
-import type { PaidCard, PaidDrawSession, PaidOverview, PaidProject, PaidReading, PaidResult, PaidSpread } from "./types";
+import type { PaidCard, PaidDrawSession, PaidOverview, PaidProject, PaidReading, PaidResult, PaidSpread, PaidLedgerPage } from "./types";
 
 type Row = Record<string, string | number | null>;
 type ReadingRelations = { follows: Row[]; projectId?: string; completedAt?: string };
@@ -220,6 +220,22 @@ export class PaidLedger {
     const summary = this.summary(userId), page = this.usagePage(userId);
     return { ...summary, readings: page.items, historyCursor: page.nextCursor, ledger: this.all("SELECT * FROM credit_ledger WHERE user_id=? ORDER BY created_at DESC,rowid DESC LIMIT 200", userId).map(row => ({ id: String(row.id), kind: String(row.kind), availableDelta: Number(row.available_delta), reservedDelta: Number(row.reserved_delta), consumedDelta: Number(row.consumed_delta), reason: String(row.reason), createdAt: String(row.created_at) })) };
   }
+  ledgerPage(userId: string, cursor = "", days = "all"): PaidLedgerPage {
+    if (!["all", "7", "30"].includes(days)) throw new LocalPaidError("INVALID_PERIOD", "请选择有效时间范围。");
+    const [time, row] = cursor.split("|");
+    if (cursor && (!time || !Number.isFinite(Date.parse(time)) || !/^[1-9]\d*$/.test(row || "") || !Number.isSafeInteger(Number(row)) || cursor !== `${time}|${row}`)) throw new LocalPaidError("INVALID_CURSOR", "分页位置无效。");
+    const since = days === "all" ? "" : new Date(this.clock() - Number(days) * 86400000).toISOString();
+    const rows = this.all("SELECT rowid cursor_row,* FROM credit_ledger WHERE user_id=?" + (since ? " AND created_at>=?" : "") + (cursor ? " AND (created_at,rowid)<(?,?)" : "") + " ORDER BY created_at DESC,rowid DESC LIMIT 21", userId, ...(since ? [since] : []), ...(cursor ? [time, Number(row)] : []));
+    const page = rows.slice(0, 20), last = page.at(-1);
+    return { items: page.map(entry => ({id:String(entry.id),kind:String(entry.kind),availableDelta:Number(entry.available_delta),reservedDelta:Number(entry.reserved_delta),consumedDelta:Number(entry.consumed_delta),reason:String(entry.reason),createdAt:String(entry.created_at)})), nextCursor: rows.length > 20 && last ? `${last.created_at}|${last.cursor_row}` : null };
+  }
+  profileSection(userId: string, section: string, days = "all"): PaidOverview {
+    if (!["usage", "ledger", "orders"].includes(section) || !["all", "7", "30"].includes(days)) throw new LocalPaidError("INVALID_SECTION", "请选择有效的记录栏目与时间范围。");
+    const summary = this.summary(userId);
+    const usage = section === "usage" ? this.usagePage(userId, "", days) : null;
+    const ledger = section === "ledger" ? this.ledgerPage(userId, "", days) : null;
+    return {...summary, readings:usage?.items || [],historyCursor:usage?.nextCursor || null,ledger:ledger?.items || [],ledgerCursor:ledger?.nextCursor || null};
+  }
   protected owned(userId: string, readingId: string) {
     const row = this.one("SELECT * FROM paid_readings WHERE id=? AND user_id=?", readingId, userId);
     if (!row) throw new LocalPaidError("NOT_FOUND", "找不到这条解读。", 404);
@@ -308,6 +324,7 @@ export class PaidLedger {
     return {
       id: String(row.id), projectId: String(row.project_id), question: String(row.question), spread: row.spread as PaidSpread, choices,
       deck: deck.map(({ token }) => ({ token, picked: picked.includes(token) })),
+      selectedTokens: picked,
       selected: picked.map((token, index) => ({ ...deck.find((entry) => entry.token === token)!.card, position: positions[index] })),
       state: row.state as PaidDrawSession["state"], readingId: row.reading_id as string | null
     };
@@ -364,6 +381,29 @@ export class PaidLedger {
   abandonDrawSession(userId: string, id: string) {
     this.drawSessionRow(userId, id);
     this.run("UPDATE paid_draw_sessions SET state='abandoned' WHERE id=? AND state='picking'", id);
+  }
+  pickDrawCards(userId: string, id: string, tokens: unknown, expectedCount: number) {
+    if (!Array.isArray(tokens) || tokens.length < 1 || tokens.length > 9 || tokens.some(token => typeof token !== "string" || token.length > 80) || new Set(tokens).size !== tokens.length || !Number.isSafeInteger(expectedCount) || expectedCount < 0 || expectedCount > 9) throw new LocalPaidError("INVALID_CARDS", "请选择有效且不重复的牌。");
+    return this.tx(() => {
+      const row = this.drawSessionRow(userId, id), session = this.serializeDraw(row);
+      const selected = JSON.parse(String(row.selected_json)) as string[];
+      const count = getDeepSpread(session.spread).positions.length;
+      if (tokens.some(token => !session.deck.some(card => card.token === token)) || expectedCount + tokens.length > count) throw new LocalPaidError("INVALID_CARDS", "选牌与当前牌阵不匹配。");
+      // Replaying a committed batch after a lost response is read-only, even
+      // when another tab has since appended additional valid selections.
+      if (selected.length >= expectedCount + tokens.length && tokens.every((token,index) => selected[expectedCount + index] === token)) return session;
+      if (session.state !== "picking") throw new LocalPaidError("DRAW_CLOSED", "本次抽牌已结束，请查看原牌面。", 409);
+      if (selected.length !== expectedCount || tokens.some(token => selected.includes(token))) throw new LocalPaidError("DRAW_CHANGED", "抽牌进度已变化，请恢复原进度后继续。", 409);
+      selected.push(...tokens);
+      this.run("UPDATE paid_draw_sessions SET selected_json=? WHERE id=?", JSON.stringify(selected), id);
+      const updated = this.serializeDraw({...row,selected_json:JSON.stringify(selected)});
+      if (selected.length === count) {
+        const reading = this.drawInTransaction(userId, {...updated,requestKey:`manual_${id}`}, updated.selected);
+        this.run("UPDATE paid_draw_sessions SET state='completed',reading_id=? WHERE id=?", reading.id, id);
+        return {...updated,state:"completed" as const,readingId:reading.id};
+      }
+      return updated;
+    });
   }
   protected validateKey(key: string) {
     if (typeof key !== "string" || !/^[a-zA-Z0-9_-]{8,100}$/.test(key)) throw new LocalPaidError("INVALID_REQUEST_KEY", "请求标识无效。");

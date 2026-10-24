@@ -1,0 +1,13 @@
+{
+  "name":"flora-domain-canonical",
+  "account_id":"ba9ee3a5752bb83f8bb97f3b60dfa88b",
+  "main":"workers/flora-site/canonical.ts",
+  "compatibility_date":"2026-09-04",
+  "workers_dev":false,
+  "preview_urls":false,
+  "routes":[
+    {"pattern":"www.floralenormand.site/*","zone_name":"floralenormand.site"},
+    {"pattern":"http://floralenormand.site/*","zone_name":"floralenormand.site"}
+  ],
+  "observability":{"enabled":true}
+}

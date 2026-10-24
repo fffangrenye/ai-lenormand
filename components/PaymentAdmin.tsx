@@ -1,5 +1,5 @@
 "use client";
-import Link from "next/link";
+import Link from "@/components/SiteLink";
 import { useCallback, useEffect, useState } from "react";
 import { paidSiteRequest, PaidSiteError, stablePaidRequestKey, completePaidRequestKey } from "@/lib/paid-local/site-bridge";
 import type { PaymentAdminOverview } from "@/lib/paid-local/types";

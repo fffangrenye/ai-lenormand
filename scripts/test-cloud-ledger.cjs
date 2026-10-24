@@ -24,11 +24,15 @@ async function req(action='',body,token='valid-owner-token-1234567890'){
   const project=(await req('projects',{title:'云端测试'})).data;
   const draw=(await req('draw-session',{projectId:project.id,question:'未来发展如何？',spread:'h_seven',requestKey:randomUUID()})).data;
   assert.ok(draw.id);assert.equal(draw.selected.length,0);assert.equal(JSON.stringify(draw.deck).includes('nameZh'),false);
-  let selected;for(let i=0;i<7;i++){const result=await req('draw-pick',{sessionId:draw.id,token:draw.deck[i].token,expectedCount:i});assert.equal(result.status,200,JSON.stringify(result.data));selected=result.data;}
+  const batchInput={sessionId:draw.id,tokens:draw.deck.slice(0,7).map(card=>card.token),expectedCount:0};
+  const batchPick=await req('draw-picks',batchInput);assert.equal(batchPick.status,200,JSON.stringify(batchPick.data));const selected=batchPick.data;
+  assert.deepEqual((await req('draw-picks',batchInput)).data,selected);
   assert.equal(selected.state,'completed');assert.equal((await req()).data.balance.available,1);
   assert.equal((await req('readings/'+selected.readingId,undefined,'valid-other-token-1234567890')).status,404);
   const read=await req('unlock',{readingId:selected.readingId});assert.equal(read.status,200,JSON.stringify(read.data));assert.equal(read.data.state,'completed');
   assert.equal((await req('unlock',{readingId:selected.readingId})).status,200);assert.equal(calls,1);assert.equal((await req()).data.balance.available,0);
+  const profile=(await req('profile?section=usage&days=all')).data;assert.equal(profile.readings.length,1);assert.equal(profile.ledger.length,0);
+  const ledgerPage=(await req('ledger')).data;assert.ok(ledgerPage.items.length>0);assert.ok(ledgerPage.items.length<=20);
   for(let i=0;i<2;i++)assert.equal((await req('follow-up',{readingId:selected.readingId,question:'下一步呢？',requestKey:randomUUID()})).status,200);
   assert.equal((await req('follow-up',{readingId:selected.readingId,question:'第三次呢？',requestKey:randomUUID()})).status,429);
   const batch=(await req('admin/codes/generate',{packageId:'five',quantity:1,requestKey:randomUUID(),reason:'workerd测试'})).data;
