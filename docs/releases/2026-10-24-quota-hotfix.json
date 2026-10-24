@@ -1,0 +1,404 @@
+{
+  "incident": "2026-10-24-quota-hotfix",
+  "site": "https://floralenormand.site",
+  "environment": "production",
+  "branch": "codex/quota-hotfix-20261024",
+  "verifiedAt": "2026-10-24T05:49:08.773Z",
+  "workers": [
+    {
+      "worker": "flora-domain-info",
+      "version": "214075d9-71ce-44f5-a133-3a918b9454cb",
+      "tag": "1fba73d1e571",
+      "message": "git:1fba73d1e5710a2b51f2f11e7e7dd112e3ec60b2 branch:codex/quota-hotfix-20261024",
+      "commit": "1fba73d1e5710a2b51f2f11e7e7dd112e3ec60b2"
+    },
+    {
+      "worker": "flora-v3-api",
+      "version": "f7da17b7-6803-4a72-8cf6-0a6a6616ed70",
+      "tag": "1d8fce62d6dc",
+      "message": "git:1d8fce62d6dc01a65327c8fb040e73c7ceb0f4f3 branch:codex/quota-hotfix-20261024",
+      "commit": "1d8fce62d6dc01a65327c8fb040e73c7ceb0f4f3"
+    }
+  ],
+  "verification": {
+    "pages": [
+      {
+        "path": "/",
+        "status": 200,
+        "cacheControl": "no-store"
+      },
+      {
+        "path": "/login",
+        "status": 200,
+        "cacheControl": "no-store"
+      },
+      {
+        "path": "/profile",
+        "status": 200,
+        "cacheControl": "no-store"
+      },
+      {
+        "path": "/recharge",
+        "status": 200,
+        "cacheControl": "no-store"
+      },
+      {
+        "path": "/redeem",
+        "status": 200,
+        "cacheControl": "no-store"
+      },
+      {
+        "path": "/daily",
+        "status": 200,
+        "cacheControl": "no-store"
+      },
+      {
+        "path": "/deep",
+        "status": 200,
+        "cacheControl": "no-store"
+      }
+    ],
+    "assets": {
+      "count": 19,
+      "allMatch": true
+    },
+    "anonymousSummary": {
+      "status": 401,
+      "code": "UNAUTHORIZED"
+    },
+    "telemetry": {
+      "status": 204
+    },
+    "regressions": {
+      "fullSuitePassed": 52,
+      "fullSuiteCommit": "727ffc008f6fb81b380adfab1808f028e5bfde68",
+      "finalProjectCacheRegressionPassed": 11,
+      "typecheck": true,
+      "workerdFinancialFlow": true,
+      "sourceSecretScan": true,
+      "artifactSecretScan": true
+    }
+  },
+  "benchmark": {
+    "syntheticArchives": 5000,
+    "unrelatedTasks": 5000,
+    "returnedItems": 20,
+    "before": {
+      "rowsRead": 100109,
+      "queries": 65
+    },
+    "after": {
+      "rowsRead": 90,
+      "queries": 6
+    },
+    "sameResults": true,
+    "writes": 0
+  },
+  "liveMetrics": {
+    "checkedAt": "2026-10-24T05:46:00.792Z",
+    "comparison": {
+      "before": {
+        "start": "2026-10-24T05:30:00Z",
+        "end": "2026-10-24T05:35:00Z",
+        "minutes": 5,
+        "rowsRead": 96199,
+        "rowsWritten": 1176,
+        "requests": 750,
+        "readsPerMinute": 19239.8,
+        "requestsPerMinute": 150,
+        "readsPerRequest": 128.26533333333333
+      },
+      "after": {
+        "start": "2026-10-24T05:40:00Z",
+        "end": "2026-10-24T05:44:00Z",
+        "minutes": 4,
+        "rowsRead": 4364,
+        "rowsWritten": 889,
+        "requests": 598,
+        "readsPerMinute": 1091,
+        "requestsPerMinute": 149.5,
+        "readsPerRequest": 7.297658862876254
+      },
+      "normalizedReadReductionPercent": 94.31049787715341
+    },
+    "dayToDate": {
+      "duration": 2048.132069376,
+      "rowsRead": 2446881,
+      "rowsWritten": 53403
+    },
+    "minutes": [
+      {
+        "dimensions": {
+          "datetimeMinute": "2026-10-24T05:30:00Z"
+        },
+        "sum": {
+          "rowsRead": 13877,
+          "rowsWritten": 220
+        }
+      },
+      {
+        "dimensions": {
+          "datetimeMinute": "2026-10-24T05:31:00Z"
+        },
+        "sum": {
+          "rowsRead": 21424,
+          "rowsWritten": 230
+        }
+      },
+      {
+        "dimensions": {
+          "datetimeMinute": "2026-10-24T05:32:00Z"
+        },
+        "sum": {
+          "rowsRead": 17096,
+          "rowsWritten": 347
+        }
+      },
+      {
+        "dimensions": {
+          "datetimeMinute": "2026-10-24T05:33:00Z"
+        },
+        "sum": {
+          "rowsRead": 19422,
+          "rowsWritten": 190
+        }
+      },
+      {
+        "dimensions": {
+          "datetimeMinute": "2026-10-24T05:34:00Z"
+        },
+        "sum": {
+          "rowsRead": 24380,
+          "rowsWritten": 189
+        }
+      },
+      {
+        "dimensions": {
+          "datetimeMinute": "2026-10-24T05:35:00Z"
+        },
+        "sum": {
+          "rowsRead": 32729,
+          "rowsWritten": 141
+        }
+      },
+      {
+        "dimensions": {
+          "datetimeMinute": "2026-10-24T05:36:00Z"
+        },
+        "sum": {
+          "rowsRead": 40177,
+          "rowsWritten": 281
+        }
+      },
+      {
+        "dimensions": {
+          "datetimeMinute": "2026-10-24T05:37:00Z"
+        },
+        "sum": {
+          "rowsRead": 12992,
+          "rowsWritten": 178
+        }
+      },
+      {
+        "dimensions": {
+          "datetimeMinute": "2026-10-24T05:38:00Z"
+        },
+        "sum": {
+          "rowsRead": 8099,
+          "rowsWritten": 182
+        }
+      },
+      {
+        "dimensions": {
+          "datetimeMinute": "2026-10-24T05:39:00Z"
+        },
+        "sum": {
+          "rowsRead": 8004,
+          "rowsWritten": 140
+        }
+      },
+      {
+        "dimensions": {
+          "datetimeMinute": "2026-10-24T05:40:00Z"
+        },
+        "sum": {
+          "rowsRead": 1423,
+          "rowsWritten": 241
+        }
+      },
+      {
+        "dimensions": {
+          "datetimeMinute": "2026-10-24T05:41:00Z"
+        },
+        "sum": {
+          "rowsRead": 1139,
+          "rowsWritten": 247
+        }
+      },
+      {
+        "dimensions": {
+          "datetimeMinute": "2026-10-24T05:42:00Z"
+        },
+        "sum": {
+          "rowsRead": 1175,
+          "rowsWritten": 265
+        }
+      },
+      {
+        "dimensions": {
+          "datetimeMinute": "2026-10-24T05:43:00Z"
+        },
+        "sum": {
+          "rowsRead": 627,
+          "rowsWritten": 136
+        }
+      },
+      {
+        "dimensions": {
+          "datetimeMinute": "2026-10-24T05:44:00Z"
+        },
+        "sum": {
+          "rowsRead": 351,
+          "rowsWritten": 130
+        }
+      }
+    ],
+    "invocations": [
+      {
+        "dimensions": {
+          "datetimeMinute": "2026-10-24T05:30:00Z"
+        },
+        "sum": {
+          "requests": 184
+        }
+      },
+      {
+        "dimensions": {
+          "datetimeMinute": "2026-10-24T05:31:00Z"
+        },
+        "sum": {
+          "requests": 113
+        }
+      },
+      {
+        "dimensions": {
+          "datetimeMinute": "2026-10-24T05:32:00Z"
+        },
+        "sum": {
+          "requests": 141
+        }
+      },
+      {
+        "dimensions": {
+          "datetimeMinute": "2026-10-24T05:33:00Z"
+        },
+        "sum": {
+          "requests": 159
+        }
+      },
+      {
+        "dimensions": {
+          "datetimeMinute": "2026-10-24T05:34:00Z"
+        },
+        "sum": {
+          "requests": 153
+        }
+      },
+      {
+        "dimensions": {
+          "datetimeMinute": "2026-10-24T05:35:00Z"
+        },
+        "sum": {
+          "requests": 112
+        }
+      },
+      {
+        "dimensions": {
+          "datetimeMinute": "2026-10-24T05:36:00Z"
+        },
+        "sum": {
+          "requests": 169
+        }
+      },
+      {
+        "dimensions": {
+          "datetimeMinute": "2026-10-24T05:37:00Z"
+        },
+        "sum": {
+          "requests": 114
+        }
+      },
+      {
+        "dimensions": {
+          "datetimeMinute": "2026-10-24T05:38:00Z"
+        },
+        "sum": {
+          "requests": 101
+        }
+      },
+      {
+        "dimensions": {
+          "datetimeMinute": "2026-10-24T05:39:00Z"
+        },
+        "sum": {
+          "requests": 85
+        }
+      },
+      {
+        "dimensions": {
+          "datetimeMinute": "2026-10-24T05:40:00Z"
+        },
+        "sum": {
+          "requests": 144
+        }
+      },
+      {
+        "dimensions": {
+          "datetimeMinute": "2026-10-24T05:41:00Z"
+        },
+        "sum": {
+          "requests": 161
+        }
+      },
+      {
+        "dimensions": {
+          "datetimeMinute": "2026-10-24T05:42:00Z"
+        },
+        "sum": {
+          "requests": 174
+        }
+      },
+      {
+        "dimensions": {
+          "datetimeMinute": "2026-10-24T05:43:00Z"
+        },
+        "sum": {
+          "requests": 119
+        }
+      },
+      {
+        "dimensions": {
+          "datetimeMinute": "2026-10-24T05:44:00Z"
+        },
+        "sum": {
+          "requests": 66
+        }
+      },
+      {
+        "dimensions": {
+          "datetimeMinute": "2026-10-24T05:45:00Z"
+        },
+        "sum": {
+          "requests": 14
+        }
+      }
+    ]
+  },
+  "limitations": [
+    "Short-window live comparison is observational; traffic mix may vary.",
+    "No reimport, index rebuild/drop, telemetry re-enablement or user/financial data deletion was performed.",
+    "Read optimization does not remove normal write/request free-plan limits.",
+    "Existing full production backup/restore and longer capacity planning are outside this incident verification.",
+    "Browser automation was unavailable; no real-customer password or AI charge was used for verification."
+  ]
+}
