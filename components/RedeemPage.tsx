@@ -44,9 +44,9 @@ export function RedeemClient() {
       <CheckCircle2 size={28} className="text-[#6E2638]" aria-hidden="true"/><h2 className="mt-4 font-serif text-2xl">{result.alreadyRedeemed ? "这枚充值码已兑换到你的账号" : "兑换成功"}</h2>
       <p className="mt-3 text-sm leading-7">{result.alreadyRedeemed ? `之前已到账 ${result.receipt.credits} 花瓣，本次未重复增加。` : `已获得 ${result.receipt.credits} 花瓣，可用于 ${result.receipt.credits} 次完整解读，每次包含 2 次追问。`}</p>
       <p className="mt-4 flex items-center gap-2 text-lg text-[#6E2638]"><Flower2 size={20}/>当前可用 {result.balance.available} 花瓣</p>
-      <Link href={result.receipt.returnPath} className={`${paymentButton} mt-5`}>{result.receipt.readingId ? "返回原问题，继续解读" : "查看我的花瓣"}</Link>
+      <Link prefetch={false} href={result.receipt.returnPath} className={`${paymentButton} mt-5`}>{result.receipt.readingId ? "返回原问题，继续解读" : "查看我的花瓣"}</Link>
     </section>}
-    <Link href="/recharge" className="mt-6 inline-flex min-h-11 items-center text-sm text-[#6E2638]">还没有充值码？前往购买</Link>
+    <Link prefetch={false} href="/recharge" className="mt-6 inline-flex min-h-11 items-center text-sm text-[#6E2638]">还没有充值码？前往购买</Link>
     {account && <CodeHistory refreshKey={result?.receipt.id||""}/>}
     <FeedbackContact/>
   </AccountFrame>;

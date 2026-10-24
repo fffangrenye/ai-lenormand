@@ -4,8 +4,8 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { ChevronDown, Flower2, Home, UserRound } from "lucide-react";
 import { paidConfig, packagePrice } from "@/lib/paid-local/config";
-import { paidSiteEnabled, paidSiteRequest } from "@/lib/paid-local/site-bridge";
-import type { PaymentCatalog } from "@/lib/paid-local/types";
+import { paidOnlineSiteEnabled, paidSiteEnabled, paidSiteRequest } from "@/lib/paid-local/site-bridge";
+import type { CardCatalog } from "@/lib/paid-local/card-catalog";
 
 function Dropdown({ label, children, compact = false }: { label: React.ReactNode; children: React.ReactNode; compact?: boolean }) {
   const [open, setOpen] = useState(false);
@@ -38,26 +38,26 @@ const itemClass = "flex min-h-12 items-center gap-3 rounded-lg px-3 text-sm text
 
 export function AccountMenu() {
   return <Dropdown label={<><UserRound size={16} aria-hidden="true" /><span className="hidden sm:inline">我的</span><span className="sr-only sm:hidden">账户菜单</span></>}>
-    <Link href="/profile" className={itemClass}><UserRound size={17} />我的主页</Link>
-    <Link href="/recharge" className={itemClass}><Flower2 size={17} />充值花瓣</Link>
-    <Link href="/" className={itemClass}><Home size={17} />首页</Link>
+    <Link prefetch={false} href="/profile" className={itemClass}><UserRound size={17} />我的主页</Link>
+    <Link prefetch={false} href="/recharge" className={itemClass}><Flower2 size={17} />充值花瓣</Link>
+    <Link prefetch={false} href="/" className={itemClass}><Home size={17} />首页</Link>
   </Dropdown>;
 }
 
 export function PetalTopUp({ readingId }: { readingId?: string }) {
-  const [catalog, setCatalog] = useState<PaymentCatalog | null>(null);
+  const [catalog, setCatalog] = useState<CardCatalog | null>(null);
   useEffect(() => {
     if (!paidSiteEnabled) return;
     let active = true;
-    const load = () => { void paidSiteRequest<PaymentCatalog>("catalog").then(data => { if (active) setCatalog(data); }).catch(() => undefined); };
+    const load = () => { void paidSiteRequest<CardCatalog>("card-catalog").then(data => { if (active) setCatalog(data); }).catch(() => undefined); };
     load(); window.addEventListener("focus", load);
     return () => { active = false; window.removeEventListener("focus", load); };
   }, []);
   return <Dropdown compact label={<><Flower2 size={14} aria-hidden="true" />充值花瓣</>}>
     <p className="px-3 pb-2 pt-3 text-xs tracking-wider text-clay/70">选择花瓣套餐</p>
-    {(catalog?.packages || paidConfig.packages.map(item => packagePrice(item.id))).map((item) => <Link key={item.id} href={`/recharge?package=${item.id}${readingId ? `&readingId=${encodeURIComponent(readingId)}` : ""}`} className={`${itemClass} justify-between`}>
+    {(catalog?.packages || paidConfig.packages.map(item => packagePrice(item.id))).map((item) => <Link prefetch={false} key={item.id} href={`/recharge?package=${item.id}${readingId ? `&readingId=${encodeURIComponent(readingId)}` : ""}`} className={`${itemClass} justify-between`}>
       <span>{item.credits} 花瓣</span><span>¥{(item.amountCents / 100).toFixed(2)}</span>
     </Link>)}
-    <p className="border-t border-ink/8 px-3 py-3 text-xs leading-5 text-ink/45">1 花瓣解锁 1 次主解读，含 2 次追问。<br />本地模拟支付，不产生真实扣款。</p>
+    <p className="border-t border-ink/8 px-3 py-3 text-xs leading-5 text-ink/45">1 花瓣解锁 1 次主解读，含 2 次追问。<br />{paidOnlineSiteEnabled ? "闲鱼购买充值码，返回本站兑换。" : "本地模拟支付，不产生真实扣款。"}</p>
   </Dropdown>;
 }

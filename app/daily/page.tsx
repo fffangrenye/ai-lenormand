@@ -80,7 +80,7 @@ function ClassicDailyPage() {
     <main className="min-h-dvh bg-paper text-ink">
       <section className="mx-auto flex min-h-dvh w-full max-w-[760px] flex-col px-5 pb-8 pt-5">
         <header className="flex items-center justify-between">
-          <Link href="/" className="font-serif text-[18px] leading-none tracking-[0.04em] text-ink/86">
+          <Link prefetch={false} href="/" className="font-serif text-[18px] leading-none tracking-[0.04em] text-ink/86">
             Flora Lenormand
           </Link>
           <AccountMenu />
@@ -151,10 +151,10 @@ function ClassicDailyPage() {
               </section>
 
               <div className="mt-9 grid gap-3">
-                <Link href="/" className="h-12 rounded-full bg-[#6F2638] px-6 text-center text-[13px] uppercase leading-[48px] tracking-[0.14em] text-[#FDF8EF] shadow-entry">
+                <Link prefetch={false} href="/" className="h-12 rounded-full bg-[#6F2638] px-6 text-center text-[13px] uppercase leading-[48px] tracking-[0.14em] text-[#FDF8EF] shadow-entry">
                   返回首页
                 </Link>
-                <Link href="/yes-no" className="h-12 rounded-full border border-ink/14 px-6 text-center text-[13px] uppercase leading-[48px] tracking-[0.14em] text-ink/58">
+                <Link prefetch={false} href="/yes-no" className="h-12 rounded-full border border-ink/14 px-6 text-center text-[13px] uppercase leading-[48px] tracking-[0.14em] text-ink/58">
                   试试 Yes or No
                 </Link>
               </div>

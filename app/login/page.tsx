@@ -29,7 +29,7 @@ function LocalSiteLogin() {
   return (
     <main className="min-h-dvh bg-paper px-5 py-5 text-ink">
       <section className="mx-auto flex min-h-[calc(100dvh-40px)] w-full max-w-[430px] flex-col">
-        <Link href="/" className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-ink/10 bg-ivory/70 text-ink/70 shadow-sm"><ArrowLeft size={18} /><span className="sr-only">返回首页</span></Link>
+        <Link prefetch={false} href="/" className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-ink/10 bg-ivory/70 text-ink/70 shadow-sm"><ArrowLeft size={18} /><span className="sr-only">返回首页</span></Link>
         <div className="flex flex-1 items-center"><section className="w-full rounded-[6px] border border-ink/10 bg-[#FFFDF8]/86 p-6 shadow-paper">
           <p className="text-[12px] uppercase tracking-[0.2em] text-clay/70">Deep Reading</p>
           <h1 className="mt-4 font-serif text-[32px] leading-[1.05] text-ink">登录后进入你的故事</h1>
@@ -111,7 +111,7 @@ function LoginClient() {
   return (
     <main className="min-h-dvh bg-paper px-5 py-5 text-ink">
       <section className="mx-auto flex min-h-[calc(100dvh-40px)] w-full max-w-[430px] flex-col">
-        <Link href="/" className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-ink/10 bg-ivory/70 text-ink/70 shadow-sm">
+        <Link prefetch={false} href="/" className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-ink/10 bg-ivory/70 text-ink/70 shadow-sm">
           <ArrowLeft size={18} aria-hidden="true" />
           <span className="sr-only">返回首页</span>
         </Link>
@@ -143,7 +143,7 @@ function LoginClient() {
               <label className="block text-[13px] text-ink/62" htmlFor="password">
                 密码
               </label>
-              <Link href="/forgot-password" className="text-[12px] text-[#6E2638] underline-offset-4 transition hover:underline">
+              <Link prefetch={false} href="/forgot-password" className="text-[12px] text-[#6E2638] underline-offset-4 transition hover:underline">
                 忘记密码？
               </Link>
             </div>
@@ -167,7 +167,7 @@ function LoginClient() {
             {failedSignInCount >= 2 ? (
               <div className="mt-4 rounded-[5px] border border-[#8E4D4A]/18 bg-[#FDF3EF] p-4 text-[12px] leading-5 text-[#8E4D4A]">
                 如果一直提示密码不对，可以用注册邮箱收重置链接。
-                <Link href="/forgot-password" className="ml-1 font-medium underline underline-offset-4">
+                <Link prefetch={false} href="/forgot-password" className="ml-1 font-medium underline underline-offset-4">
                   现在找回
                 </Link>
               </div>

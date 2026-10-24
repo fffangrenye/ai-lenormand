@@ -13,7 +13,7 @@ export function Nav() {
   return (
     <header className="sticky top-0 z-30 border-b border-white/10 bg-ink/85 backdrop-blur">
       <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6">
-        <Link href="/" className="flex items-center gap-3">
+        <Link prefetch={false} href="/" className="flex items-center gap-3">
           <span className="grid h-9 w-9 place-items-center rounded-full bg-gold text-sm font-bold text-ink">S</span>
           <span className="text-base font-semibold text-white">Soul AI</span>
         </Link>
@@ -21,7 +21,7 @@ export function Nav() {
           {items.map((item) => {
             const Icon = item.icon;
             return (
-              <Link
+              <Link prefetch={false}
                 key={item.href}
                 href={item.href}
                 title={item.label}

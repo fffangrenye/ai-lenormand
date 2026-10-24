@@ -62,10 +62,10 @@ export function RechargeClient() {
     <p className="mt-4 text-xs text-ink/45">首次及后续充值均为以上固定价格。</p>
     <section className="mt-8 flex flex-wrap items-center justify-between gap-5 rounded-2xl border border-[#6E2638]/15 bg-[#6E2638]/[0.025] p-6">
       <div><h2 className="flex items-center gap-2 font-serif text-2xl"><Ticket size={21} className="text-[#6E2638]"/>已有充值码</h2><p className="mt-2 text-sm leading-7 text-ink/55">闲鱼付款后领取充值码，回到这里兑换到当前账号。</p></div>
-      <Link href={redeemUrl} className={`${paymentButton} bg-[#6E2638] !text-white`}>兑换充值码</Link>
+      <Link prefetch={false} href={redeemUrl} className={`${paymentButton} bg-[#6E2638] !text-white`}>兑换充值码</Link>
     </section>
     <ol className="mt-8 grid gap-3 text-xs leading-6 text-ink/50 sm:grid-cols-3"><li>01 · 选择套餐，在闲鱼付款</li><li>02 · 在闲鱼领取对应充值码</li><li>03 · 返回 Flora 兑换，花瓣到账</li></ol>
-    <Link href="/profile" className="mt-7 inline-flex min-h-11 items-center gap-2 text-sm text-[#6E2638]">查看我的花瓣与兑换记录<ArrowUpRight size={15}/></Link>
+    <Link prefetch={false} href="/profile" className="mt-7 inline-flex min-h-11 items-center gap-2 text-sm text-[#6E2638]">查看我的花瓣与兑换记录<ArrowUpRight size={15}/></Link>
     <FeedbackContact/>
   </AccountFrame>;
 }

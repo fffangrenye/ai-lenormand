@@ -104,7 +104,7 @@ export function MockRechargeClient() {
         <div><h3 className="font-serif text-xl">确认后，试一次模拟付款</h3><p className="mt-3 text-sm leading-7 text-ink/55">订单约 {remaining} 分钟后到期。正式微信 Native 将使用微信“扫一扫”，不支持从相册识别二维码；Waffo 将使用获批后的银行卡收银台。</p><button disabled={busy} onClick={() => orderAction("payment-simulate", { mode: "success" })} className={`${paymentButton} mt-5 bg-[#6E2638] !text-white`}>模拟付款成功</button><button disabled={busy} onClick={() => orderAction("order-cancel")} className={`${paymentButton} ml-3 mt-3`}>取消订单</button></div>
       </div>}
       {order.state === "processing" && <p role="status" className="mt-6 text-sm leading-7">已收到模拟付款，正在等待渠道确认。延迟场景约 15 秒到账，可离开后从用户主页查询。</p>}
-      {order.state === "paid" && <div role="status" className="mt-6"><p className="text-lg text-[#6E2638]">{order.fulfillment === "granted" ? `已到账 ${order.credits} 花瓣` : "付款已核实，花瓣待补发"}</p><p className="mt-3 text-sm leading-7 text-ink/55">{order.fulfillment === "granted" ? "花瓣已记入你的账户，重复刷新不会重复发放。" : "本地异常测试已保存付款凭据，可在管理后台核款并补发；无需再次付款。"}</p>{order.fulfillment === "granted" && <Link href={order.returnPath} className={`${paymentButton} mt-5`}>{order.readingId ? "返回原问题，继续解读" : "查看我的花瓣"}<ArrowUpRight size={15} className="ml-2" /></Link>}</div>}
+      {order.state === "paid" && <div role="status" className="mt-6"><p className="text-lg text-[#6E2638]">{order.fulfillment === "granted" ? `已到账 ${order.credits} 花瓣` : "付款已核实，花瓣待补发"}</p><p className="mt-3 text-sm leading-7 text-ink/55">{order.fulfillment === "granted" ? "花瓣已记入你的账户，重复刷新不会重复发放。" : "本地异常测试已保存付款凭据，可在管理后台核款并补发；无需再次付款。"}</p>{order.fulfillment === "granted" && <Link prefetch={false} href={order.returnPath} className={`${paymentButton} mt-5`}>{order.readingId ? "返回原问题，继续解读" : "查看我的花瓣"}<ArrowUpRight size={15} className="ml-2" /></Link>}</div>}
       {order.state === "review" && <p className="mt-5 text-sm leading-7 text-[#6E2638]">付款凭据与订单不一致，暂不发放花瓣。请联系反馈邮箱并附上订单号，由后台核查或退款。</p>}
       {["failed", "cancelled", "expired"].includes(order.state) && <p className="mt-5 text-sm leading-7 text-ink/55">这笔订单未完成付款，未扣款、未增加花瓣。</p>}
       {order.state === "refunding" && <p className="mt-5 text-sm leading-7">退款申请已记录，对应未使用花瓣已冻结，等待后台完成模拟退款。若退款失败，冻结花瓣会恢复。</p>}
@@ -115,7 +115,7 @@ export function MockRechargeClient() {
     </section>}
     {catalog && !order && <details className="mt-8"><summary className="cursor-pointer text-sm text-ink/60">我的充值订单（最近 200 笔）</summary><OrderList orders={catalog.orders} /></details>}
     <XianyuPayments readingId={searchParams.get("readingId") || ""} />
-    <Link href="/profile" className="mt-6 inline-flex min-h-11 items-center gap-2 text-sm text-[#6E2638]">查看用户主页与消费记录<ArrowUpRight size={15} /></Link>
+    <Link prefetch={false} href="/profile" className="mt-6 inline-flex min-h-11 items-center gap-2 text-sm text-[#6E2638]">查看用户主页与消费记录<ArrowUpRight size={15} /></Link>
     <FeedbackContact />
   </AccountFrame>;
 }

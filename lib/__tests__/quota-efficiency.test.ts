@@ -176,6 +176,14 @@ test("client coalesces reads, invalidates after mutations, isolates accounts and
   await api.paidSiteRequest("redeem",{code:"test"});await api.paidSiteRequest("summary");assert.equal(calls,3);
   sessions.set(key,JSON.stringify({...session,userId:"account-two"}));await api.paidSiteRequest("summary");assert.equal(calls,4);
   now+=16_000;await api.paidSiteRequest("summary");assert.equal(calls,5);
+  response=async()=>Response.json({items:[{id:"history-one",state:"completed",legacyRestored:true,followUps:[]}]});
+  await api.paidSiteRequest("projects/project-one/reading-page");
+  response=async()=>Response.json({ok:true});
+  const beforeTouch=calls;
+  await Promise.all([api.paidSiteRequest("project-touch",{projectId:"project-one"}),api.paidSiteRequest("project-touch",{projectId:"project-one"})]);
+  await api.paidSiteRequest("project-touch",{projectId:"project-one"});
+  await api.paidSiteRequest("readings/history-one");
+  assert.equal(calls,beforeTouch+1,"project recency must coalesce and preserve seeded history details");
   let resolve!: (r:Response)=>void;response=()=>new Promise(r=>resolve=r);
   const old=api.paidSiteRequest("projects");await new Promise(r=>setImmediate(r));
   response=async()=>Response.json({ok:true});await api.paidSiteRequest("project-update",{});

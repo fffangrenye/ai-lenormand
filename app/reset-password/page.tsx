@@ -155,7 +155,7 @@ export default function ResetPasswordPage() {
   return (
     <main className="min-h-dvh bg-paper px-5 py-5 text-ink">
       <section className="mx-auto flex min-h-[calc(100dvh-40px)] w-full max-w-[430px] flex-col">
-        <Link href="/forgot-password" className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-ink/10 bg-ivory/70 text-ink/70 shadow-sm">
+        <Link prefetch={false} href="/forgot-password" className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-ink/10 bg-ivory/70 text-ink/70 shadow-sm">
           <ArrowLeft size={18} aria-hidden="true" />
           <span className="sr-only">重新申请密码重置</span>
         </Link>
@@ -217,7 +217,7 @@ export default function ResetPasswordPage() {
               </button>
             ) : null}
 
-            <Link
+            <Link prefetch={false}
               href={canReset ? "/login" : "/forgot-password"}
               className="mt-3 flex h-12 w-full items-center justify-center rounded-full border border-ink/12 px-5 text-[13px] uppercase tracking-[0.12em] text-ink/56 transition active:scale-[0.99]"
             >

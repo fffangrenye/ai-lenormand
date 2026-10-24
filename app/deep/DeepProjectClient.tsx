@@ -183,7 +183,7 @@ function ProjectDrawerItem({
           <span className="sr-only">删除项目</span>
         </button>
       </div>
-      <Link
+      <Link prefetch={false}
         href={`/deep/project/${project.id}`}
         onClick={onCloseDrawer}
         className={`relative block touch-pan-y bg-[#FBF8F0] py-4 transition-transform duration-200 group-hover:-translate-x-[92px] ${
@@ -647,7 +647,7 @@ function ReadingChapter({ reading, onUnlock, unlocking = false }: { reading: Rea
         <section className="mt-7 rounded-[6px] border border-clay/14 bg-[#FFFDF8]/72 p-4">
           <p className="font-serif text-[20px] leading-7 text-ink">解锁本次深度解读</p>
           <p className="mt-3 text-[14px] leading-6 text-ink/58">使用 1 花瓣，包含完整解读与 2 次追问。</p>
-          <Link href={`/recharge?readingId=${encodeURIComponent(reading.id)}`} className="mt-3 inline-flex min-h-11 items-center text-sm text-[#6E2638] underline underline-offset-4">充值并返回本问题</Link>
+          <Link prefetch={false} href={`/recharge?readingId=${encodeURIComponent(reading.id)}`} className="mt-3 inline-flex min-h-11 items-center text-sm text-[#6E2638] underline underline-offset-4">充值并返回本问题</Link>
           <button disabled={unlocking || reading.status === "generating"} onClick={() => {
             setUnlockError("");
             void onUnlock?.().catch((error: unknown) => setUnlockError(error instanceof Error ? error.message : "解读暂未完成，请重试。"));
@@ -1094,7 +1094,7 @@ export function DeepProjectPageClient({ projectId }: { projectId: string }) {
           <div className="w-full rounded-[6px] border border-ink/10 bg-[#FFFDF8]/82 p-6 text-center shadow-paper">
             <h1 className="font-serif text-[30px] leading-tight">找不到这个项目</h1>
             <p className="mt-4 text-[14px] leading-6 text-ink/56">它可能已被删除，或不属于当前登录邮箱。</p>
-            <Link href="/deep" className="mt-7 inline-flex h-12 items-center justify-center rounded-full bg-[#6E2638] px-6 text-[13px] uppercase tracking-[0.12em] text-[#FFF9F2]">
+            <Link prefetch={false} href="/deep" className="mt-7 inline-flex h-12 items-center justify-center rounded-full bg-[#6E2638] px-6 text-[13px] uppercase tracking-[0.12em] text-[#FFF9F2]">
               返回 Deep Reading
             </Link>
           </div>

@@ -17,7 +17,7 @@ type Props = {
 export function DomainCard({ type, title, subtitle, tone }: Props) {
   const Icon = iconMap[type];
   return (
-    <Link
+    <Link prefetch={false}
       href={`/oracle?domain=${type}`}
       className="group flex min-h-44 flex-col justify-between rounded-lg border border-white/10 bg-panel p-5 transition hover:-translate-y-1 hover:border-white/25"
     >

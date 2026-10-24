@@ -109,7 +109,7 @@ export default function AdminPage() {
     <main className="min-h-dvh bg-paper px-5 py-5 text-ink">
       <section className="mx-auto flex min-h-[calc(100dvh-40px)] w-full max-w-[430px] flex-col">
         <header className="flex items-center justify-between">
-          <Link href="/" className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-ink/10 bg-ivory/70 text-ink/70 shadow-sm">
+          <Link prefetch={false} href="/" className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-ink/10 bg-ivory/70 text-ink/70 shadow-sm">
             <ArrowLeft size={18} aria-hidden="true" />
             <span className="sr-only">返回首页</span>
           </Link>

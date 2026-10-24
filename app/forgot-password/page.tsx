@@ -69,7 +69,7 @@ export default function ForgotPasswordPage() {
   return (
     <main className="min-h-dvh bg-paper px-5 py-5 text-ink">
       <section className="mx-auto flex min-h-[calc(100dvh-40px)] w-full max-w-[430px] flex-col">
-        <Link href="/login" className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-ink/10 bg-ivory/70 text-ink/70 shadow-sm">
+        <Link prefetch={false} href="/login" className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-ink/10 bg-ivory/70 text-ink/70 shadow-sm">
           <ArrowLeft size={18} aria-hidden="true" />
           <span className="sr-only">返回登录</span>
         </Link>
@@ -106,7 +106,7 @@ export default function ForgotPasswordPage() {
               {submitting ? "发送中" : cooldownSeconds > 0 ? `${cooldownSeconds}s 后可重新发送` : "发送重置邮件"}
             </button>
 
-            <Link
+            <Link prefetch={false}
               href="/login"
               className="mt-3 flex h-12 w-full items-center justify-center rounded-full border border-ink/12 px-5 text-[13px] uppercase tracking-[0.12em] text-ink/56 transition active:scale-[0.99]"
             >

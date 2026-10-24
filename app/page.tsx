@@ -84,7 +84,7 @@ function CardBack() {
 
 function CardFront({ card, active }: { card: HomeCard; active: boolean }) {
   return (
-    <Link
+    <Link prefetch={false}
       href={card.href}
       tabIndex={active ? 0 : -1}
       aria-hidden={!active}
@@ -106,7 +106,7 @@ export default function HomePage() {
     <main className={`min-h-dvh bg-paper text-ink ${drawn ? "overflow-hidden" : "overflow-hidden"}`}>
       <section className="mx-auto flex min-h-dvh w-full max-w-[960px] flex-col px-5 pb-5 pt-5">
         <header className="flex items-center justify-between">
-          <Link href="/" className="font-serif text-[18px] leading-none tracking-[0.04em] text-ink/86">
+          <Link prefetch={false} href="/" className="font-serif text-[18px] leading-none tracking-[0.04em] text-ink/86">
             Flora Lenormand
           </Link>
           <div className="flex items-center gap-2 sm:gap-3"><TodayCheckIn /><AccountMenu /></div>

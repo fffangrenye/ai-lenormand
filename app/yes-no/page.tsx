@@ -152,7 +152,7 @@ export default function YesNoPage() {
     <main className="min-h-dvh bg-paper text-ink">
       <section className="mx-auto flex min-h-dvh w-full max-w-[760px] flex-col px-5 pb-8 pt-5">
         <header className="flex items-center justify-between">
-          <Link href="/" className="font-serif text-[18px] leading-none tracking-[0.04em] text-ink/86">
+          <Link prefetch={false} href="/" className="font-serif text-[18px] leading-none tracking-[0.04em] text-ink/86">
             Flora Lenormand
           </Link>
           <AccountMenu />
@@ -184,7 +184,7 @@ export default function YesNoPage() {
             {unsuitable ? (
               <div className="mt-4 rounded-[4px] border border-[#D4B0A9] bg-[#FFF8F4] p-4 text-[14px] leading-6 text-ink/64">
                 <p>这个问题更适合深度占卜。你可以把它改成一个更明确的 Yes / No 问题。</p>
-                <Link href="/login" className="mt-3 inline-block border-b border-ink/24 pb-1 text-[12px] uppercase tracking-[0.14em] text-ink/60">
+                <Link prefetch={false} href="/login" className="mt-3 inline-block border-b border-ink/24 pb-1 text-[12px] uppercase tracking-[0.14em] text-ink/60">
                   Deep Reading
                 </Link>
               </div>
@@ -233,10 +233,10 @@ export default function YesNoPage() {
                   >
                     再问一个问题
                   </button>
-                  <Link href="/" className="h-12 rounded-full border border-ink/14 px-6 text-center text-[13px] uppercase leading-[48px] tracking-[0.14em] text-ink/58">
+                  <Link prefetch={false} href="/" className="h-12 rounded-full border border-ink/14 px-6 text-center text-[13px] uppercase leading-[48px] tracking-[0.14em] text-ink/58">
                     返回首页
                   </Link>
-                  <Link href="/login" className="text-center text-[12px] leading-5 text-ink/42">
+                  <Link prefetch={false} href="/login" className="text-center text-[12px] leading-5 text-ink/42">
                     想更深入地问这件事？
                   </Link>
                 </div>

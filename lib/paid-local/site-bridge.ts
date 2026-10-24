@@ -44,8 +44,12 @@ export async function paidSiteRequest<T>(action = "", body?: Record<string, unkn
   const cacheOwner = verifiedOwner || getPaidSiteSession()?.userId || "";
   if (activeOwner !== cacheOwner) { invalidate(); activeOwner = cacheOwner; }
   const day = action.startsWith("daily") ? `:${new Date(Date.now()+8*3600_000).toISOString().slice(0,10)}` : "";
-  const key = `${cacheOwner}:${action}${day}`, epoch = cacheEpoch;
-  if (!body) {
+  // Updating list recency must not discard the entire history/detail cache.
+  // Coalesce repeated mounts for this account and project; every real financial
+  // or content mutation still invalidates before and after the server response.
+  const touch = action === "project-touch" && typeof body?.projectId === "string";
+  const key = `${cacheOwner}:${action}${day}${touch ? `:${body!.projectId}` : ""}`, epoch = cacheEpoch;
+  if (!body || touch) {
     const saved = cache.get(key);
     if (saved && saved.expires > Date.now()) return saved.value as T;
     const inflight = pending.get(key); if (inflight) return inflight as Promise<T>;
@@ -63,7 +67,10 @@ export async function paidSiteRequest<T>(action = "", body?: Record<string, unkn
   }
   // A mutation or account change must not let an older in-flight GET refill caches.
   if (getPaidSiteSession()?.userId === cacheOwner && (body || epoch === cacheEpoch)) {
-    if (body) invalidate();
+    if (touch) {
+      save(key, payload, 300_000);
+      cache.delete(`${cacheOwner}:projects`);
+    } else if (body) invalidate();
     else save(key, payload, cacheTtl(action));
     const page = payload as unknown as {items?: PaidReading[]; id?: string; state?: string};
     const readings = Array.isArray(payload) ? payload as PaidReading[] : page.items || (page.id && page.state ? [payload as unknown as PaidReading] : []);
@@ -71,7 +78,7 @@ export async function paidSiteRequest<T>(action = "", body?: Record<string, unkn
   }
   return payload as T;
   })();
-  if (!body) pending.set(key, request);
+  if (!body || touch) pending.set(key, request);
   try { return await request; } finally { if (pending.get(key) === request) pending.delete(key); }
 }
 function rememberSession(overview: PaidOverview): AuthSession {
