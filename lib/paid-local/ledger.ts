@@ -285,7 +285,7 @@ export class PaidLedger {
       if (input.projectId) {
         this.run("INSERT INTO local_reading_projects VALUES (?,?)", id, input.projectId);
         this.run("UPDATE local_projects SET last_opened_at=? WHERE id=?", this.now(), input.projectId);
-      }
+      } else this.checkedProjectLinks.delete(userId);
       return this.serialize(this.owned(userId, id));
   }
   protected validateChoices(spreadId: string, choices?: string[]) {

@@ -126,6 +126,7 @@ test("legacy archives without completion timestamps never query new tasks, and p
     f.store.projects(f.uid);
     assert.equal(f.statements.some(q=>q.includes("NOT IN")||q.includes("paid_readings")),false);
     // A prototype orphan is still linked when checked for the first time.
+    assert.equal(f.store.projects(f.other).length,0);
     const orphan=f.store.draw(f.other,{question:"旧体验",spread:"three_card",requestKey:randomUUID()});
     const project=f.store.projects(f.other)[0];
     assert.equal(f.store.reading(f.other,orphan.id).projectId,project.id);
