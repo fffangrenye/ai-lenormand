@@ -133,8 +133,8 @@ test("V3 fixed-price purchases, refunds, admin and ownership", async t => {
     await t.test("API enforces account ownership, CSRF and independent admin authentication", async () => {
       const api = getPaidLocalStore(); const session = api.login("legacy"); const otherSession = api.login("other");
       const request = (action: string, body?: object, cookie = `flora_paid_local_session=${session.token}`) => new NextRequest(`http://127.0.0.1:3100/api/local-paid/${action}`, { method: body ? "POST" : "GET", headers: { host: "127.0.0.1:3100", origin: "http://127.0.0.1:3100", "x-local-paid": "1", "content-type": "application/json", cookie }, ...(body ? { body: JSON.stringify(body) } : {}) });
-      const post = (action: string, body: object, cookie?: string) => POST(request(action, body, cookie), { params: { path: action.split("/") } });
-      const get = (action: string, cookie?: string) => GET(request(action, undefined, cookie), { params: { path: action.split("/") } });
+      const post = (action: string, body: object, cookie?: string) => POST(request(action, body, cookie), { params: Promise.resolve({ path: action.split("/") }) });
+      const get = (action: string, cookie?: string) => GET(request(action, undefined, cookie), { params: Promise.resolve({ path: action.split("/") }) });
       const response = await post("orders", { packageId: "single", channel: "wechat", requestKey: randomUUID(), amountCents: 1, admin: true }); const order = await response.json() as LocalOrder;
       assert.equal(response.status, 200); assert.equal(order.amountCents, 499);
       assert.equal((await get(`orders/${order.id}`, `flora_paid_local_session=${otherSession.token}`)).status, 404);
@@ -149,7 +149,7 @@ test("V3 fixed-price purchases, refunds, admin and ownership", async t => {
       const publicCatalog=await (await get("xianyu")).json() as Record<string,unknown>;
       assert.equal("credentials" in publicCatalog,false);
       const forgedXianyu=request("xianyu/checkout",{packageId:"single",requestKey:randomUUID()});forgedXianyu.headers.set("origin","https://evil.invalid");
-      assert.equal((await POST(forgedXianyu,{params:{path:["xianyu","checkout"]}})).status,403);
+      assert.equal((await POST(forgedXianyu,{params: Promise.resolve({path:["xianyu","checkout"]})})).status,403);
       assert.equal((await post("admin/compensate", { userId: session.userId, count: 10, reason: "hack", requestKey: randomUUID() })).status, 401);
       const qr = await (await get(`orders/${order.id}/qr`)).json() as {mode:string;dataUrl:string}; assert.equal(qr.mode, "simulation"); assert.match(qr.dataUrl, /^data:image\/png;base64,/);
       const login = await post("admin/session", { key: localAdminKey() }); assert.equal(login.status, 200);
@@ -160,7 +160,7 @@ test("V3 fixed-price purchases, refunds, admin and ownership", async t => {
       assert.ok(adminOrders.xianyuOrders.every(x=>x.accountCode === ""));
       assert.equal((await post("admin/reconcile", { orderId: order.id, reason: "没有付款凭据", requestKey: randomUUID() }, cookie)).status, 409);
       const badOrigin = request("orders", { packageId: "single" }); badOrigin.headers.set("origin", "https://evil.invalid");
-      assert.equal((await POST(badOrigin, { params: { path: ["orders"] } })).status, 403);
+      assert.equal((await POST(badOrigin, { params: Promise.resolve({ path: ["orders"] }) })).status, 403);
       await post("admin/logout", {}, cookie); assert.equal((await get("admin", cookie)).status, 401);
       const token = store.payments.adminLogin(localAdminKey()); store.payments.authenticateAdmin(token); now += 7200001; assert.throws(() => store.payments.authenticateAdmin(token), code("ADMIN_UNAUTHORIZED"));
       api.close(); delete (globalThis as {paidLocalStore?:unknown}).paidLocalStore;

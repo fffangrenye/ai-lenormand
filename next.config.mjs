@@ -1,8 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  experimental: {
-    outputFileTracingExcludes: { "**": ["./.local-paid/**/*", "./.env*", "./.git/**/*", "./.wrangler/**/*"] }
-  },
+  outputFileTracingExcludes: { "**": ["./.local-paid/**/*", "./.env*", "./.git/**/*", "./.wrangler/**/*"] },
   ...(process.env.PAID_LOCAL_MODE === "1" ? { distDir: ".next-paid-local" } : {}),
   webpack(config) {
     config.externals.push({ "node:sqlite": "commonjs node:sqlite" });

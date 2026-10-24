@@ -15,7 +15,7 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "jsx": "preserve",
+    "jsx": "react-jsx",
     "incremental": true,
     "plugins": [
       {
@@ -33,9 +33,14 @@
     "**/*.ts",
     "**/*.tsx",
     ".next/types/**/*.ts",
-    ".next-paid-local/types/**/*.ts"
+    ".next-paid-local/types/**/*.ts",
+    ".next/dev/types/**/*.ts",
+    ".next-paid-local/dev/types/**/*.ts"
   ],
   "exclude": [
-    "node_modules"
+    "node_modules",
+    ".local-paid",
+    ".open-next",
+    ".wrangler"
   ]
 }

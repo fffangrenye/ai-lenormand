@@ -11,7 +11,7 @@
 1. 修改完成后运行 `npm run security:source`，检查并提交所有预期源码；推送当前分支到 origin。
 2. 运行 `npm run cf:release:check`。必须工作区干净、远端同名分支与本地 HEAD 完全一致、源码扫描通过。
 3. 只有获得发布授权后，运行 `npm run cf:release:api`（flora-v3-api）或 `npm run cf:release:site`（flora-domain-info）。二者使用固定的正式配置，不使用旧 flora 默认配置。网页发布先安全构建并扫描产物。
-4. 发布脚本将完整 Git commit 和分支写入 Cloudflare 版本 message，短 commit 写入 tag；回执保存在被 Git 忽略的 `.local-paid/releases/`。
+4. 发布脚本将完整 Git commit 和分支写入 Cloudflare 版本 message，短 commit 写入 tag；回执保存在被 Git 忽略的 `.local-paid/releases/`，同时记录本次检查结果、耗时和发布前的 Worker 版本。无法取得旧版本时停止发布。
 5. 验证正式站后，将不含密钥的发布回执整理到 `docs/releases/` 并提交、推送。记录两个 Worker 各自的版本；若只更新一个，明确另一个仍使用上次版本。
 6. 发布失败或版本号未读到时，先查询 Cloudflare 实际状态，禁止盲目重试。两个 Worker 的发布不是跨服务原子事务。
 

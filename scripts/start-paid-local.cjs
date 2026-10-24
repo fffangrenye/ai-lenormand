@@ -27,7 +27,7 @@ Object.assign(env, {
 fs.mkdirSync(path.join(root, ".local-paid"), { recursive: true });
 console.log(`雷诺曼 V3 本地预览：http://127.0.0.1:${port}/`);
 console.log(aiEnabled ? `真实 DeepSeek 解读已启用（${aiModel}），会产生 API 用量；记录仅保存在本机，无真实支付。` : "仅本机访问；SQLite 独立存储；模拟模型；无真实支付；生产凭据已隔离。");
-const child = spawn(process.execPath, [...(aiEnabled ? ["--use-env-proxy"] : []), require.resolve("next/dist/bin/next"), "dev", "--hostname", "127.0.0.1", "--port", String(port)], {
+const child = spawn(process.execPath, [...(aiEnabled ? ["--use-env-proxy"] : []), require.resolve("next/dist/bin/next"), "dev", "--webpack", "--hostname", "127.0.0.1", "--port", String(port)], {
   cwd: root, env, stdio: "inherit", windowsHide: true
 });
 child.on("exit", (code) => { process.exitCode = code || 0; });

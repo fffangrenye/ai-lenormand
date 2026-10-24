@@ -4,19 +4,18 @@
   "private": true,
   "scripts": {
     "test": "node scripts/test.cjs",
-    "dev": "next dev",
+    "dev": "next dev --webpack",
     "dev:paid-local": "node scripts/start-paid-local.cjs",
     "dev:paid-local:ai": "node scripts/start-paid-local.cjs --ai",
     "backup:local-v1": "node scripts/backup-local-v1.cjs",
     "test:paid-local": "node scripts/test.cjs lib/__tests__/paid-local.test.ts lib/__tests__/paid-site-integration.test.ts lib/__tests__/interactive-spreads.test.ts lib/__tests__/deep-shuffle-physics.test.ts lib/__tests__/paid-live-provider.test.ts lib/__tests__/auto-shuffle.test.ts lib/__tests__/daily-check-in.test.ts lib/__tests__/payments.test.ts lib/__tests__/xianyu-payments.test.ts lib/__tests__/redemption-codes.test.ts",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start",
-    "lint": "next lint",
-    "cf:patch": "node scripts/patch-next-cloudflare-windows.cjs",
-    "cf:build": "npm run cf:patch && opennextjs-cloudflare build --dangerouslyUseUnsupportedNextVersion",
+    "lint": "eslint .",
+    "cf:build": "opennextjs-cloudflare build",
     "cf:build:secure": "node scripts/secure-cloudflare-build.cjs",
     "cf:scan-artifacts": "node scripts/scan-cloudflare-artifacts.cjs",
-    "cf:preview": "npm run cf:patch && opennextjs-cloudflare build --dangerouslyUseUnsupportedNextVersion && opennextjs-cloudflare preview",
+    "cf:preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
     "cf:deploy": "node scripts/release-production.cjs",
     "cf:release:check": "node scripts/release-production.cjs",
     "cf:release:site": "node scripts/release-production.cjs --deploy site",
@@ -27,25 +26,32 @@
     "cf:typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
   },
   "dependencies": {
-    "@opennextjs/cloudflare": "1.20.6",
-    "framer-motion": "^11.15.0",
+    "@opennextjs/cloudflare": "1.20.13",
+    "framer-motion": "11.18.2",
     "lucide-react": "^0.468.0",
-    "next": "14.2.35",
+    "next": "16.4.3",
     "qrcode": "1.5.4",
-    "react": "18.3.1",
-    "react-dom": "18.3.1"
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
     "@types/qrcode": "1.5.5",
-    "@types/react": "^18.3.18",
-    "@types/react-dom": "^18.3.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
     "autoprefixer": "^10.4.20",
-    "eslint": "^8.57.1",
-    "eslint-config-next": "14.2.35",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.4.3",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2",
-    "wrangler": "4.129.0"
+    "wrangler": "4.152.0"
+  },
+  "engines": {
+    "node": ">=22.0.0"
+  },
+  "overrides": {
+    "glob@^10.2.0": "10.5.0",
+    "undici@^7.0.0": "7.30.1"
   }
 }

@@ -20,7 +20,7 @@ test("opt-in local AI preserves real output, failures refund, and retries never 
     return Response.json(status === 200 ? { model: "actual-returned-model", choices: [{ finish_reason: finish, message: { content: JSON.stringify(reply) } }] } : { secret: "private-test-secret" }, { status });
   };
   const store = getPaidLocalStore(); const session = store.login("new");
-  const request = async (action: string, body: Record<string, unknown>) => POST(new NextRequest(`http://127.0.0.1:3100/api/local-paid/${action}`, { method: "POST", headers: { host: "127.0.0.1:3100", origin: "http://127.0.0.1:3100", "x-local-paid": "1", cookie: `flora_paid_local_session=${session.token}` }, body: JSON.stringify(body) }), { params: { path: [action] } });
+  const request = async (action: string, body: Record<string, unknown>) => POST(new NextRequest(`http://127.0.0.1:3100/api/local-paid/${action}`, { method: "POST", headers: { host: "127.0.0.1:3100", origin: "http://127.0.0.1:3100", "x-local-paid": "1", cookie: `flora_paid_local_session=${session.token}` }, body: JSON.stringify(body) }), { params: Promise.resolve({ path: [action] }) });
   try {
     await t.test("only explicit local AI with a dedicated key is accepted", () => {
       assert.ok(assertLocalEnvironment());

@@ -100,20 +100,20 @@ test("V2 daily cards, consecutive rewards and API ownership remain consistent", 
     await t.test("API ignores forged client dates/cards and requires a local authenticated owner", async () => {
       const apiFile = path.join(process.cwd(), ".local-paid", `daily-api-${randomUUID()}.sqlite`); process.env.PAID_LOCAL_DB = apiFile; apiUsed = true;
       const req = (action: string, body?: object, token = "") => new NextRequest(`http://127.0.0.1:3100/api/local-paid/${action}`, { method: body ? "POST" : "GET", headers: { host: "127.0.0.1:3100", origin: "http://127.0.0.1:3100", "x-local-paid": "1", cookie: token }, ...(body ? { body: JSON.stringify(body) } : {}) });
-      assert.equal((await GET(req("daily"), { params: { path: ["daily"] } })).status, 401);
-      const login = await POST(req("session", { account: "new" }), { params: { path: ["session"] } }); const cookie = login.headers.get("set-cookie")!.split(";")[0];
-      const firstResponse = await POST(req("daily-check-in", { date: "2099-01-01", cardNumber: 999 }, cookie), { params: { path: ["daily-check-in"] } });
+      assert.equal((await GET(req("daily"), { params: Promise.resolve({ path: ["daily"] }) })).status, 401);
+      const login = await POST(req("session", { account: "new" }), { params: Promise.resolve({ path: ["session"] }) }); const cookie = login.headers.get("set-cookie")!.split(";")[0];
+      const firstResponse = await POST(req("daily-check-in", { date: "2099-01-01", cardNumber: 999 }, cookie), { params: Promise.resolve({ path: ["daily-check-in"] }) });
       assert.equal(firstResponse.status, 200); const first = await firstResponse.json() as DailyCheckInResult;
       assert.equal(first.userId, "local-new");
       assert.equal(first.today, beijingDateKey()); assert.ok(first.entry.card.number >= 1 && first.entry.card.number <= 36);
-      const again = await POST(req("daily-check-in", {}, cookie), { params: { path: ["daily-check-in"] } });
+      const again = await POST(req("daily-check-in", {}, cookie), { params: Promise.resolve({ path: ["daily-check-in"] }) });
       assert.deepEqual((await again.json() as DailyCheckInResult).entry, first.entry);
-      const denied = await POST(new NextRequest("http://127.0.0.1:3100/api/local-paid/daily-check-in", { method: "POST", headers: { host: "127.0.0.1:3100", origin: "https://foreign.invalid", cookie }, body: "{}" }), { params: { path: ["daily-check-in"] } }); assert.equal(denied.status, 403);
-      const otherLogin = await POST(req("session", { account: "legacy" }, cookie), { params: { path: ["session"] } });
+      const denied = await POST(new NextRequest("http://127.0.0.1:3100/api/local-paid/daily-check-in", { method: "POST", headers: { host: "127.0.0.1:3100", origin: "https://foreign.invalid", cookie }, body: "{}" }), { params: Promise.resolve({ path: ["daily-check-in"] }) }); assert.equal(denied.status, 403);
+      const otherLogin = await POST(req("session", { account: "legacy" }, cookie), { params: Promise.resolve({ path: ["session"] }) });
       const otherCookie = otherLogin.headers.get("set-cookie")!.split(";")[0];
-      const calendar = await GET(req(`daily?userId=local-new&month=${first.today.slice(0, 7)}`, undefined, otherCookie), { params: { path: ["daily"] } });
+      const calendar = await GET(req(`daily?userId=local-new&month=${first.today.slice(0, 7)}`, undefined, otherCookie), { params: Promise.resolve({ path: ["daily"] }) });
       const isolated = await calendar.json() as DailyCheckInResult; assert.equal(isolated.userId, "local-legacy"); assert.equal(isolated.totalDays, 0); assert.deepEqual(isolated.entries, []);
-      assert.equal((await GET(req("daily", undefined, cookie), { params: { path: ["daily"] } })).status, 401);
+      assert.equal((await GET(req("daily", undefined, cookie), { params: Promise.resolve({ path: ["daily"] }) })).status, 401);
     });
   } finally {
     if (apiUsed) getPaidLocalStore().close(); store.close(); for (const key of Object.keys(process.env)) if (!(key in before)) delete process.env[key]; Object.assign(process.env, before);

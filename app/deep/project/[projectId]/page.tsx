@@ -1,5 +1,6 @@
 import { DeepProjectPageClient } from "../../DeepProjectClient";
 
-export default function DeepProjectPage({ params }: { params: { projectId: string } }) {
-  return <DeepProjectPageClient projectId={params.projectId} />;
+export default async function DeepProjectPage({ params }: { params: Promise<{ projectId: string }> }) {
+  const { projectId } = await params;
+  return <DeepProjectPageClient projectId={projectId} />;
 }

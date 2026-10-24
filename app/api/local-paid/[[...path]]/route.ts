@@ -13,7 +13,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const cookieName = "flora_paid_local_session";
 const adminCookie = "flora_paid_local_admin";
-type Context = { params: { path?: string[] } };
+type Context = { params: Promise<{ path?: string[] }> };
 const json = (value: unknown, status = 200) => NextResponse.json(value, { status, headers: { "Cache-Control": "no-store" } });
 function failure(error: unknown) {
   if (error instanceof GoofishError) return json({code:error.code,message:({OPEN_CHECKOUT:"你有一笔待付款闲鱼订单，请先从订单记录继续。",PRODUCT_NOT_CONFIGURED:"闲鱼套餐仍在配置，请暂勿付款。",NOT_FOUND:"订单不存在或不属于当前账号。",REQUEST_CONFLICT:"这次请求已用于其他订单。"} as Record<string,string>)[error.code] || "暂未核实订单，请稍后重试或联系反馈邮箱。"},error.code === "NOT_FOUND" ? 404 : 409);
@@ -25,7 +25,7 @@ export async function GET(request: NextRequest, { params }: Context) {
   try {
     assertLocalRequest(request);
     const store = getPaidLocalStore();
-    const segments = params.path ?? [];
+    const segments = (await params).path ?? [];
     if (segments[0] === "admin") {
       store.payments.authenticateAdmin(request.cookies.get(adminCookie)?.value);
       if (segments.length===2 && segments[1]==="codes") return json(store.redemptions.adminOverview());
@@ -80,7 +80,7 @@ export async function POST(request: NextRequest, { params }: Context) {
     if (!input || typeof input !== "object" || Array.isArray(input)) throw new LocalPaidError("INVALID_JSON", "请求格式不正确。");
     const field = (key: string) => typeof input[key] === "string" ? input[key] as string : "";
     const store = getPaidLocalStore();
-    const action = (params.path ?? []).join("/");
+    const action = ((await params).path ?? []).join("/");
     const previousToken = request.cookies.get(cookieName)?.value;
     if (action === "admin/session") {
       const token = store.payments.adminLogin(field("key"));

@@ -103,8 +103,8 @@ test("pre-stored card codes redeem atomically, survive retries, enforce ownershi
     await t.test("authenticated APIs enforce CSRF, admin-only export, owner history and server-selected benefits",async()=>{
       const api=getPaidLocalStore();apiStore=api;const session=api.login("legacy"),otherSession=api.login("other");
       const request=(action:string,body?:object,cookie=`flora_paid_local_session=${session.token}`,validOrigin=true)=>new NextRequest(`http://127.0.0.1:3100/api/local-paid/${action}`,{method:body ? "POST" : "GET",headers:{host:"127.0.0.1:3100",origin:validOrigin ? "http://127.0.0.1:3100" : "https://attacker.invalid","x-local-paid":"1","content-type":"application/json",cookie},...(body ? {body:JSON.stringify(body)} : {})});
-      const get=(action:string,cookie?:string)=>GET(request(action,undefined,cookie),{params:{path:action.split("/")}});
-      const post=(action:string,body:object,cookie?:string,validOrigin=true)=>POST(request(action,body,cookie,validOrigin),{params:{path:action.split("/")}});
+      const get=(action:string,cookie?:string)=>GET(request(action,undefined,cookie),{params: Promise.resolve({path:action.split("/")})});
+      const post=(action:string,body:object,cookie?:string,validOrigin=true)=>POST(request(action,body,cookie,validOrigin),{params: Promise.resolve({path:action.split("/")})});
       assert.equal((await get("card-catalog","")).status,401);
       assert.equal((await get("admin/codes")).status,401);
       assert.equal((await post("admin/codes/export",{batchId:"none",requestKey:randomUUID(),reason:"测试"})).status,401);

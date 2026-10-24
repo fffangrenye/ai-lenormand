@@ -25,7 +25,7 @@ test("the original site project-store uses isolated paid APIs end to end", async
     requested.push(route);
     assert.ok(route.startsWith("/api/local-paid"), `unexpected non-isolated request: ${route}`);
       const request = new NextRequest(`http://localhost:3100${route}`, { method: init?.method || "GET", body: typeof init?.body === "string" ? init.body : undefined, headers: { "Content-Type": "application/json", host: "127.0.0.1:3100", origin: "http://127.0.0.1:3100", "x-local-paid": "1", cookie } });
-    const context = { params: { path: route.replace(/^\/api\/local-paid\/?/, "").split("/").filter(Boolean) } };
+    const context = { params: Promise.resolve({ path: route.replace(/^\/api\/local-paid\/?/, "").split("/").filter(Boolean) }) };
     const response = init?.method === "POST" ? await POST(request, context) : await GET(request, context);
     const changed = response.headers.get("set-cookie");
     if (changed) cookie = changed.split(";")[0];

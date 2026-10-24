@@ -275,13 +275,13 @@ test("isolated paid V1 persistence, entitlement and generation invariants", asyn
       const post = async (action: string, body: Record<string, unknown>, origin = "http://127.0.0.1:3100") => {
         const response = await POST(new NextRequest(`http://localhost:3100/api/local-paid/${action}`, {
           method: "POST", headers: { host: "127.0.0.1:3100", origin, "x-local-paid": "1", "Content-Type": "application/json", cookie }, body: JSON.stringify(body)
-        }), { params: { path: [action] } });
+        }), { params: Promise.resolve({ path: [action] }) });
         const nextCookie = response.headers.get("set-cookie");
         if (nextCookie) cookie = nextCookie.split(";")[0];
         return response;
       };
       const overview = async () => {
-        const response = await GET(new NextRequest("http://localhost:3100/api/local-paid", { headers: { host: "127.0.0.1:3100", cookie } }), { params: {} });
+        const response = await GET(new NextRequest("http://localhost:3100/api/local-paid", { headers: { host: "127.0.0.1:3100", cookie } }), { params: Promise.resolve({}) });
         return await response.json() as { balance: { available: number }; readings: { id: string; state: string; result: unknown; cards: unknown[]; followUpsRemaining: number }[] };
       };
       assert.equal((await post("draw", { question: "未登录", spread: "three_card", requestKey: randomUUID() })).status, 401);
@@ -309,7 +309,7 @@ test("isolated paid V1 persistence, entitlement and generation invariants", asyn
       assert.equal((await post("follow-up", { readingId: drawn.id, question: "伪造空历史", requestKey: randomUUID(), messages: [] })).status, 429);
       await post("session", { account: "other" });
       assert.equal((await post("unlock", { readingId: drawn.id })).status, 404);
-      const forbidden = await GET(new NextRequest(`http://localhost:3100/api/local-paid/readings/${drawn.id}`, { headers: { cookie } }), { params: { path: ["readings", drawn.id] } });
+      const forbidden = await GET(new NextRequest(`http://localhost:3100/api/local-paid/readings/${drawn.id}`, { headers: { cookie } }), { params: Promise.resolve({ path: ["readings", drawn.id] }) });
       assert.equal(forbidden.status, 404);
       process.env.PAID_LOCAL_MODE = "0";
       assert.equal((await post("session", { account: "new" })).status, 404);

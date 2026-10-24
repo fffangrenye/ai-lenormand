@@ -69,6 +69,7 @@ export default {
       let response:Response;
       try { response=await fetch(`${env.SUPABASE_URL}/auth/v1/user`,{headers:{apikey:env.SUPABASE_ANON_KEY,Authorization:authorization},signal:AbortSignal.timeout(10000)}); }
       catch { throw new LocalPaidError("AUTH_UNAVAILABLE","登录服务暂时无法连接，请稍后再试。",503); }
+      if(response.status===429 || response.status>=500)throw new LocalPaidError("AUTH_UNAVAILABLE","登录服务暂时繁忙，请稍后重试。",503);
       if(!response.ok)throw new LocalPaidError("UNAUTHORIZED","登录状态已过期，请重新登录。",401);
       const user=await response.json() as {id?:string;email?:string;email_confirmed_at?:string};
       if(!user.id || !/^[a-f0-9-]{36}$/i.test(user.id) || !user.email || !user.email_confirmed_at)throw new LocalPaidError("UNAUTHORIZED","请先完成邮箱验证并登录。",401);
