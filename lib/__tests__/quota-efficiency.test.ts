@@ -75,6 +75,63 @@ test("existing users do not receive duplicate gifts or writes, but changed email
   }finally{f.db.close();}
 });
 
+test("twenty full histories hydrate in at most seven queries with owner-bounded task lookups and seek pagination",()=>{
+  const f=fixture();try{
+    const page=f.store.projectReadingPage(f.uid,f.project.id);
+    assert.equal(page.items.length,20);
+    assert.ok(f.statements.length<=7,`page SQL count: ${f.statements.length}`);
+    assert.equal(f.statements.some(q=>q.includes("FROM reading_runs r JOIN credit_ledger")),false);
+    const completion=f.statements.find(q=>q.includes("substr(l.event_key,9)"))!;
+    const plan=f.db.prepare("EXPLAIN QUERY PLAN "+completion).all(f.uid,...page.items.map(r=>r.id));
+    assert.ok(plan.some(row=>String(row.detail).includes("ledger_owner_created")));
+    assert.ok(plan.some(row=>String(row.detail).includes("SEARCH r")&&String(row.detail).includes("(id=?)")));
+    assert.equal(plan.some(row=>String(row.detail).startsWith("SCAN")),false);
+    const expected=page.items.map(row=>f.store.reading(f.uid,row.id));
+    assert.deepEqual(page.items,expected);
+    f.statements.length=0;
+    f.store.projectReadingPage(f.uid,f.project.id,page.nextCursor!);
+    const seek=f.statements.find(q=>q.startsWith("SELECT p.*"))!;
+    const [time,id]=page.nextCursor!.split("|");
+    const seekPlan=f.db.prepare("EXPLAIN QUERY PLAN "+seek).all(f.uid,f.project.id,time,id);
+    assert.ok(seekPlan.some(row=>String(row.detail).includes("paid_reading_owner (user_id=? AND created_at<?)")));
+  }finally{f.db.close();}
+});
+
+test("legacy archives without completion timestamps never query new tasks, and project repair is not repeated",()=>{
+  const f=fixture();try{
+    f.db.prepare("UPDATE paid_readings SET result_json=? WHERE user_id=?").run(JSON.stringify({conclusion:"",interpretation:"原文",legacy:{sourceRecord:{completed_at:null,status:"drawing"},sourceCards:[],messages:[]}}),f.uid);
+    f.statements.length=0;
+    const page=f.store.projectReadingPage(f.uid,f.project.id);
+    assert.ok(page.items.every(r=>r.completedAt===r.createdAt&&r.legacyRestored&&r.followUpsRemaining===0));
+    assert.equal(f.statements.some(q=>q.includes("substr(l.event_key")||q.includes("FROM reading_runs r JOIN")),false);
+    assert.deepEqual(page.items,page.items.map(r=>f.store.reading(f.uid,r.id)));
+    f.store.projects(f.uid);f.statements.length=0;
+    f.store.projects(f.uid);
+    assert.equal(f.statements.some(q=>q.includes("NOT IN")||q.includes("paid_readings")),false);
+    // A prototype orphan is still linked when checked for the first time.
+    const orphan=f.store.draw(f.other,{question:"旧体验",spread:"three_card",requestKey:randomUUID()});
+    const project=f.store.projects(f.other)[0];
+    assert.equal(f.store.reading(f.other,orphan.id).projectId,project.id);
+  }finally{f.db.close();}
+});
+
+test("batched completion dates and follow-ups equal individual details without changing balances",()=>{
+  const f=fixture();try{
+    const row=f.store.draw(f.uid,{question:"完整解读",spread:"three_card",projectId:f.project.id,requestKey:randomUUID()});
+    const reserved=f.store.reserveReading(f.uid,row.id);f.advance(5000);
+    f.store.completeReading(f.uid,row.id,reserved.runId!,{conclusion:"结论",interpretation:"正文",advice:"建议",uncertainty:"参考",model:"test",promptVersion:"test"});
+    const follow=f.store.reserveFollowUp(f.uid,row.id,"追问",randomUUID());
+    f.store.completeFollowUp(f.uid,row.id,follow.id,follow.attempt!,"回答");
+    const before=f.store.summary(f.uid).balance;
+    const detail=f.store.reading(f.uid,row.id);
+    const page=f.store.projectReadingPage(f.uid,f.project.id);
+    assert.deepEqual(page.items.find(r=>r.id===row.id),detail);
+    assert.notEqual(detail.completedAt,detail.createdAt);
+    assert.equal(detail.followUps[0].answer,"回答");
+    assert.deepEqual(f.store.summary(f.uid).balance,before);
+  }finally{f.db.close();}
+});
+
 test("daily report date filters use indexes rather than full business table scans",()=>{
   const f=fixture();try{
     for(const table of ["paid_readings","credit_ledger","daily_check_ins","paid_draw_sessions","reading_runs","paid_follow_ups","local_orders","local_payment_receipts"]){

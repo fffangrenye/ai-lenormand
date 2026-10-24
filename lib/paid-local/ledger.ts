@@ -12,9 +12,11 @@ import {restoreLegacyHistory,type LegacySnapshot} from "./legacy-restore";
 import type { PaidCard, PaidDrawSession, PaidOverview, PaidProject, PaidReading, PaidResult, PaidSpread } from "./types";
 
 type Row = Record<string, string | number | null>;
+type ReadingRelations = { follows: Row[]; projectId?: string; completedAt?: string };
 
 export class PaidLedger {
   private initializedUsers = new Map<string, string>();
+  private checkedProjectLinks = new Set<string>();
   readonly redemptions: LocalRedemptions;
   constructor(protected db: DatabaseSync, private transaction: <T>(work: () => T) => T, protected clock: () => number = Date.now, codeConfig?: { key: () => string; prefix: string }) {
     this.redemptions = new LocalRedemptions(this.port(), codeConfig);
@@ -119,14 +121,18 @@ export class PaidLedger {
   projects(userId: string) {
     // Preserve records created in the earlier isolated prototype, without
     // touching any production history or changing their entitlements.
-    this.tx(() => {
-      const unlinked = this.one("SELECT count(*) as n FROM paid_readings WHERE user_id=? AND id NOT IN (SELECT reading_id FROM local_reading_projects)", userId);
-      if (Number(unlinked?.n) > 0) {
+    if (!this.checkedProjectLinks.has(userId)) {
+      this.tx(() => {
+      const unlinked = this.one("SELECT id FROM paid_readings WHERE user_id=? AND id NOT IN (SELECT reading_id FROM local_reading_projects) LIMIT 1", userId);
+      if (unlinked) {
         const id = `${userId}-previous-local`;
         this.run("INSERT OR IGNORE INTO local_projects(id,user_id,title,created_at,updated_at,last_opened_at) VALUES (?,?,?,?,?,?)", id, userId, "本地体验记录", this.now(), this.now(), this.now());
         this.run("INSERT INTO local_reading_projects SELECT id,? FROM paid_readings WHERE user_id=? AND id NOT IN (SELECT reading_id FROM local_reading_projects)", id, userId);
       }
-    });
+      });
+      if (this.checkedProjectLinks.size >= 2000) this.checkedProjectLinks.clear();
+      this.checkedProjectLinks.add(userId);
+    }
     const email = String(this.one("SELECT label FROM local_users WHERE id=?", userId)?.label || userId);
     return this.all("SELECT * FROM local_projects WHERE user_id=? AND archived_at IS NULL ORDER BY last_opened_at DESC,id", userId).map((row) => this.serializeProject(row, email));
   }
@@ -162,7 +168,7 @@ export class PaidLedger {
   projectReadingPage(userId: string, projectId: string, cursor = "") {
     this.ownedProject(userId, projectId); this.recoverExpired(userId);
     const before = this.readCursor(cursor);
-    const rows = this.all("SELECT p.* FROM paid_readings p JOIN local_reading_projects l ON l.reading_id=p.id WHERE p.user_id=? AND l.project_id=?" + (before ? " AND (p.created_at<? OR (p.created_at=? AND p.id<?))" : "") + " ORDER BY p.created_at DESC,p.id DESC LIMIT 21", userId, projectId, ...(before ? [before.time, before.time, before.id] : []));
+    const rows = this.all("SELECT p.*,l.project_id FROM paid_readings p JOIN local_reading_projects l ON l.reading_id=p.id WHERE p.user_id=? AND l.project_id=?" + (before ? " AND (p.created_at,p.id)<(?,?)" : "") + " ORDER BY p.created_at DESC,p.id DESC LIMIT 21", userId, projectId, ...(before ? [before.time, before.id] : []));
     return this.readingPage(rows, false);
   }
   private readCursor(cursor: string) {
@@ -173,11 +179,26 @@ export class PaidLedger {
   }
   private readingPage(rows: Row[], compact: boolean) {
     const selected = rows.slice(0, 20);
+    // Hydrate one bounded page together. Never run a global task-table scan for
+    // each archived reading, and never fetch the next page's interpretation.
+    const relations = new Map<string, ReadingRelations>();
+    if (!compact && selected.length) {
+      for (const row of selected) relations.set(String(row.id), { follows: [], projectId: row.project_id as string | undefined });
+      const ids = selected.map(row => String(row.id)), placeholders = ids.map(() => "?").join(",");
+      for (const follow of this.all(`SELECT * FROM paid_follow_ups WHERE reading_id IN (${placeholders}) AND state IN ('reserved','completed') ORDER BY created_at,id`, ...ids)) relations.get(String(follow.reading_id))!.follows.push(follow);
+      const completed = selected.filter(row => row.state === "completed" && !JSON.parse(String(row.result_json)).legacy).map(row => String(row.id));
+      if (completed.length) {
+        // The existing owner index bounds this to this account's consumption
+        // ledger; task IDs are then looked up by primary key. No new index or
+        // mass rewrite of the imported 55,000 records is needed.
+        for (const row of this.completionTimes(String(selected[0].user_id), completed)) relations.get(String(row.reading_id))!.completedAt = String(row.created_at);
+      }
+    }
     const items = selected.map(row => compact ? {
       id: String(row.id), projectId: String(row.project_id || ""), question: String(row.question), spread: row.spread as PaidSpread,
       state: row.state as PaidReading["state"], createdAt: String(row.created_at), completedAt: String(row.created_at),
       cards: [], result: null, followUps: [], legacyRestored: Boolean(row.is_legacy), followUpsRemaining: row.is_legacy ? 0 : Math.max(0, paidConfig.followUpsPerReading - Number(row.follow_count || 0))
-    } : this.serialize(row));
+    } : this.serialize(row, relations.get(String(row.id))));
     const last = selected.at(-1);
     return { items, nextCursor: rows.length > 20 && last ? `${last.created_at}|${last.id}` : null };
   }
@@ -185,7 +206,7 @@ export class PaidLedger {
     const before = this.readCursor(cursor);
     if (!["all", "7", "30"].includes(days)) throw new LocalPaidError("INVALID_PERIOD", "请选择有效时间范围。");
     const since = days === "all" ? "" : new Date(this.clock() - Number(days) * 86400000).toISOString();
-    const rows = this.all("SELECT p.id,p.question,p.spread,p.state,p.created_at,l.project_id,json_type(p.result_json,'$.legacy')='object' is_legacy,(SELECT count(*) FROM paid_follow_ups f WHERE f.reading_id=p.id AND f.state IN ('reserved','completed')) follow_count FROM paid_readings p LEFT JOIN local_reading_projects l ON l.reading_id=p.id WHERE p.user_id=? AND p.state='completed'" + (since ? " AND p.created_at>=?" : "") + (before ? " AND (p.created_at<? OR (p.created_at=? AND p.id<?))" : "") + " ORDER BY p.created_at DESC,p.id DESC LIMIT 21", userId, ...(since ? [since] : []), ...(before ? [before.time, before.time, before.id] : []));
+    const rows = this.all("SELECT p.id,p.question,p.spread,p.state,p.created_at,l.project_id,json_type(p.result_json,'$.legacy')='object' is_legacy,(SELECT count(*) FROM paid_follow_ups f WHERE f.reading_id=p.id AND f.state IN ('reserved','completed')) follow_count FROM paid_readings p LEFT JOIN local_reading_projects l ON l.reading_id=p.id WHERE p.user_id=? AND p.state='completed'" + (since ? " AND p.created_at>=?" : "") + (before ? " AND (p.created_at,p.id)<(?,?)" : "") + " ORDER BY p.created_at DESC,p.id DESC LIMIT 21", userId, ...(since ? [since] : []), ...(before ? [before.time, before.id] : []));
     return this.readingPage(rows, true);
   }
   summary(userId: string) {
@@ -204,15 +225,18 @@ export class PaidLedger {
     if (!row) throw new LocalPaidError("NOT_FOUND", "找不到这条解读。", 404);
     return row;
   }
-  protected serialize(row: Row): PaidReading {
-    const follows = this.all("SELECT * FROM paid_follow_ups WHERE reading_id=? AND state IN ('reserved','completed') ORDER BY created_at,id", String(row.id));
+  private completionTimes(userId: string, readingIds: string[]) {
+    return this.all(`SELECT r.reading_id,l.created_at FROM credit_ledger l CROSS JOIN reading_runs r ON r.id=substr(l.event_key,9) WHERE l.user_id=? AND l.kind='consume' AND r.state='completed' AND r.reading_id IN (${readingIds.map(() => "?").join(",")})`, userId, ...readingIds);
+  }
+  protected serialize(row: Row, relations?: ReadingRelations): PaidReading {
+    const follows = relations ? relations.follows : this.all("SELECT * FROM paid_follow_ups WHERE reading_id=? AND state IN ('reserved','completed') ORDER BY created_at,id", String(row.id));
     const result=row.state==="completed" ? JSON.parse(String(row.result_json)) as PaidResult : null;
     const legacy=result?.legacy;
     return {
-      projectId: this.one("SELECT project_id FROM local_reading_projects WHERE reading_id=?", row.id)?.project_id as string | undefined,
+      projectId: relations ? relations.projectId : this.one("SELECT project_id FROM local_reading_projects WHERE reading_id=?", row.id)?.project_id as string | undefined,
       id: String(row.id), question: String(row.question), choices: JSON.parse(String(row.choices_json || "[]")), spread: row.spread as PaidSpread,
       cards: JSON.parse(String(row.cards_json)) as PaidCard[], state: row.state as PaidReading["state"], createdAt: String(row.created_at),
-      completedAt: row.state === "completed" ? String(legacy?.sourceRecord.completed_at || this.one("SELECT l.created_at FROM reading_runs r JOIN credit_ledger l ON l.event_key='consume:' || r.id WHERE r.reading_id=? AND r.state='completed' LIMIT 1", row.id)?.created_at || row.created_at) : null,
+      completedAt: row.state === "completed" ? String(legacy ? legacy.sourceRecord.completed_at || row.created_at : (relations ? relations.completedAt : this.completionTimes(String(row.user_id), [String(row.id)])[0]?.created_at) || row.created_at) : null,
       // Locked and generating records never contain a result or a prompt in their response.
       result,legacyRestored:Boolean(legacy),legacyMessages:legacy?.messages.map(m=>({id:m.id,role:m.role,content:m.content,createdAt:m.created_at})),
       followUpsRemaining: row.state === "completed" && !legacy ? Math.max(0, paidConfig.followUpsPerReading - follows.length) : 0,
