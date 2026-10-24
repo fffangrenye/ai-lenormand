@@ -88,14 +88,24 @@ export class SnapshotBackup {
     return {backupId: id, manifestHash: manifest.manifestHash, table: name, after, rows, nextCursor, done: !truncated && (rows.length < 128 || nextCursor === table.fence)};
   }
   end(id: string) {
-    return this.storage.transactionSync(() => {
+    let phase = "begin";
+    try { return this.storage.transactionSync(() => {
       if (!this.exists()) { this.cached = null; return {finished: true, alreadyFinished: true}; }
       const row = this.rows(`SELECT id FROM ${state}`)[0];
       if (row?.id !== id) return fail("BACKUP_NOT_FOUND", "备份标识不匹配，未清理其他备份。");
+      phase = "triggers";
       for (const trigger of this.rows("SELECT name FROM sqlite_master WHERE type='trigger' AND name GLOB '_flora_backup_*'")) this.rows(`DROP TRIGGER ${quote(String(trigger.name))}`);
+      phase = "count";
       const changes = this.rows(`SELECT count(*) n FROM ${shadow}`)[0];
-      this.rows(`DROP TABLE ${shadow}`); this.rows(`DROP TABLE ${state}`); this.cached = null;
+      phase = "drop-shadow"; this.rows(`DROP TABLE ${shadow}`);
+      phase = "drop-state"; this.rows(`DROP TABLE ${state}`); this.cached = null;
       return {finished: true, capturedChanges: Number(changes.n)};
-    });
+    }); } catch(error) {
+      if (error instanceof LocalPaidError) throw error;
+      // Only fixed diagnostic labels, never SQL text or customer values.
+      const message = error instanceof Error ? error.message : "";
+      const reason = /database (?:table )?is locked/i.test(message) ? "locked" : /CPU|time limit/i.test(message) ? "cpu-limit" : /authoriz|permission/i.test(message) ? "permission" : /SQLITE_([A-Z_]+)/.exec(message)?.[1] || "unknown";
+      throw new LocalPaidError("BACKUP_CLEANUP_FAILED", `Backup cleanup ${phase}: ${reason}`, 503);
+    }
   }
 }
