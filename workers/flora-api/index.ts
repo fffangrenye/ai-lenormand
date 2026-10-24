@@ -32,7 +32,7 @@ export default {
       const path=new URL(request.url).pathname;
       if(path==="/internal/maintenance"){
         await verifyMaintenance(request.clone(),env.CODE_SIGNING_KEY,env.ADMIN_EMAILS);
-        return env.LEDGER.get(env.LEDGER.idFromName("flora-v3-ledger-v1")).fetch(request);
+        return env.LEDGER.get(env.LEDGER.idFromName("flora-v3-ledger-v1")).fetch(new Request("https://floralenormand.site/internal/maintenance",{method:"POST",headers:{"Content-Type":"application/json","x-flora-private-maintenance":"1","x-flora-maintenance-signature":request.headers.get("x-flora-maintenance-signature")||""},body:await request.text()}));
       }
       // Private service-binding maintenance only. The public front Worker never
       // routes this path; signed, short-lived jobs also protect the private API.
@@ -73,6 +73,7 @@ export default {
       const user=await response.json() as {id?:string;email?:string;email_confirmed_at?:string};
       if(!user.id || !/^[a-f0-9-]{36}$/i.test(user.id) || !user.email || !user.email_confirmed_at)throw new LocalPaidError("UNAUTHORIZED","请先完成邮箱验证并登录。",401);
       const headers=new Headers(request.headers);
+      headers.delete("x-flora-private-maintenance");headers.delete("x-flora-maintenance-signature");
       headers.set("x-flora-user",user.id);headers.set("x-flora-email",encodeURIComponent(user.email.toLowerCase()));
       // The ledger is only reachable through this authenticated service binding.
       return env.LEDGER.get(env.LEDGER.idFromName("flora-v3-ledger-v1")).fetch(new Request(request,{headers}));
@@ -99,7 +100,7 @@ export class FloraLedger {
   }
   async fetch(request:Request){
     try{
-      if(new URL(request.url).pathname==="/internal/maintenance"){
+      if(new URL(request.url).pathname==="/internal/maintenance" || request.headers.get("x-flora-private-maintenance")==="1"){
         const job=await verifyMaintenance(request,this.env.CODE_SIGNING_KEY,this.env.ADMIN_EMAILS);
         if(job.action==="inspect")return json(this.backup.inspect());
         if(job.action==="backup-begin")return json(this.backup.begin(job.backupId||""));
