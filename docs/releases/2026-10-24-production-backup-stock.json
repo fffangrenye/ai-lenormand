@@ -1,0 +1,59 @@
+{
+  "operation": "production-business-backup-and-single-petal-stock",
+  "environment": "production",
+  "branch": "codex/production-backup-stock-20261024",
+  "workers": [
+    {
+      "name": "flora-domain-info",
+      "version": "214075d9-71ce-44f5-a133-3a918b9454cb",
+      "commit": "1fba73d1e5710a2b51f2f11e7e7dd112e3ec60b2",
+      "changedByThisOperation": false
+    },
+    {
+      "name": "flora-v3-api",
+      "version": "2864d399-1086-48a4-bccc-aeaac47d535c",
+      "commit": "4f350b951843c07caf12d1760bcd5decd245139e"
+    }
+  ],
+  "backup": {
+    "snapshotCreatedAt": "2026-10-24T06:52:38.375Z",
+    "scope": "Cloudflare business database and account UUID mapping; excludes complete Supabase Auth recovery",
+    "tables": 30,
+    "encrypted": true,
+    "independentLocalCopy": true,
+    "offsiteCopyCreated": false,
+    "scheduledBackupsCreated": false,
+    "isolatedRestoreVerified": true,
+    "allTableContentHashesMatch": true,
+    "sqliteIntegrity": "ok",
+    "foreignKeyViolations": 0,
+    "historyApplicationRead": true,
+    "offlineRedemptionAndRetryVerified": true,
+    "crossAccountReuseRejected": true,
+    "offlineDrillRolledBack": true,
+    "productionRestored": false,
+    "plaintextRestoreRetained": false,
+    "productionSnapshotEnded": true,
+    "activeBackupAfterCleanup": null,
+    "archiveBytes": 55495826,
+    "archiveSha256": "3c94838947eec185da4f8c4de91f34fa7c33599075790f9f49a4fdf5057da141",
+    "archiveMembersVerified": 1249
+  },
+  "stock": {
+    "package": "single",
+    "creditsPerCode": 1,
+    "priceCents": 499,
+    "newUniqueCodes": 200,
+    "allCodesMatchedRestoredInventory": true,
+    "activeAtSnapshot": 200,
+    "importedIntoSellerWarehouseByThisOperation": false,
+    "productionTestRedemptionPerformed": false
+  },
+  "publicChecks": {
+    "login": 200,
+    "deep": 200,
+    "anonymousSummary": 401,
+    "publicMaintenance": 404
+  },
+  "privacy": "No customer records, full vouchers, signing keys, backup decryption key or private configuration are included in this repository."
+}

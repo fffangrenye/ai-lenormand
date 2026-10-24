@@ -21,7 +21,7 @@ async function backup(configFile,stateFile){
  await Promise.all(Array.from({length:Math.min(3,queue.length)},async()=>{
   while(nextTable<queue.length){const table=queue[nextTable++];while(!table.done){const page=await request(cfg,'backup-page',{backupId:index.id,table:table.name,after:table.cursor});if(page.manifestHash!==manifest.manifestHash||page.table!==table.name||page.after!==table.cursor||(!page.done&&page.nextCursor<=table.cursor))throw Error('Snapshot page identity or cursor mismatch');const name=`chunk-${String(index.chunks.length).padStart(6,'0')}.enc`;const part=savePart(directory,name,page,key,index.id);index.chunks.push({...part,table:table.name,after:page.after,nextCursor:page.nextCursor,count:page.rows.length});table.count+=page.rows.length;table.cursor=page.nextCursor;table.done=page.done;if(table.done&&table.count!==table.expected)throw Error('Snapshot row count mismatch: '+table.name);writeJson(indexFile,index);if(++pages%25===0)console.log(JSON.stringify({phase:'exporting',pages:index.chunks.length,rows:index.tables.reduce((n,t)=>n+t.count,0),tablesDone:index.tables.filter(t=>t.done).length,tables:index.tables.length}));}}
  }));
- index.status='exported';writeJson(indexFile,index);
+ if(index.status!=='verified')index.status='exported';writeJson(indexFile,index);
  if(!index.snapshotEnded){index.finish=await request(cfg,'backup-end',{backupId:index.id});index.snapshotEnded=true;index.finishedAt=new Date().toISOString();writeJson(indexFile,index);}
  console.log(JSON.stringify({phase:'exported',directory,rows:index.tables.reduce((n,t)=>n+t.count,0),tables:index.tables.length,chunks:index.chunks.length,encryptedBytes:index.chunks.reduce((n,c)=>n+c.bytes,0),snapshotEnded:true}));
  return{directory,keyFile};
