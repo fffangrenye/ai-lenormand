@@ -1,0 +1,20 @@
+const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),assert=require('node:assert/strict');
+const {DatabaseSync}=require('node:sqlite');require('./typescript-register.cjs');
+const {schema}=require('../workers/flora-api/schema.ts'),{costIndexes}=require('../workers/flora-api/cost-indexes.ts');
+const {PaidLedger}=require('../lib/paid-local/ledger.ts'),{SnapshotBackup}=require('../workers/flora-api/backup.ts');
+const {seal,open}=require('./production-backup.cjs'),{verifyBackup}=require('./verify-production-backup.cjs');
+const {sha}=require('./private-maintenance-client.cjs');
+(async()=>{const directory=path.resolve('.local-paid/backup-client-test-'+crypto.randomUUID());fs.mkdirSync(directory,{recursive:true});const db=new DatabaseSync(':memory:');
+try{
+ db.exec(schema);db.exec(costIndexes);const tx=work=>{db.exec('BEGIN');try{const r=work();db.exec('COMMIT');return r;}catch(e){db.exec('ROLLBACK');throw e;}};
+ const signing='test-key-only-'.repeat(8),store=new PaidLedger(db,tx,Date.now,{key:()=>signing,prefix:'FLORA'}),uid=crypto.randomUUID();store.ensureUser(uid,'fixture@example.invalid');const project=store.saveProject(uid,{title:'恢复测试🌸',background:'完整保留\n中文与换行'});const reading=store.draw(uid,{projectId:project.id,question:'恢复后能否阅读？',spread:'three_card',requestKey:crypto.randomUUID()});const run=store.reserveReading(uid,reading.id);store.completeReading(uid,reading.id,run.runId,{conclusion:'结论',interpretation:'原始解读',advice:'建议',uncertainty:'参考',model:'test',promptVersion:'test'});
+ const batch=store.redemptions.createBatch('owner@example.invalid','single',1,'fixture-create-batch','offline test');const exported=store.redemptions.exportBatch('owner@example.invalid',batch.id,'fixture-export-batch','offline test');const stock=path.join(directory,'fixture-stock.txt');fs.writeFileSync(stock,exported.codes[0]);
+ const sql={exec(query,...args){const rows=db.prepare(query).all(...args);return Object.assign(rows,{toArray:()=>rows});}};const backup=new SnapshotBackup({sql,transactionSync:tx});const manifest=backup.begin('offline-client-fixture');const key=crypto.randomBytes(32),keyFile=path.join(directory,'fixture.key');fs.writeFileSync(keyFile,key.toString('base64'));
+ function part(name,value){const bytes=seal(value,key,manifest.id,name);fs.writeFileSync(path.join(directory,name),bytes);return{file:name,sha256:sha(bytes),bytes:bytes.length};}
+ const index={format:'flora-encrypted-backup-v1',id:manifest.id,status:'exported',snapshotEnded:true,manifest:part('manifest.enc',manifest),secrets:part('key.enc',{CODE_SIGNING_KEY:signing}),chunks:[]};
+ for(const table of manifest.tables){let after=0;do{const page=backup.page(manifest.id,table.name,after);index.chunks.push({...part('chunk-'+index.chunks.length+'.enc',page),table:table.name,count:page.rows.length});if(page.done)break;after=page.nextCursor;}while(true);}
+ backup.end(manifest.id);fs.writeFileSync(path.join(directory,'index.json'),JSON.stringify(index));
+ const result=await verifyBackup({directory,keyFile,testCodeFile:stock});assert.equal(result.offlineSinglePetalRedemptionAndRetry,true);assert.equal(result.historyApplicationRead,true);assert.equal(result.allContentHashesMatch,true);assert.equal(fs.readdirSync(directory).some(f=>f.endsWith('.sqlite')),false);
+ const good=seal({private:'test'},key,manifest.id,'tamper-test.enc'),bad=Buffer.from(good);bad[bad.length-1]^=1;assert.throws(()=>open(bad,key,manifest.id,'tamper-test.enc'));assert.throws(()=>open(good,key,manifest.id,'different.enc'));assert.notDeepEqual(seal({private:'test'},key,manifest.id,'tamper-test.enc'),good);
+ console.log('Encrypted backup client verified: authenticated ciphertext, fresh nonces, filename binding, complete SQL restore, all row hashes, history reads, redeem once/retry/isolation, rolled-back financial drill, no retained plaintext DB.');
+}finally{db.close();if(!directory.startsWith(path.resolve('.local-paid')+path.sep))throw Error('Unsafe test cleanup');fs.rmSync(directory,{recursive:true,force:true});}})().catch(error=>{console.error(error);process.exitCode=1;});

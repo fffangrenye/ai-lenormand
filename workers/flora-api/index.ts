@@ -10,6 +10,8 @@ import { recoverPassword } from "./password-recovery";
 import { ensureTelemetrySchema, readDailyReport, recordSiteEvent, SITE_HOST, type SiteEvent } from "./telemetry";
 import {verifyRestoreJob} from "./legacy-maintenance";
 import { measuredSql } from "./sql-cost";
+import { SnapshotBackup, type BackupSql } from "./backup";
+import { verifyMaintenance } from "./maintenance";
 
 type Environment = {
   LEDGER: {idFromName(name:string):unknown;get(id:unknown):{fetch(request:Request):Promise<Response>}};
@@ -28,6 +30,10 @@ export default {
   async fetch(request:Request,env:Environment) {
     try {
       const path=new URL(request.url).pathname;
+      if(path==="/internal/maintenance"){
+        await verifyMaintenance(request.clone(),env.CODE_SIGNING_KEY,env.ADMIN_EMAILS);
+        return env.LEDGER.get(env.LEDGER.idFromName("flora-v3-ledger-v1")).fetch(request);
+      }
       // Private service-binding maintenance only. The public front Worker never
       // routes this path; signed, short-lived jobs also protect the private API.
       if(path==="/internal/legacy-restore"){
@@ -76,6 +82,7 @@ export default {
 
 export class FloraLedger {
   private store:PaidLedger;
+  private backup: SnapshotBackup;
   private rates=new Map<string,{at:number;n:number}>();
   private reports = new Map<string, { at: number; value: ReturnType<typeof readDailyReport> }>();
   private historyRates = new Map<string, {at:number;n:number}>();
@@ -88,9 +95,19 @@ export class FloraLedger {
     const db={prepare:(query:string)=>({all:(...args:unknown[])=>execute(query,...args),get:(...args:unknown[])=>execute(query,...args)[0],run:(...args:unknown[])=>{execute(query,...args);return{};}}),exec:(query:string)=>execute(query),close:()=>{}};
     if(!env.CODE_SIGNING_KEY || env.CODE_SIGNING_KEY.length<48)throw new Error("Missing voucher configuration");
     this.store=new PaidLedger(db as unknown as DatabaseSync,work=>ctx.storage.transactionSync(work),Date.now,{key:()=>env.CODE_SIGNING_KEY,prefix:"FLORA"});
+    this.backup=new SnapshotBackup(ctx.storage as unknown as {sql:BackupSql;transactionSync<T>(work:()=>T):T});
   }
   async fetch(request:Request){
     try{
+      if(new URL(request.url).pathname==="/internal/maintenance"){
+        const job=await verifyMaintenance(request,this.env.CODE_SIGNING_KEY,this.env.ADMIN_EMAILS);
+        if(job.action==="inspect")return json(this.backup.inspect());
+        if(job.action==="backup-begin")return json(this.backup.begin(job.backupId||""));
+        if(job.action==="backup-page")return json(this.backup.page(job.backupId||"",job.table||"",Number(job.after)));
+        if(job.action==="backup-end")return json(this.backup.end(job.backupId||""));
+        if(job.action==="stock-generate")return json(this.store.redemptions.createBatch(job.actor,job.packageId||"",Number(job.quantity),job.requestKey||"",job.reason||""));
+        if(job.action==="stock-export")return json(this.store.redemptions.exportBatch(job.actor,job.batchId||"",job.requestKey||"",job.reason||""));
+      }
       if(new URL(request.url).pathname==="/api/flora/analytics" && request.headers.get("x-flora-telemetry")==="1"){
         if(this.env.TELEMETRY_ENABLED !== "1")return new Response(null,{status:204});
         recordSiteEvent(this.ctx.storage.sql,await request.json() as SiteEvent);
