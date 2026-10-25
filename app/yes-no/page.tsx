@@ -5,6 +5,7 @@ import { QuietCardBack } from "@/components/QuietCardBack";
 import { AccountMenu } from "@/components/AccountMenu";
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
+import { ArrowUpRight } from "lucide-react";
 import { trackAnalyticsEvent } from "@/components/AnalyticsTracker";
 import { getLenormandCardImagePath, preloadLenormandCardImages } from "@/lib/lenormand-cards";
 import { useCardSpreadLongPressSave } from "@/lib/use-card-spread-save";
@@ -12,6 +13,12 @@ import { useCardSpreadLongPressSave } from "@/lib/use-card-spread-save";
 import { yesNoDeck, getYesNoResult, ResultKind, LenormandCard } from "@/lib/yes-no";
 
 type Stage = "input" | "drawing" | "result";
+
+const deepReadingInvitations: Record<ResultKind, string> = {
+  YES: "有推进的空间，想看看关键机会和下一步吗？",
+  NO: "想进一步了解阻碍，以及可以调整的地方吗？",
+  UNCLEAR: "想展开看看，哪些因素让答案尚不明确？"
+};
 
 function drawCards() {
   const pool = [...yesNoDeck];
@@ -225,19 +232,27 @@ export default function YesNoPage() {
                   {interpretation}
                 </article>
 
-                <div className="mt-7 grid gap-3">
+                <aside aria-label="进一步了解这个问题" className="mt-6 rounded-[6px] border border-[#C9CEBC]/65 bg-[#F2F1E9]/70 px-5 py-6 text-center sm:px-8">
+                  <p className="font-serif text-[17px] leading-8 text-ink/80">
+                    {deepReadingInvitations[result]}
+                  </p>
+                  <Link prefetch={false} href="/deep" className="mt-5 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-full bg-[#6F2638] px-6 py-3 text-[14px] text-[#FDF8EF] transition-colors hover:bg-[#582032] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#6F2638] sm:w-auto sm:min-w-[224px]">
+                    看看原因与下一步
+                    <ArrowUpRight size={16} aria-hidden="true" />
+                  </Link>
+                  <p className="mt-3 text-[12px] leading-6 text-ink/50">三牌深入解读 · 1 花瓣 · 含 2 次追问</p>
+                </aside>
+
+                <div className="mt-6 grid gap-3">
                   <button
                     type="button"
                     onClick={reset}
-                    className="h-12 rounded-full bg-[#6F2638] px-6 text-[13px] uppercase tracking-[0.14em] text-[#FDF8EF] shadow-entry"
+                    className="h-12 rounded-full border border-ink/14 px-6 text-[13px] tracking-[0.1em] text-ink/65 transition-colors hover:bg-ink/[0.03]"
                   >
                     再问一个问题
                   </button>
-                  <Link prefetch={false} href="/" className="h-12 rounded-full border border-ink/14 px-6 text-center text-[13px] uppercase leading-[48px] tracking-[0.14em] text-ink/58">
+                  <Link prefetch={false} href="/" className="inline-flex min-h-11 items-center justify-center text-[12px] tracking-[0.1em] text-ink/45 hover:text-ink/70">
                     返回首页
-                  </Link>
-                  <Link prefetch={false} href="/login" className="text-center text-[12px] leading-5 text-ink/42">
-                    想更深入地问这件事？
                   </Link>
                 </div>
               </motion.div>
