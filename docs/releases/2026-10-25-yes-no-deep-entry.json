@@ -1,0 +1,61 @@
+{
+  "environment": "production",
+  "domain": "https://floralenormand.site",
+  "sourceCommit": "7409aabf1ce2e08b321b10127a410c711f415b28",
+  "branch": "codex/security-next-maintenance-20261024",
+  "deployedAt": "2026-10-25T10:13:56.423Z",
+  "change": "Add result-specific deep-reading invitations, a visible link, and petal entitlement text after Yes or No results.",
+  "frontend": {
+    "worker": "flora-domain-info",
+    "version": "76063664-23f1-493b-8988-15d9e4dd110b",
+    "percentage": 100,
+    "rollbackVersion": "bc2b86d9-dd4e-4070-8b98-04cccbad5424",
+    "rollbackCommit": "815f868fa9d3109bd88ba5a5b5e2ca141af35da0"
+  },
+  "unchangedWorkers": [
+    {
+      "worker": "flora-v3-api",
+      "version": "d9064b09-3602-47f7-81ec-4564127d909b",
+      "sourceCommit": "815f868fa9d3109bd88ba5a5b5e2ca141af35da0"
+    },
+    {
+      "worker": "flora-domain-canonical",
+      "version": "f03664f5-2551-478b-84b0-45658e9aeef0",
+      "sourceCommit": "9c57cd03983ef75c97a8787cc0c2c66a5b847566"
+    }
+  ],
+  "checks": {
+    "typecheck": true,
+    "changedPageLintErrors": 0,
+    "sourceAndPublishedArtifactSecretChecksPassed": true,
+    "build": true,
+    "staticRouterAndProductionRuntime": true,
+    "publicPagesBypassWorker": 11,
+    "publicHtmlAndClientChunksMatchLocalBuild": true,
+    "verifiedClientChunks": 22,
+    "loginAndPrivateShells": true,
+    "threeLegacyRedirects": true,
+    "anonymousDataAccessRejected": true,
+    "dailyTelemetryDisabled": true,
+    "allThreeResultInvitationsCheckedLocally": true,
+    "mobileHorizontalOverflow": false,
+    "liveBrowserPageErrors": 0,
+    "liveBrowserStaticYesNoHtml": true,
+    "liveBrowserIdleObservationMs": 15000,
+    "liveBrowserAutomaticApiAuthOrAiRequests": 0,
+    "liveBrowserHoverDeepPrefetchRequests": 0
+  },
+  "dataScope": {
+    "apiDeployed": false,
+    "databaseModified": false,
+    "authSettingsChanged": false,
+    "paymentsChanged": false,
+    "dailyTelemetryEnabled": false,
+    "paidAiUsedForTesting": false
+  },
+  "limits": [
+    "The idle browser check covers an anonymous result page and a 15-second observation; it is not a traffic forecast.",
+    "User clicks can legitimately initiate the existing deep-reading flow.",
+    "Daily usage observation remains separate from this frontend release; this record does not claim all historical duplicate requests or slow queries have been excluded."
+  ]
+}
