@@ -1,0 +1,55 @@
+{
+  "environment": "production",
+  "domain": "https://floralenormand.site",
+  "sourceCommit": "633fea6fce0748ef5ece629054a5c5e71168a0e8",
+  "branch": "codex/security-next-maintenance-20261024",
+  "deployedAt": "2026-10-26T06:11:34.424Z",
+  "change": "Append the approved quick-reference explanation to the existing Yes or No reading, using the same typography; preserve reading text and the deep-reading invitation.",
+  "frontend": {
+    "worker": "flora-domain-info",
+    "version": "5d64354d-f0d6-47b6-ab89-c4dc52c967e7",
+    "percentage": 100,
+    "rollbackVersion": "76063664-23f1-493b-8988-15d9e4dd110b",
+    "rollbackCommit": "7409aabf1ce2e08b321b10127a410c711f415b28"
+  },
+  "unchangedWorkers": [
+    {
+      "worker": "flora-v3-api",
+      "version": "d9064b09-3602-47f7-81ec-4564127d909b",
+      "sourceCommit": "815f868fa9d3109bd88ba5a5b5e2ca141af35da0"
+    },
+    {
+      "worker": "flora-domain-canonical",
+      "version": "f03664f5-2551-478b-84b0-45658e9aeef0",
+      "sourceCommit": "9c57cd03983ef75c97a8787cc0c2c66a5b847566"
+    }
+  ],
+  "checks": {
+    "sourceAndArtifactSecretChecksPassed": true,
+    "productionBuildAndTypes": true,
+    "publicStaticRouter": true,
+    "productionBundleLocalRuntime": true,
+    "publishedPublicPagesMatchBuild": 11,
+    "publishedClientChunksMatchBuild": 22,
+    "loginAndPrivateShells": true,
+    "legacyRedirects": true,
+    "dailyTelemetryDisabled": true,
+    "readingNoteInOriginalBox": true,
+    "readingFontSizePx": 15,
+    "mobileHorizontalOverflow": false,
+    "liveBrowserErrors": 0,
+    "liveIdleObservationMs": 15000,
+    "automaticApiAuthOrAiRequests": 0,
+    "hoverDeepPrefetchRequests": 0,
+    "unauthenticatedAdminDataDenied": true,
+    "spoofedIdentityHeadersDenied": true,
+    "publicMaintenanceRouteNotExposed": true
+  },
+  "dataScope": {
+    "apiDeployed": false,
+    "databaseModified": false,
+    "authOrPermissionSettingsChanged": false,
+    "paymentsChanged": false,
+    "paidAiUsedForTesting": false
+  }
+}
