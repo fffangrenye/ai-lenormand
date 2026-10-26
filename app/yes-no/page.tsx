@@ -230,6 +230,7 @@ export default function YesNoPage() {
 
                 <article className="mt-7 rounded-[4px] border border-ink/12 bg-ivory px-5 py-5 text-[15px] leading-7 text-ink/68 shadow-entry">
                   {interpretation}
+                  这是一份快速倾向参考，仅依据三张牌的正负倾向给出简答，未结合具体问题、牌位与组合关系展开分析，可能与实际情况不符。如果想结合你的具体情况，进一步梳理这件事的原因、阻碍和下一步，可以使用深度占卜。
                 </article>
 
                 <aside aria-label="进一步了解这个问题" className="mt-6 rounded-[6px] border border-[#C9CEBC]/65 bg-[#F2F1E9]/70 px-5 py-6 text-center sm:px-8">
