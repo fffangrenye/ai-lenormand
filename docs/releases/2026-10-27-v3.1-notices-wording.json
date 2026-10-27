@@ -1,0 +1,85 @@
+{
+  "productVersion": "3.1",
+  "releaseName": "Flora V3.1 — 用途说明、AI 标识与页面文案更新",
+  "sourceTag": "flora-v3.1-20261027",
+  "environment": "production",
+  "domain": "https://floralenormand.site",
+  "sourceCommit": "ea95b8340607f7e1b475bef10f5857406148f483",
+  "branch": "codex/security-next-maintenance-20261024",
+  "workers": [
+    {
+      "worker": "flora-domain-info",
+      "version": "c90d4be4-e267-4d6c-abd4-8f0fb55e2ce0",
+      "deployedAt": "2026-10-27T14:46:20.627Z",
+      "percentage": 100,
+      "rollbackVersion": "2977c52c-2d18-4d2c-a561-61fe9995f26a",
+      "rollbackCommit": "4bd72459c0dca2a0711ed8fdad3d007800139328"
+    },
+    {
+      "worker": "flora-v3-api",
+      "version": "392f61f9-7dd3-4afc-be2e-9d16771860d7",
+      "deployedAt": "2026-10-27T14:41:26.150Z",
+      "percentage": 100,
+      "rollbackVersion": "df6e82fd-5084-445f-bbc5-94b3ef8212d3",
+      "rollbackCommit": "4bd72459c0dca2a0711ed8fdad3d007800139328"
+    }
+  ],
+  "unchangedWorkers": [
+    {
+      "worker": "flora-domain-canonical",
+      "version": "f03664f5-2551-478b-84b0-45658e9aeef0",
+      "sourceCommit": "9c57cd03983ef75c97a8787cc0c2c66a5b847566"
+    }
+  ],
+  "changes": [
+    "Entertainment/self-exploration notices for daily card results, Yes/No results, deep readings and saved follow-ups.",
+    "Yes/No order: result, deep-reading invitation, content notice; no input-page notice.",
+    "Deep setup notice follows spread/options and precedes start button.",
+    "AI labels, including legacy online readings without model names; no history rewrite.",
+    "Daily check-in and petal top-up wording; matching metadata and policy labels.",
+    "Main and follow-up prompts identify an AI card-reading assistant for entertainment and self-exploration."
+  ],
+  "checks": {
+    "sourceAndArtifactSecretChecksPassed": true,
+    "productionBuildAndTypes": true,
+    "cloudLedgerSecurityAndLegacyRestore": true,
+    "oldAiMarkerWithoutModelName": true,
+    "productionVsLocalMockMarker": true,
+    "publicStaticRouter": true,
+    "productionBundleLocalRuntime": true,
+    "publishedPublicPagesMatchBuild": 11,
+    "publishedClientChunksMatchBuild": 22,
+    "loginAndPrivateShells": true,
+    "legacyRedirects": true,
+    "dailyTelemetryDisabled": true,
+    "liveMobilePageErrors": 0,
+    "mobileHorizontalOverflow": false,
+    "anonymousBrowserBusinessApiOrAiRequests": 0,
+    "noticeToggleAnd15SecondIdleAddedApiRequests": 0,
+    "yesNoReadingFontSizePx": 15,
+    "productionTermsTemplate": true
+  },
+  "postDeploymentScriptRequestCounts": {
+    "managementApi": 6,
+    "staticAssetResponses": 33,
+    "siteWorkerEntryRequests": 16,
+    "scope": "This scripted post-deployment check only; excludes deploy-management uploads, browser checks, retries and concurrent visitor traffic",
+    "note": "Counted by the verification script; not an account billing/analytics measurement or the total deployment traffic."
+  },
+  "dataScope": {
+    "schemaMigration": false,
+    "historicalDataRewritten": false,
+    "authOrPermissionSettingsChanged": false,
+    "paymentsOrPricingChanged": false,
+    "shareImagesChanged": false,
+    "legacyPageSourceChanged": false,
+    "realAiUsedForTesting": false,
+    "productionAccountsModifiedForTesting": false,
+    "applicationDailyTelemetryEnabled": false
+  },
+  "limits": [
+    "This release does not certify legal compliance or platform-review approval.",
+    "Live browser checks used an anonymous visitor; signed-in behavior and legacy AI labels were checked locally with isolated fixtures.",
+    "Source versioning does not replace independent customer-data backups."
+  ]
+}
