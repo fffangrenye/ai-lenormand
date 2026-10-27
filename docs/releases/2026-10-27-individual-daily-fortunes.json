@@ -1,0 +1,73 @@
+{
+  "environment": "production",
+  "domain": "https://floralenormand.site",
+  "sourceCommit": "4bd72459c0dca2a0711ed8fdad3d007800139328",
+  "branch": "codex/security-next-maintenance-20261024",
+  "change": "Use the 36 individually approved daily fortunes and keywords, mapped by card number instead of three shared tone templates.",
+  "workers": [
+    {
+      "worker": "flora-domain-info",
+      "version": "2977c52c-2d18-4d2c-a561-61fe9995f26a",
+      "deployedAt": "2026-10-27T12:15:54.737Z",
+      "percentage": 100,
+      "rollbackVersion": "5d64354d-f0d6-47b6-ab89-c4dc52c967e7",
+      "rollbackCommit": "633fea6fce0748ef5ece629054a5c5e71168a0e8"
+    },
+    {
+      "worker": "flora-v3-api",
+      "version": "df6e82fd-5084-445f-bbc5-94b3ef8212d3",
+      "deployedAt": "2026-10-27T12:11:07.217Z",
+      "percentage": 100,
+      "rollbackVersion": "d9064b09-3602-47f7-81ec-4564127d909b",
+      "rollbackCommit": "815f868fa9d3109bd88ba5a5b5e2ca141af35da0"
+    }
+  ],
+  "unchangedWorkers": [
+    {
+      "worker": "flora-domain-canonical",
+      "version": "f03664f5-2551-478b-84b0-45658e9aeef0",
+      "sourceCommit": "9c57cd03983ef75c97a8787cc0c2c66a5b847566"
+    }
+  ],
+  "dailyPolicy": {
+    "selection": "Server node:crypto randomInt over all 36 cards on the first check-in for each account and Beijing calendar date.",
+    "sameDay": "Return the saved card and fortune across repeat visits and devices.",
+    "repeatsAcrossUsersOrDaysAllowed": true,
+    "copySelection": "Stable per-card reviewed text; not a new AI generation.",
+    "existingSavedCardsKeywordsAndFortunes": "Preserved without backfill or re-draw."
+  },
+  "checks": {
+    "dailyCheckInRegressionTestsPassed": 8,
+    "independentCards": 36,
+    "uniqueTextsPerField": {
+      "overall": 36,
+      "love": 36,
+      "work": 36,
+      "caution": 36,
+      "advice": 36
+    },
+    "approvedCopySha256": "755faf7d4efb1517a4b1bb040b63d625ad8b20ff5fa6c5e3670f3f8a6cd27300",
+    "preReleaseSavedFortuneCompatibility": true,
+    "compiledWorkerUsesApprovedCopy": true,
+    "sameDayCardAndFortunePersist": true,
+    "cloudLedgerSecurityAndLegacyRestore": true,
+    "sourceAndArtifactSecretChecksPassed": true,
+    "productionBuildAndTypes": true,
+    "publicStaticRouter": true,
+    "productionBundleLocalRuntime": true,
+    "publishedPublicPagesMatchBuild": 11,
+    "publishedClientChunksMatchBuild": 22,
+    "loginAndPrivateShells": true,
+    "legacyRedirects": true,
+    "dailyTelemetryDisabled": true
+  },
+  "dataScope": {
+    "historicalDataRewritten": false,
+    "schemaMigration": false,
+    "authOrPermissionSettingsChanged": false,
+    "paymentsChanged": false,
+    "paidAiUsedForTesting": false,
+    "additionalDailyAiCalls": 0,
+    "additionalDailyNetworkRequests": 0
+  }
+}
