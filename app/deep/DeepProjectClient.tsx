@@ -12,6 +12,8 @@ import { useCardSpreadLongPressSave } from "@/lib/use-card-spread-save";
 import { paidOnlineSiteEnabled, paidLocalAIEnabled, paidSiteEnabled, paidSiteRequest, restorePaidSiteSession } from "@/lib/paid-local/site-bridge";
 import { getDeepSpread } from "@/lib/deep-spreads";
 import { SpreadLayout } from "@/components/deep/SpreadLayout";
+import { AIGeneratedLabel, ServiceNotice } from "@/components/ServiceNotice";
+import serviceNotices from "@/lib/service-notices.json";
 import { DivinationExperience } from "@/components/deep/DivinationExperience";
 import { AccountMenu, PetalTopUp } from "@/components/AccountMenu";
 import {
@@ -442,7 +444,7 @@ function EmptyState({
         <p className="mt-6 text-center text-[12px] uppercase tracking-[0.18em] text-clay/68">Deep Reading</p>
         <h1 className="mt-3 text-center font-serif text-[31px] leading-[1.08] text-ink">{project?.title ?? "创建你的第一个项目"}</h1>
         <p className="mx-auto mt-4 max-w-[280px] text-center text-[14px] leading-6 text-ink/58">
-          {isProjectPage ? "这个项目还没有任何占卜记录。从一个你现在最想知道的问题开始。" : "把一个长期在意的主题放进这里，之后每次回来都能接着这个故事。"}
+          {isProjectPage ? "这个项目还没有任何解读记录。从一个你现在最想知道的问题开始。" : "把一个长期在意的主题放进这里，之后每次回来都能接着这个故事。"}
         </p>
 
         {isProjectPage ? (
@@ -452,7 +454,7 @@ function EmptyState({
             className="mt-7 flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[#6E2638] text-[13px] uppercase tracking-[0.12em] text-[#FFF9F2] shadow-soft"
           >
             <Check size={16} aria-hidden="true" />
-            开始第一次占卜
+            开始第一次解读
           </button>
         ) : (
           <button
@@ -570,7 +572,7 @@ function ReadingChapter({ reading, onUnlock, unlocking = false }: { reading: Rea
   const [copyState, setCopyState] = useState<"idle" | "current" | "recent" | "failed">("idle");
   const [unlockError, setUnlockError] = useState("");
   const isVerifiedRuleReading = reading.interpretationSource === "rule_engine" && Boolean(reading.ruleEngineVersion) && Boolean(reading.ruleEngineResult);
-  const isLocalRealAI = paidSiteEnabled && Boolean(reading.generationModel) && reading.generationModel !== "local_mock";
+  const isLocalRealAI = paidSiteEnabled && (paidOnlineSiteEnabled || Boolean(reading.generationModel) && reading.generationModel !== "local_mock");
   const cardSaveHandlers = useCardSpreadLongPressSave(
     () =>
       reading.cards.map((card) => ({
@@ -592,7 +594,8 @@ function ReadingChapter({ reading, onUnlock, unlocking = false }: { reading: Rea
   async function copyExternalPrompt(includeRecentContext: boolean) {
     try {
       const prompt = await buildExternalReadingPrompt(reading.id, includeRecentContext);
-      await navigator.clipboard.writeText(prompt);
+      const disclosure = `${isVerifiedRuleReading ? "规则生成内容" : "AI 生成内容"} · 仅供娱乐与自我探索\n${serviceNotices.purpose}`;
+      await navigator.clipboard.writeText(`${disclosure}\n\n${prompt}`);
       trackAnalyticsEvent("copy_prompt", {
         readingId: reading.id,
         projectId: reading.projectId,
@@ -615,7 +618,7 @@ function ReadingChapter({ reading, onUnlock, unlocking = false }: { reading: Rea
       <div className="mt-3 flex items-center justify-between gap-3">
         <p className="text-sm leading-6 text-clay/65">{getDeepSpread(reading.spreadType).name}</p>
         <span className="shrink-0 rounded-full border border-ink/10 bg-ivory/70 px-3 py-1 text-[11px] uppercase tracking-[0.12em] text-ink/44">
-          {paidSiteEnabled ? reading.status === "completed" ? isLocalRealAI ? paidOnlineSiteEnabled ? "AI 解读" : "DeepSeek · 本地测试" : "本地模拟" : "原牌已保存" : isVerifiedRuleReading ? `Rule-based / ${reading.ruleEngineVersion}` : "AI"}
+          {paidSiteEnabled ? reading.status === "completed" ? isLocalRealAI ? paidOnlineSiteEnabled ? "AI 生成" : "AI 生成 · 本地测试" : "AI 生成 · 本地模拟预览" : "原牌已保存" : isVerifiedRuleReading ? `Rule-based / ${reading.ruleEngineVersion}` : "AI 生成"}
         </span>
       </div>
 
@@ -639,9 +642,7 @@ function ReadingChapter({ reading, onUnlock, unlocking = false }: { reading: Rea
           {paragraphs.map((paragraph) => (
             <p key={paragraph} className="whitespace-pre-line">{paragraph}</p>
           ))}
-          <p className="rounded-[5px] border border-ink/8 bg-ivory/58 p-4 text-[12px] leading-6 text-ink/42">
-            {paidSiteEnabled ? isLocalRealAI ? paidOnlineSiteEnabled ? "本次由 AI 生成，已保存到你的账户。" : "本次由真实 DeepSeek 生成，记录仅保存在本机。" : "这是一份此前保存的本地模拟解读。" : isVerifiedRuleReading ? `本次解读由站内规则引擎 ${reading.ruleEngineVersion} 根据问题与牌面生成。` : "本次解读由 AI 根据你提供的上下文与牌面生成。"}仅供娱乐和自我梳理，不构成心理、医疗、法律、财务等专业建议。
-          </p>
+          {isVerifiedRuleReading ? <p className="text-sm leading-7 text-ink/65">本次内容由站内规则生成。{serviceNotices.purpose}</p> : <ServiceNotice kind="deep" expanded simulated={paidSiteEnabled && !isLocalRealAI} />}
         </section>
       ) : null}
 
@@ -712,8 +713,10 @@ function ReadingFollowUps({ reading }: { reading: ReadingWithCards }) {
       <summary className="cursor-pointer py-2 text-sm text-[#6E2638]">{reading.legacyRestored ? "旧站追问记录 · 仅供回看" : `围绕这次解读追问 · 剩余 ${remaining} 次`}</summary>
       <div className="mt-3 space-y-4">{messages.map((message, index) => <div key={message.id} className={message.role === "user" ? "border-l-2 border-[#6E2638]/30 pl-3" : "pl-3"}>
         {message.role === "user" && <p className="mb-1 text-xs text-clay/65">追问 {Math.floor(index / 2) + 1}</p>}
+        {message.role === "assistant" && <div className="mb-2"><AIGeneratedLabel followUp simulated={paidSiteEnabled && !paidOnlineSiteEnabled && !paidLocalAIEnabled} /></div>}
         <p className={`whitespace-pre-wrap break-words text-sm leading-7 ${message.role === "user" ? "text-ink/85" : "text-ink/65"}`}>{message.content}</p>
       </div>)}</div>
+      {messages.some(message => message.role === "assistant") && <p aria-label="追问内容说明" className="mt-4 border-t border-sage/15 pt-3 text-[13px] leading-7 text-ink/60">{serviceNotices.short}</p>}
       {remaining > 0 && <form onSubmit={(event) => void submit(event)} className="mt-4 rounded-xl border border-ink/12 bg-paper/60 p-3">
         <label htmlFor={`follow-${reading.id}`} className="sr-only">追问这次解读</label><textarea id={`follow-${reading.id}`} value={draft} rows={2} maxLength={paidSiteEnabled ? 300 : 500} disabled={busy} onChange={(event) => setDraft(event.target.value)} placeholder="针对上面的牌面，再问一个具体问题…" className="w-full resize-y bg-transparent text-base leading-6 outline-none" />
         <div className="mt-2 flex items-center justify-between gap-3"><p className="text-xs leading-5 text-ink/40">沿用本次原牌，{paidSiteEnabled ? "不再扣花瓣。" : "继续解读。"}</p><button type="submit" disabled={busy || !draft.trim()} className="min-h-10 shrink-0 rounded-full bg-[#6E2638] px-4 text-xs text-[#FFF9F2] disabled:opacity-40">{busy ? "正在回复…" : "发送追问"}</button></div>
@@ -761,9 +764,9 @@ function ReadingWorkspace({ project, readings, onReadingsChange, onLoadEarlier, 
   }
   return <div className="flex min-h-0 flex-1 flex-col">
     <div className="relative z-20 shrink-0"><QuotaNotice quota={quota} message={notice} readingId={activeId || latestId} />{view === "history" && <ProjectMemory project={project} onSaved={onReadingsChange} />}</div>
-    <div ref={scroll} data-divination-scroll="true" className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain pb-10 [scrollbar-gutter:stable]" aria-label={view === "compose" ? "开始深度占卜" : "项目解读记录"}>
+    <div ref={scroll} data-divination-scroll="true" className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain pb-10 [scrollbar-gutter:stable]" aria-label={view === "compose" ? "开始深度解读" : "项目解读记录"}>
       {view === "compose" ? <DivinationExperience key={project.id} projectId={project.id} historyCount={readings.length} ruleEngineTrialAllowed={ruleEngineTrialAllowed} onHistory={() => setView("history")} onComplete={(id, message) => { setActiveId(id); setNotice(message || ""); setView("history"); onReadingsChange(); }} /> : <div className="mx-auto w-full max-w-[760px] px-1 sm:px-4">
-        <div className="flex items-center justify-between gap-3 py-5"><p className="text-xs text-ink/45">按时间排列 · 最新问题在下方</p><button type="button" onClick={() => setView("compose")} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[#6E2638] px-5 text-sm text-[#FFF9F2]"><Plus size={15} />新的占卜</button></div>
+        <div className="flex items-center justify-between gap-3 py-5"><p className="text-xs text-ink/45">按时间排列 · 最新问题在下方</p><button type="button" onClick={() => setView("compose")} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[#6E2638] px-5 text-sm text-[#FFF9F2]"><Plus size={15} />新的解读</button></div>
         {onLoadEarlier && <button type="button" disabled={loadingEarlier} onClick={onLoadEarlier} className="mb-5 min-h-11 w-full rounded-full border border-ink/15 text-sm text-ink/60 disabled:opacity-50">{loadingEarlier ? "正在读取…" : "查看更早的解读"}</button>}
         {ordered.map((reading) => <div key={reading.id} id={`reading-${reading.id}`} className="mb-6 rounded-xl border border-ink/10 bg-[#FFFDF8]/70 px-4 shadow-sm sm:px-7"><ReadingChapter reading={reading} onUnlock={() => unlock(reading.id)} unlocking={generatingId === reading.id} />{reading.status === "completed" && <ReadingFollowUps reading={reading} />}</div>)}
         {notice && <button type="button" onClick={onReadingsChange} className="mb-4 min-h-11 text-sm text-[#6E2638] underline">重新读取解读与余额</button>}
@@ -872,7 +875,7 @@ function Shell({
           <div className="mx-auto mb-5 h-1 w-10 rounded-full bg-ink/14" />
           <h2 className="font-serif text-[24px] leading-tight text-ink">删除这个项目？</h2>
           <p className="mt-3 text-[14px] leading-6 text-ink/58">
-            {pendingDeleteProject ? `「${pendingDeleteProject.title}」和其中所有占卜记录都会被移除。` : ""}
+            {pendingDeleteProject ? `「${pendingDeleteProject.title}」和其中所有解读记录都会被移除。` : ""}
           </p>
           <div className="mt-6 flex gap-3">
             <button type="button" onClick={() => setPendingDeleteProject(null)} className="h-12 flex-1 rounded-full border border-ink/12 text-[13px] uppercase tracking-[0.12em] text-ink/58">

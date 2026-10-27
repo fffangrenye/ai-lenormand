@@ -26,10 +26,10 @@ const homeCardSizeClass = "h-[252px] w-[168px]";
 
 const cards: HomeCard[] = [
   {
-    titleEn: "Daily Fortune",
-    titleZh: "每日运势",
+    titleEn: "Daily Check-in",
+    titleZh: "每日签到",
     href: "/daily",
-    description: "为你清晰地探明一天", number: "01", kind: "daily", color: "#65736A",
+    description: "为今天留一个思考的角度", number: "01", kind: "daily", color: "#65736A",
     idleX: -36,
     idleY: 12,
     idleRotate: -8
@@ -44,8 +44,8 @@ const cards: HomeCard[] = [
     idleRotate: 0
   },
   {
-    titleEn: "Deep Divination",
-    titleZh: "深度占卜",
+    titleEn: "Deep Reading",
+    titleZh: "深度解读",
     href: "/deep",
     description: "登陆后共同穿越复杂的故事", number: "03", kind: "deep", color: "#617179",
     idleX: 36,

@@ -6,6 +6,7 @@ import { paidSiteEnabled } from "@/lib/paid-local/site-bridge";
 import { dailyDeck, readingForDailyCard, type DailyFortuneCard as LenormandCard } from "@/lib/daily-fortune";
 import { QuietCardBack } from "@/components/QuietCardBack";
 import { AccountMenu } from "@/components/AccountMenu";
+import { ServiceNotice } from "@/components/ServiceNotice";
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { trackAnalyticsEvent } from "@/components/AnalyticsTracker";
@@ -88,7 +89,7 @@ function ClassicDailyPage() {
 
         <div className="flex flex-1 flex-col py-8">
           <p className="text-center text-[12px] uppercase tracking-[0.28em] text-sage">Daily Reading</p>
-          <h1 className="mt-5 text-center font-serif text-[40px] leading-none text-ink">今日运势</h1>
+          <h1 className="mt-5 text-center font-serif text-[40px] leading-none text-ink">每日签到</h1>
           <p className="mx-auto mt-4 max-w-[290px] text-center text-[15px] leading-6 text-ink/58">抽一张牌，看看今天值得留意什么。</p>
 
           <motion.div
@@ -150,6 +151,7 @@ function ClassicDailyPage() {
                 <p className="mt-3 text-[16px] leading-8 text-ink/68">{reading.advice}</p>
               </section>
 
+              <ServiceNotice kind="daily" expanded />
               <div className="mt-9 grid gap-3">
                 <Link prefetch={false} href="/" className="h-12 rounded-full bg-[#6F2638] px-6 text-center text-[13px] uppercase leading-[48px] tracking-[0.14em] text-[#FDF8EF] shadow-entry">
                   返回首页

@@ -47,7 +47,7 @@ export function RechargeClient() {
     });
     return()=>{active=false;};
   },[router,readingId]);
-  return <AccountFrame title="充值花瓣">
+  return <AccountFrame title="补充花瓣">
     <p className="-mt-3 max-w-xl text-sm leading-7 text-ink/60">1 花瓣解锁 1 次完整深度解读，包含同一问题的 2 次追问，长期有效。</p>
     <p className="mt-4 text-xs leading-6 text-[#6E2638]">{paidOnlineSiteEnabled ? catalog?.packages.some(item=>item.ready) ? "在闲鱼付款后领取充值码，返回 Flora 兑换，花瓣将加入当前登录账号。" : "充值库存准备中，暂未开放购买。已有正式充值码仍可兑换。" : "本地预览 · 兑换码仅供本机测试。正式发码库存尚未配置，请先勿付款。"}</p>
     {error && <p role="alert" className="mt-6 text-sm text-[#6E2638]">{error}</p>}

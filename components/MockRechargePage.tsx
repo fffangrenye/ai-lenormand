@@ -80,7 +80,7 @@ export function MockRechargeClient() {
   });
   const current = catalog?.packages.find(item => item.id === selected);
   const remaining = order ? Math.max(0, Math.ceil((order.expiresAt - clock) / 60000)) : 0;
-  return <AccountFrame title="充值花瓣">
+  return <AccountFrame title="补充花瓣">
     <p className="-mt-3 max-w-xl text-sm leading-7 text-ink/55">为下一次灵感，留一片花瓣。1 花瓣解锁 1 次完整深度解读，包含 2 次追问，长期有效。</p>
     <p className="mt-4 rounded-xl border border-[#6E2638]/15 bg-[#6E2638]/[0.03] px-4 py-3 text-xs leading-6 text-[#6E2638]">V3 本地体验 · 所有付款与退款均为模拟，不会产生真实扣款。</p>
     {error && <div role="alert" className="mt-5 rounded-xl border border-[#6E2638]/30 p-4 text-sm leading-7">{error}<button className="ml-4 underline" onClick={() => void act(refresh)}>重新查询</button></div>}

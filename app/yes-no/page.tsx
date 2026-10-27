@@ -3,6 +3,7 @@
 import Link from "@/components/SiteLink";
 import { QuietCardBack } from "@/components/QuietCardBack";
 import { AccountMenu } from "@/components/AccountMenu";
+import { ServiceNotice } from "@/components/ServiceNotice";
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { ArrowUpRight } from "lucide-react";
@@ -190,7 +191,7 @@ export default function YesNoPage() {
 
             {unsuitable ? (
               <div className="mt-4 rounded-[4px] border border-[#D4B0A9] bg-[#FFF8F4] p-4 text-[14px] leading-6 text-ink/64">
-                <p>这个问题更适合深度占卜。你可以把它改成一个更明确的 Yes / No 问题。</p>
+                <p>这个问题更适合深度解读。你可以把它改成一个更明确的 Yes / No 问题。</p>
                 <Link prefetch={false} href="/login" className="mt-3 inline-block border-b border-ink/24 pb-1 text-[12px] uppercase tracking-[0.14em] text-ink/60">
                   Deep Reading
                 </Link>
@@ -202,7 +203,7 @@ export default function YesNoPage() {
               onClick={startReading}
               className="mt-7 h-12 rounded-full bg-[#6F2638] px-6 text-[13px] uppercase tracking-[0.14em] text-[#FDF8EF] shadow-entry transition active:translate-y-px"
             >
-              开始占卜
+              抽牌看倾向
             </button>
             <p className="mt-5 text-center text-[12px] leading-5 text-ink/42">不需要登录，不进入项目记忆。</p>
           </div>
@@ -230,7 +231,7 @@ export default function YesNoPage() {
 
                 <article className="mt-7 rounded-[4px] border border-ink/12 bg-ivory px-5 py-5 text-[15px] leading-7 text-ink/68 shadow-entry">
                   {interpretation}
-                  这是一份快速倾向参考，仅依据三张牌的正负倾向给出简答，未结合具体问题、牌位与组合关系展开分析，可能与实际情况不符。如果想结合你的具体情况，进一步梳理这件事的原因、阻碍和下一步，可以使用深度占卜。
+                  这是一份快速倾向参考，仅依据三张牌的正负倾向给出简答，未结合具体问题、牌位与组合关系展开分析，可能与实际情况不符。如果想结合你的具体情况，进一步梳理这件事的原因、阻碍和下一步，可以使用深度解读。
                 </article>
 
                 <aside aria-label="进一步了解这个问题" className="mt-6 rounded-[6px] border border-[#C9CEBC]/65 bg-[#F2F1E9]/70 px-5 py-6 text-center sm:px-8">
@@ -243,6 +244,8 @@ export default function YesNoPage() {
                   </Link>
                   <p className="mt-3 text-[12px] leading-6 text-ink/50">三牌深入解读 · 1 花瓣 · 含 2 次追问</p>
                 </aside>
+
+                <ServiceNotice kind="yesNo" expanded />
 
                 <div className="mt-6 grid gap-3">
                   <button

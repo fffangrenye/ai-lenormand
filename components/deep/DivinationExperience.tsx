@@ -10,6 +10,7 @@ import { generateDeepReading, saveReading } from "@/lib/project-store";
 import { SpreadLayout } from "./SpreadLayout";
 import { ShuffleRitual } from "./ShuffleRitual";
 import { QuietCardBack } from "@/components/QuietCardBack";
+import { ServiceNotice } from "@/components/ServiceNotice";
 
 const pause = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
 
@@ -39,7 +40,7 @@ function CardFan({ session, busy, onPick }: { session: PaidDrawSession; busy: bo
         })}
       </div>
     </div>
-    <p className="-mt-4 text-center text-xs text-ink/45">左右滑动牌扇，点选与你有感应的一张牌</p>
+    <p className="-mt-4 text-center text-xs text-ink/45">左右滑动牌扇，点选你想抽取的一张牌</p>
   </div>;
 }
 
@@ -200,6 +201,7 @@ export function DivinationExperience({ projectId, historyCount, ruleEngineTrialA
     {getDeepSpread(spreadId).choiceCount && <fieldset className="mt-5"><legend className="text-sm text-ink/65">写清楚要比较的选项（目标与时间范围保持一致）</legend><div className="mt-3 grid gap-3 sm:grid-cols-2">{Array.from({ length: getDeepSpread(spreadId).choiceCount! }, (_, index) => <label key={index} className="text-xs text-ink/55">选项 {String.fromCharCode(65 + index)}<input required value={choices[index]} maxLength={80} onChange={(event) => setChoices((values) => values.map((value, at) => at === index ? event.target.value : value))} placeholder={index === 0 ? "例如：留在目前的工作" : index === 1 ? "例如：接受新公司的邀请" : "例如：先学习再求职"} className="mt-2 h-12 w-full rounded-lg border border-ink/15 bg-[#FFFDF8] px-3 text-base outline-none focus:border-[#6E2638]/45" /></label>)}</div></fieldset>}
     {ruleEngineTrialAllowed && !paidSiteEnabled && <label className="mt-5 flex items-center gap-2 text-xs text-ink/50"><input type="checkbox" checked={useRuleEngineTrial} onChange={(event) => setUseRuleEngineTrial(event.target.checked)} />试用 V2 规则解读</label>}
     {error && <p role="alert" className="mt-4 text-sm text-[#8E4D4A]">{error}</p>}
-    <div className="mt-6 flex flex-wrap items-center gap-4"><button type="submit" disabled={busy} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[#6E2638] px-8 text-sm text-[#FFF9F2] disabled:opacity-50"><Sparkles size={16} />洗牌，开始这次占卜</button><p className="text-xs leading-6 text-ink/45">{paidSiteEnabled ? "自己选满牌位后使用 1 花瓣，含 2 次追问。" : "选择问题与牌阵后开始解读。"}</p></div>
+    <ServiceNotice kind="deep" />
+    <div className="mt-6 flex flex-wrap items-center gap-4"><button type="submit" disabled={busy} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[#6E2638] px-8 text-sm text-[#FFF9F2] disabled:opacity-50"><Sparkles size={16} />洗牌，开始这次解读</button><p className="text-xs leading-6 text-ink/45">{paidSiteEnabled ? "自己选满牌位后使用 1 花瓣，含 2 次追问。" : "选择问题与牌阵后开始解读。"}</p></div>
   </form>;
 }

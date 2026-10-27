@@ -142,7 +142,7 @@ export class PaidLedger {
       const existing = this.one("SELECT * FROM local_projects WHERE user_id=? AND archived_at IS NULL ORDER BY last_opened_at DESC,id LIMIT 1", userId);
       if (existing) return this.serializeProject(existing);
       const id = randomUUID();
-      this.run("INSERT INTO local_projects(id,user_id,title,created_at,updated_at,last_opened_at) VALUES (?,?,?,?,?,?)", id, userId, "我的占卜", this.now(), this.now(), this.now());
+      this.run("INSERT INTO local_projects(id,user_id,title,created_at,updated_at,last_opened_at) VALUES (?,?,?,?,?,?)", id, userId, "我的解读", this.now(), this.now(), this.now());
       return this.project(userId, id);
     });
   }
@@ -471,7 +471,7 @@ export class PaidLedger {
     return this.tx(() => {
       const reading = this.owned(userId, readingId);
       if (reading.state !== "completed") throw new LocalPaidError("READING_LOCKED", "请先解锁并完成主解读。", 403);
-      if(JSON.parse(String(reading.result_json)).legacy)throw new LocalPaidError("LEGACY_READ_ONLY","旧站历史仅供回看，请开启新的占卜继续。",409);
+      if(JSON.parse(String(reading.result_json)).legacy)throw new LocalPaidError("LEGACY_READ_ONLY","旧站历史仅供回看，请开启新的解读继续。",409);
       const previous = this.one("SELECT * FROM paid_follow_ups WHERE reading_id=? AND request_key=?", readingId, requestKey);
       if (previous && previous.question !== question) throw new LocalPaidError("REQUEST_CONFLICT", "同一请求不能更换追问内容。", 409);
       if (previous && previous.state !== "released") return { id: String(previous.id), attempt: null, reading: this.serialize(reading) };
