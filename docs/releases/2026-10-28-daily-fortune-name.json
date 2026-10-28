@@ -1,0 +1,147 @@
+{
+  "productVersion": "3.1",
+  "releaseName": "每日运势名称恢复",
+  "environment": "production",
+  "domain": "https://floralenormand.site",
+  "sourceCommit": "8db09e8ea8bdfc61f9efbabb7c678327258d7515",
+  "branch": "codex/security-next-maintenance-20261024",
+  "deployedAt": "2026-10-28T02:50:27.996Z",
+  "worker": {
+    "name": "flora-domain-info",
+    "version": "8d78d6e9-be29-4f92-b46f-c32b603349ea",
+    "rollbackVersion": "c90d4be4-e267-4d6c-abd4-8f0fb55e2ce0"
+  },
+  "unchangedWorkers": [
+    {
+      "name": "flora-v3-api",
+      "version": "392f61f9-7dd3-4afc-be2e-9d16771860d7",
+      "commit": "ea95b8340607f7e1b475bef10f5857406148f483"
+    },
+    {
+      "name": "flora-domain-canonical",
+      "version": "f03664f5-2551-478b-84b0-45658e9aeef0",
+      "commit": "9c57cd03983ef75c97a8787cc0c2c66a5b847566"
+    }
+  ],
+  "changes": [
+    "Restore daily feature name from 每日签到 to 每日运势, with matching Daily Fortune entry, metadata and policy references.",
+    "Display text only: check-in, rewards, stored fortunes, payments and API behavior unchanged."
+  ],
+  "checks": {
+    "releaseChecks": [
+      {
+        "command": "node.exe scripts/scan-source-secrets.cjs",
+        "passed": true,
+        "durationMs": 974
+      },
+      {
+        "command": "node.exe scripts/secure-cloudflare-build.cjs --flora-v3",
+        "passed": true,
+        "durationMs": 197280
+      },
+      {
+        "command": "node.exe scripts/scan-cloudflare-artifacts.cjs",
+        "passed": true,
+        "durationMs": 9752
+      },
+      {
+        "command": "node.exe scripts/test-public-assets.cjs",
+        "passed": true,
+        "durationMs": 10909
+      },
+      {
+        "command": "node.exe scripts/test-site-runtime.cjs",
+        "passed": true,
+        "durationMs": 11299
+      },
+      {
+        "command": "node.exe scripts/scan-source-secrets.cjs",
+        "passed": true,
+        "durationMs": 2283
+      }
+    ],
+    "publishedPublicPagesMatchBuild": 11,
+    "publishedClientChunksMatchBuild": 22,
+    "privateShells": [
+      {
+        "path": "/login",
+        "status": 200,
+        "static": false
+      },
+      {
+        "path": "/deep",
+        "status": 200,
+        "static": false
+      },
+      {
+        "path": "/profile",
+        "status": 200,
+        "static": false
+      },
+      {
+        "path": "/recharge",
+        "status": 200,
+        "static": false
+      },
+      {
+        "path": "/redeem",
+        "status": 200,
+        "static": false
+      }
+    ],
+    "legacyRedirects": [
+      {
+        "url": "https://www.floralenormand.site/daily?checkin=1",
+        "status": 308,
+        "location": "https://floralenormand.site/daily?checkin=1"
+      },
+      {
+        "url": "http://floralenormand.site/",
+        "status": 308,
+        "location": "https://floralenormand.site/"
+      },
+      {
+        "url": "https://flora.soul-ai-frontend.workers.dev/",
+        "status": 301,
+        "location": "https://floralenormand.site/"
+      },
+      {
+        "url": "https://ai-lenormand.soul-ai-frontend.workers.dev/",
+        "status": 301,
+        "location": "https://floralenormand.site/"
+      },
+      {
+        "url": "https://ai-lenormand-cloudflare-preview.soul-ai-frontend.workers.dev/",
+        "status": 301,
+        "location": "https://floralenormand.site/"
+      }
+    ],
+    "applicationDailyTelemetryDisabled": true,
+    "anonymousMobileBrowser": {
+      "checkedAt": "2026-10-28T02:51:15.874Z",
+      "productionStaticPages": true,
+      "yesNoOriginalReadingPreserved": true,
+      "yesNoOrder": [
+        "result",
+        "deepInvitation",
+        "contentNotice"
+      ],
+      "inputNoticesAbsent": true,
+      "noticeToggleAnd15SecondIdleAddedApiRequests": 0,
+      "yesNoReadingFontSizePx": 15,
+      "homeDailyAndDeepLabels": true,
+      "petalMenuLabel": "补充花瓣",
+      "sharingImageUnchanged": true,
+      "termsProductionTemplate": true,
+      "pageErrors": [],
+      "horizontalOverflow": false,
+      "anonymousBusinessApiOrAiRequests": [],
+      "realAiUsed": false,
+      "productionAccountsOrDataModified": false
+    }
+  },
+  "limits": [
+    "Anonymous production UI checks only; no signed-in customer writes or real AI calls.",
+    "No new usage analytics measured in this release."
+  ]
+}
