@@ -103,7 +103,7 @@ export function ProfileClient() {
         <div className="rounded-2xl border border-ink/10 bg-[#FFFDF8]/80 p-5"><p className="text-xs text-ink/45">正在解读中</p><p className="mt-3 font-serif text-3xl">{wallet.balance.reserved}<span className="ml-2 text-xs text-ink/45">花瓣</span></p></div>
         <p className="col-span-1 rounded-xl border border-ink/8 px-5 py-4 text-xs leading-6 text-ink/50 sm:col-span-2">1 花瓣可解锁 1 次深度解读，包含 2 次追问。抽牌不扣花瓣，解读失败会返还预留的花瓣。</p>
       </section>
-      <Link prefetch={false} href="/daily#daily-calendar" className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#6E2638]/15 bg-[#FFFDF8]/70 p-5"><span><span className="block font-serif text-xl">每日签到与牌面日历</span><span className="mt-2 block text-xs leading-6 text-ink/50">每连续签到满 3 天，赠送 1 花瓣。漏签重新计数，跨月连签有效。</span></span><span className="inline-flex items-center gap-2 text-sm text-[#6E2638]">去看看<ArrowUpRight size={15} /></span></Link>
+      <Link prefetch={false} href="/daily#daily-calendar" className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#6E2638]/15 bg-[#FFFDF8]/70 p-5"><span><span className="block font-serif text-xl">每日运势与牌面日历</span><span className="mt-2 block text-xs leading-6 text-ink/50">每连续签到满 3 天，赠送 1 花瓣。漏签重新计数，跨月连签有效。</span></span><span className="inline-flex items-center gap-2 text-sm text-[#6E2638]">去看看<ArrowUpRight size={15} /></span></Link>
       <section className="mt-10" aria-label="消费管理">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink/10">
           <div className="flex gap-5" aria-label="消费记录类型">

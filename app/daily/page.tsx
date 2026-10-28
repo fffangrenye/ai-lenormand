@@ -89,7 +89,7 @@ function ClassicDailyPage() {
 
         <div className="flex flex-1 flex-col py-8">
           <p className="text-center text-[12px] uppercase tracking-[0.28em] text-sage">Daily Reading</p>
-          <h1 className="mt-5 text-center font-serif text-[40px] leading-none text-ink">每日签到</h1>
+          <h1 className="mt-5 text-center font-serif text-[40px] leading-none text-ink">每日运势</h1>
           <p className="mx-auto mt-4 max-w-[290px] text-center text-[15px] leading-6 text-ink/58">抽一张牌，看看今天值得留意什么。</p>
 
           <motion.div

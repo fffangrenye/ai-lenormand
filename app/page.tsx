@@ -26,8 +26,8 @@ const homeCardSizeClass = "h-[252px] w-[168px]";
 
 const cards: HomeCard[] = [
   {
-    titleEn: "Daily Check-in",
-    titleZh: "每日签到",
+    titleEn: "Daily Fortune",
+    titleZh: "每日运势",
     href: "/daily",
     description: "为今天留一个思考的角度", number: "01", kind: "daily", color: "#65736A",
     idleX: -36,
