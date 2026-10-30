@@ -1,0 +1,204 @@
+{
+  "releaseName": "YES OR NO 每日三次与抽牌前额度提示",
+  "environment": "production",
+  "domain": "https://floralenormand.site",
+  "commit": "66c081d2044bc359571dbd93d6e0a7585aaafa99",
+  "branch": "codex/yes-no-daily-limit-20261030",
+  "worker": "flora-domain-info",
+  "config": "wrangler.flora-v3-site.jsonc",
+  "version": "c7ce6a86-710b-4a0e-bf74-b978671033dd",
+  "createdAt": "2026-10-30T02:38:47.906Z",
+  "rollback": {
+    "deploymentId": "38dd3477-db01-40be-8211-76e56c8eacf2",
+    "createdAt": "2026-10-28T02:50:23.316028Z",
+    "versions": [
+      {
+        "version": "8d78d6e9-be29-4f92-b46f-c32b603349ea",
+        "percentage": 100
+      }
+    ]
+  },
+  "checks": {
+    "release": [
+      {
+        "command": "node.exe scripts/scan-source-secrets.cjs",
+        "passed": true,
+        "durationMs": 918
+      },
+      {
+        "command": "node.exe scripts/secure-cloudflare-build.cjs --flora-v3",
+        "passed": true,
+        "durationMs": 95659
+      },
+      {
+        "command": "node.exe scripts/scan-cloudflare-artifacts.cjs",
+        "passed": true,
+        "durationMs": 5160
+      },
+      {
+        "command": "node.exe scripts/test-public-assets.cjs",
+        "passed": true,
+        "durationMs": 2336
+      },
+      {
+        "command": "node.exe scripts/test-site-runtime.cjs",
+        "passed": true,
+        "durationMs": 9133
+      },
+      {
+        "command": "node.exe scripts/scan-source-secrets.cjs",
+        "passed": true,
+        "durationMs": 1037
+      }
+    ],
+    "yesNoTests": {
+      "passed": 7,
+      "failed": 0
+    },
+    "lint": {
+      "errors": 0,
+      "existingImageWarning": 1
+    },
+    "http": {
+      "checkedAt": "2026-10-30T02:39:16.926Z",
+      "production": "https://floralenormand.site",
+      "pages": [
+        {
+          "path": "/",
+          "status": 200,
+          "static": true,
+          "matchesBuild": true
+        },
+        {
+          "path": "/daily",
+          "status": 200,
+          "static": true,
+          "matchesBuild": true
+        },
+        {
+          "path": "/yes-no",
+          "status": 200,
+          "static": true,
+          "matchesBuild": true
+        },
+        {
+          "path": "/deep",
+          "status": 200,
+          "static": false,
+          "matchesBuild": null
+        }
+      ],
+      "chunks": [
+        {
+          "path": "/_next/static/chunks/4bd1b696-e199e788e58acf79.js",
+          "status": 200,
+          "matchesBuild": true
+        },
+        {
+          "path": "/_next/static/chunks/3794-76809258438a3d8c.js",
+          "status": 200,
+          "matchesBuild": true
+        },
+        {
+          "path": "/_next/static/chunks/main-app-7175b42229d9c3b8.js",
+          "status": 200,
+          "matchesBuild": true
+        },
+        {
+          "path": "/_next/static/chunks/app/layout-ddfa7b5f32f409ea.js",
+          "status": 200,
+          "matchesBuild": true
+        },
+        {
+          "path": "/_next/static/chunks/8500-107859ed31978aa3.js",
+          "status": 200,
+          "matchesBuild": true
+        },
+        {
+          "path": "/_next/static/chunks/8737-174eae7ec4211b30.js",
+          "status": 200,
+          "matchesBuild": true
+        },
+        {
+          "path": "/_next/static/chunks/4248-2c8296ffea578840.js",
+          "status": 200,
+          "matchesBuild": true
+        },
+        {
+          "path": "/_next/static/chunks/1190-b9383300d551f58d.js",
+          "status": 200,
+          "matchesBuild": true
+        },
+        {
+          "path": "/_next/static/chunks/app/yes-no/page-c1f1fd05c75fabea.js",
+          "status": 200,
+          "matchesBuild": true
+        },
+        {
+          "path": "/_next/static/chunks/polyfills-42372ed130431b0a.js",
+          "status": 200,
+          "matchesBuild": true
+        },
+        {
+          "path": "/_next/static/chunks/webpack-c85d58e251ed4291.js",
+          "status": 200,
+          "matchesBuild": true
+        }
+      ],
+      "anonymousSummary": 401,
+      "noPaidActions": true,
+      "noBusinessWrites": true
+    }
+  },
+  "verifiedAt": "2026-10-30T02:41:42.763Z",
+  "currentWorkers": [
+    {
+      "worker": "flora-domain-info",
+      "createdAt": "2026-10-30T02:38:43.274253Z",
+      "versions": [
+        {
+          "version": "c7ce6a86-710b-4a0e-bf74-b978671033dd",
+          "percentage": 100
+        }
+      ],
+      "source": "git:66c081d2044bc359571dbd93d6e0a7585aaafa99 branch:codex/yes-no-daily-limit-20261030"
+    },
+    {
+      "worker": "flora-v3-api",
+      "createdAt": "2026-10-27T14:41:23.102614Z",
+      "versions": [
+        {
+          "version": "392f61f9-7dd3-4afc-be2e-9d16771860d7",
+          "percentage": 100
+        }
+      ],
+      "source": "git:ea95b8340607f7e1b475bef10f5857406148f483 branch:codex/security-next-maintenance-20261024"
+    },
+    {
+      "worker": "flora-domain-canonical",
+      "createdAt": "2026-10-24T08:10:20.009526Z",
+      "versions": [
+        {
+          "version": "f03664f5-2551-478b-84b0-45658e9aeef0",
+          "percentage": 100
+        }
+      ],
+      "source": "git:9c57cd03983ef75c97a8787cc0c2c66a5b847566 br..."
+    }
+  ],
+  "behavior": {
+    "dailyBrowserLimit": 3,
+    "resetsAt": "00:00 Asia/Shanghai",
+    "quotaStorage": "browser localStorage",
+    "accountLevelLimit": false,
+    "additionalBackendRequests": 0,
+    "additionalBusinessWrites": 0,
+    "deepLink": "/deep",
+    "progressBeforeQuestion": true
+  },
+  "limits": [
+    "Browser quota can reset on a different browser/device or cleared storage.",
+    "Fresh production browser automation timed out twice; production interaction and screenshot were not completed. Local preview UI was confirmed before release.",
+    "No production customer writes, AI requests, redemption or payment tests."
+  ]
+}
