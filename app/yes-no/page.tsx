@@ -4,7 +4,7 @@ import Link from "@/components/SiteLink";
 import { QuietCardBack } from "@/components/QuietCardBack";
 import { AccountMenu } from "@/components/AccountMenu";
 import { ServiceNotice } from "@/components/ServiceNotice";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { motion } from "framer-motion";
 import { ArrowUpRight } from "lucide-react";
 import { trackAnalyticsEvent } from "@/components/AnalyticsTracker";
@@ -13,7 +13,28 @@ import { useCardSpreadLongPressSave } from "@/lib/use-card-spread-save";
 
 import { yesNoDeck, getYesNoResult, ResultKind, LenormandCard } from "@/lib/yes-no";
 
+import { consumeYesNoQuota, getYesNoQuotaSnapshot, getYesNoServerSnapshot, subscribeYesNoQuota, YES_NO_DAILY_LIMIT, YES_NO_QUOTA_CHANGED, YES_NO_QUOTA_KEY } from "@/lib/yes-no-quota";
+
 type Stage = "input" | "drawing" | "result";
+
+function YesNoQuotaNotice({ used }: { used: number }) {
+  const loaded = used >= 0;
+  const remainingUses = loaded ? Math.max(0, YES_NO_DAILY_LIMIT - used) : 0;
+  return (
+    <section aria-label="YES OR NO 今日次数" className="mt-6 w-full rounded-2xl border border-[#6E2638]/15 bg-[#FFFDF8]/75 p-4 text-left sm:p-5">
+      <p aria-live="polite" className="text-[13px] leading-7 text-ink/65">
+        {loaded ? <>今日 YES OR NO 剩余 <span className="font-serif text-lg text-[#6E2638]">{remainingUses}</span> 次<span className="text-ink/45"> · 北京时间每日零点更新</span></> : used === -2 ? "正在读取今日 YES OR NO 次数…" : "暂时无法读取今日次数，请允许浏览器本地存储。"}
+      </p>
+      <div role="progressbar" aria-label="今日 YES OR NO 剩余次数" aria-valuemin={0} aria-valuemax={YES_NO_DAILY_LIMIT} aria-valuenow={loaded ? remainingUses : undefined} aria-valuetext={loaded ? `今日剩余 ${remainingUses} 次，共 ${YES_NO_DAILY_LIMIT} 次` : undefined} aria-busy={used === -2} className="mt-3 flex gap-2">
+        {Array.from({ length: YES_NO_DAILY_LIMIT }, (_, index) => (
+          <div key={index} aria-hidden="true" className={`h-1.5 flex-1 rounded-full transition-colors ${index < remainingUses ? "bg-[#6E2638]/55" : "bg-[#6E2638]/10"}`} />
+        ))}
+      </div>
+      <p className="mt-3 text-[12px] leading-6 text-ink/50">YES OR NO功能在升级开发中，为防止用户与开发访问冲突，YES OR NO暂时限量，敬请期待</p>
+      {used === -1 && <Link href="/deep" className="mt-2 inline-flex min-h-11 items-center text-[13px] text-[#6F2638] underline underline-offset-4">前往深度解读</Link>}
+    </section>
+  );
+}
 
 const deepReadingInvitations: Record<ResultKind, string> = {
   YES: "有推进的空间，想看看关键机会和下一步吗？",
@@ -85,6 +106,10 @@ export default function YesNoPage() {
   const [revealed, setRevealed] = useState(false);
   const [interpretation, setInterpretation] = useState("");
   const [unsuitable, setUnsuitable] = useState(false);
+  const [starting, setStarting] = useState(false);
+  const startingRef = useRef(false);
+  const used = useSyncExternalStore(subscribeYesNoQuota, getYesNoQuotaSnapshot, getYesNoServerSnapshot);
+  const quotaExhausted = used >= YES_NO_DAILY_LIMIT;
 
   useEffect(() => {
     preloadLenormandCardImages();
@@ -113,7 +138,8 @@ export default function YesNoPage() {
     setUnsuitable(false);
   }
 
-  function startReading() {
+  async function startReading() {
+    if (startingRef.current || stage !== "input") return;
     const trimmed = question.trim();
     setError("");
     setUnsuitable(false);
@@ -138,22 +164,41 @@ export default function YesNoPage() {
       return;
     }
 
-    const picked = drawCards();
-    const tendency = getYesNoResult(picked);
-    trackAnalyticsEvent("yes_no_submit", {
-      questionLength: trimmed.length,
-      result: tendency,
-      cardNumbers: picked.map((card) => card.number).join(",")
-    });
-    setCards(picked);
-    setResult(tendency);
-    setStage("drawing");
-
-    window.setTimeout(() => setRevealed(true), 900);
-    window.setTimeout(() => {
-      setInterpretation(mockReading(tendency, picked));
-      setStage("result");
-    }, 2600);
+    startingRef.current = true;
+    setStarting(true);
+    try {
+      const picked = drawCards();
+      const tendency = getYesNoResult(picked);
+      const reading = mockReading(tendency, picked);
+      // Record a completed local draw before the animation. The lock coordinates tabs.
+      const claim = () => consumeYesNoQuota(window.localStorage);
+      const claimed = navigator.locks?.request
+        ? await navigator.locks.request(YES_NO_QUOTA_KEY, claim)
+        : claim();
+      window.dispatchEvent(new Event(YES_NO_QUOTA_CHANGED));
+      if (!claimed.ok) {
+        if (claimed.reason === "storage") setError("暂时无法保存今日次数，请允许浏览器本地存储后重试，或使用深度解读。");
+        return;
+      }
+      trackAnalyticsEvent("yes_no_submit", {
+        questionLength: trimmed.length,
+        result: tendency,
+        cardNumbers: picked.map((card) => card.number).join(",")
+      });
+      setCards(picked);
+      setResult(tendency);
+      setStage("drawing");
+      window.setTimeout(() => setRevealed(true), 900);
+      window.setTimeout(() => {
+        setInterpretation(reading);
+        setStage("result");
+      }, 2600);
+    } catch {
+      setError("暂时无法读取今日次数，请稍后重试，或使用深度解读。");
+    } finally {
+      startingRef.current = false;
+      setStarting(false);
+    }
   }
 
   return (
@@ -167,12 +212,26 @@ export default function YesNoPage() {
         </header>
 
         {stage === "input" ? (
+          quotaExhausted ? (
+            <div className="flex flex-1 flex-col items-center justify-center py-12 text-center">
+              <p className="text-[12px] uppercase tracking-[0.28em] text-sage">Yes or No</p>
+              <h1 className="mt-5 font-serif text-[30px] leading-10 text-ink">今日 3 次免费体验已用完</h1>
+              <p className="mt-4 max-w-sm text-[14px] leading-7 text-ink/60">明天北京时间 00:00 恢复次数。想继续梳理这个问题的原因、阻碍和下一步，可以使用深度解读。</p>
+              <YesNoQuotaNotice used={used} />
+              <Link href="/deep" className="mt-7 inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[#6F2638] px-8 py-3 text-[14px] text-[#FDF8EF]">
+                前往深度解读<ArrowUpRight size={16} aria-hidden="true" />
+              </Link>
+              <p className="mt-3 text-[12px] leading-6 text-ink/50">1 花瓣 · 完整解读 · 含 2 次追问</p>
+              <Link href="/" className="mt-5 inline-flex min-h-11 items-center text-[12px] text-ink/50">返回首页</Link>
+            </div>
+          ) : (
           <div className="flex flex-1 flex-col justify-center py-10">
             <p className="text-center text-[12px] uppercase tracking-[0.28em] text-sage">Quick Answer</p>
             <h1 className="mt-5 text-center font-serif text-[42px] leading-none text-ink">Yes or No</h1>
             <p className="mt-3 text-center text-[15px] leading-6 text-ink/58">写下一个可以用“是 / 否”倾向回答的问题。</p>
+            <YesNoQuotaNotice used={used} />
 
-            <label htmlFor="question" className="mt-10 text-[12px] uppercase tracking-[0.18em] text-ink/48">
+            <label htmlFor="question" className="mt-6 text-[12px] uppercase tracking-[0.18em] text-ink/48">
               Your Question
             </label>
             <textarea
@@ -200,17 +259,20 @@ export default function YesNoPage() {
 
             <button
               type="button"
-              onClick={startReading}
-              className="mt-7 h-12 rounded-full bg-[#6F2638] px-6 text-[13px] uppercase tracking-[0.14em] text-[#FDF8EF] shadow-entry transition active:translate-y-px"
+              onClick={() => void startReading()}
+              disabled={starting || used < 0}
+              className="mt-7 h-12 rounded-full bg-[#6F2638] px-6 text-[13px] uppercase tracking-[0.14em] text-[#FDF8EF] shadow-entry transition active:translate-y-px disabled:opacity-50"
             >
               抽牌看倾向
             </button>
             <p className="mt-5 text-center text-[12px] leading-5 text-ink/42">不需要登录，不进入项目记忆。</p>
           </div>
+          )
         ) : (
           <div className="flex flex-1 flex-col py-8">
             <p className="text-center text-[12px] uppercase tracking-[0.28em] text-sage">Yes or No</p>
             <p className="mx-auto mt-5 max-w-[320px] text-center font-serif text-[22px] leading-7 text-ink">{question}</p>
+            <YesNoQuotaNotice used={used} />
 
             <div {...(cards.length ? cardSaveHandlers : {})} className="mx-auto mt-8 flex w-full max-w-[400px] justify-center gap-2 sm:gap-4">
               {cards.map((card, index) => (
@@ -248,13 +310,17 @@ export default function YesNoPage() {
                 <ServiceNotice kind="yesNo" expanded />
 
                 <div className="mt-6 grid gap-3">
-                  <button
-                    type="button"
-                    onClick={reset}
-                    className="h-12 rounded-full border border-ink/14 px-6 text-[13px] tracking-[0.1em] text-ink/65 transition-colors hover:bg-ink/[0.03]"
-                  >
-                    再问一个问题
-                  </button>
+                  {quotaExhausted ? (
+                    <p role="status" className="text-center text-[13px] leading-7 text-ink/60">今日 3 次免费体验已用完。明天再来，或点击上方按钮，继续深度解读。</p>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={reset}
+                      className="h-12 rounded-full border border-ink/14 px-6 text-[13px] tracking-[0.1em] text-ink/65 transition-colors hover:bg-ink/[0.03]"
+                    >
+                      再问一个问题
+                    </button>
+                  )}
                   <Link prefetch={false} href="/" className="inline-flex min-h-11 items-center justify-center text-[12px] tracking-[0.1em] text-ink/45 hover:text-ink/70">
                     返回首页
                   </Link>
