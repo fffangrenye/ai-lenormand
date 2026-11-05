@@ -1,0 +1,217 @@
+{
+  "productVersion": "3.2",
+  "releaseName": "Flora V3.2 — 确认后翻牌",
+  "sourceTag": "flora-v3.2-20261105",
+  "environment": "production",
+  "domain": "https://floralenormand.site",
+  "sourceCommit": "1e4816f94b2db39445582750b98510a7edcabddf",
+  "branch": "codex/v3.2-confirm-reveal-20261105",
+  "workers": [
+    {
+      "name": "flora-domain-info",
+      "version": "88c9e729-fa93-4c09-b605-ab7dec3435d1",
+      "deployedAt": "2026-11-05T09:40:13.092Z",
+      "config": "wrangler.flora-v3-site.jsonc",
+      "rollback": {
+        "deploymentId": "ab8130e7-dca7-4cfe-8aca-df3531d86a06",
+        "createdAt": "2026-10-30T02:38:43.274253Z",
+        "versions": [
+          {
+            "version": "c7ce6a86-710b-4a0e-bf74-b978671033dd",
+            "percentage": 100
+          }
+        ]
+      },
+      "rollbackSourceCommit": "66c081d2044bc359571dbd93d6e0a7585aaafa99",
+      "releaseChecks": [
+        {
+          "command": "node.exe scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 2442
+        },
+        {
+          "command": "node.exe scripts/secure-cloudflare-build.cjs --flora-v3",
+          "passed": true,
+          "durationMs": 100579
+        },
+        {
+          "command": "node.exe scripts/scan-cloudflare-artifacts.cjs",
+          "passed": true,
+          "durationMs": 4505
+        },
+        {
+          "command": "node.exe scripts/test-public-assets.cjs",
+          "passed": true,
+          "durationMs": 5271
+        },
+        {
+          "command": "node.exe scripts/test-site-runtime.cjs",
+          "passed": true,
+          "durationMs": 11002
+        },
+        {
+          "command": "node.exe scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 875
+        }
+      ]
+    },
+    {
+      "name": "flora-v3-api",
+      "version": "6c20e43d-7915-4e67-a8cb-0922e421aed7",
+      "deployedAt": "2026-11-05T09:40:36.901Z",
+      "config": "wrangler.flora-v3-api.jsonc",
+      "rollback": {
+        "deploymentId": "a54b62e4-2048-47fd-b17e-32683235454b",
+        "createdAt": "2026-10-27T14:41:23.102614Z",
+        "versions": [
+          {
+            "version": "392f61f9-7dd3-4afc-be2e-9d16771860d7",
+            "percentage": 100
+          }
+        ]
+      },
+      "rollbackSourceCommit": "ea95b8340607f7e1b475bef10f5857406148f483",
+      "releaseChecks": [
+        {
+          "command": "node.exe scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 813
+        },
+        {
+          "command": "node.exe node_modules\\wrangler\\bin\\wrangler.js deploy --config wrangler.flora-v3-api.jsonc --dry-run --outdir .local-paid/cloud-api-build",
+          "passed": true,
+          "durationMs": 2385
+        },
+        {
+          "command": "node.exe scripts/test-cloud-ledger.cjs",
+          "passed": true,
+          "durationMs": 1906
+        },
+        {
+          "command": "node.exe scripts/test-cloud-security.cjs",
+          "passed": true,
+          "durationMs": 2069
+        },
+        {
+          "command": "node.exe scripts/test-cloud-legacy-restore.cjs",
+          "passed": true,
+          "durationMs": 1467
+        },
+        {
+          "command": "node.exe scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 840
+        }
+      ]
+    }
+  ],
+  "unchangedWorkers": [
+    {
+      "name": "flora-domain-canonical",
+      "version": "f03664f5-2551-478b-84b0-45658e9aeef0",
+      "commit": "9c57cd03983ef75c97a8787cc0c2c66a5b847566"
+    }
+  ],
+  "rollbackOrder": [
+    {
+      "worker": "flora-v3-api",
+      "command": "node node_modules/wrangler/bin/wrangler.js rollback 392f61f9-7dd3-4afc-be2e-9d16771860d7 --config wrangler.flora-v3-api.jsonc --message \"Rollback Flora V3.2\""
+    },
+    {
+      "worker": "flora-domain-info",
+      "command": "node node_modules/wrangler/bin/wrangler.js rollback c7ce6a86-710b-4a0e-bf74-b978671033dd --config wrangler.flora-v3-site.jsonc --message \"Rollback Flora V3.2\""
+    }
+  ],
+  "checks": {
+    "browserMock": [
+      "Partial picks resume after refresh",
+      "No automatic unlock or debit",
+      "Unpaid faces absent from HTML and account API",
+      "Retry after generation failure",
+      "Exactly one petal on success"
+    ],
+    "isolatedProductionApi": [
+      "Hidden faces before and during generation",
+      "Unconfirmed legacy requests cannot reserve petals",
+      "Model failure releases petal",
+      "Concurrent and replayed requests consume once",
+      "Insufficient balance retains locked cards",
+      "Two follow-ups",
+      "Legacy completed records remain readable"
+    ],
+    "live": {
+      "checkedAt": "2026-11-05T09:41:27.106Z",
+      "publicPagesMatchingBuild": 11,
+      "privatePages": [
+        {
+          "path": "/login",
+          "status": 200,
+          "static": false
+        },
+        {
+          "path": "/deep",
+          "status": 200,
+          "static": false
+        },
+        {
+          "path": "/deep/project/00000000-0000-4000-8000-000000000000",
+          "status": 200,
+          "static": false
+        },
+        {
+          "path": "/profile",
+          "status": 200,
+          "static": false
+        },
+        {
+          "path": "/recharge",
+          "status": 200,
+          "static": false
+        },
+        {
+          "path": "/redeem",
+          "status": 200,
+          "static": false
+        }
+      ],
+      "clientChunksMatchingBuild": 23,
+      "revealConfirmationBundle": true,
+      "legacyRedirects": [
+        {
+          "url": "https://www.floralenormand.site/daily?checkin=1",
+          "status": 308,
+          "location": "https://floralenormand.site/daily?checkin=1"
+        },
+        {
+          "url": "http://floralenormand.site/",
+          "status": 308,
+          "location": "https://floralenormand.site/"
+        },
+        {
+          "url": "https://flora.soul-ai-frontend.workers.dev/",
+          "status": 301,
+          "location": "https://floralenormand.site/"
+        },
+        {
+          "url": "https://ai-lenormand.soul-ai-frontend.workers.dev/",
+          "status": 301,
+          "location": "https://floralenormand.site/"
+        },
+        {
+          "url": "https://ai-lenormand-cloudflare-preview.soul-ai-frontend.workers.dev/",
+          "status": 301,
+          "location": "https://floralenormand.site/"
+        }
+      ],
+      "applicationTelemetryDisabled": true,
+      "rollbackVersionsAvailable": true
+    }
+  },
+  "limits": {
+    "dataMigration": false,
+    "signedInLiveReadingTest": false,
+    "liveAiCallsForVerification": false,
+    "rollbackExecuted": false
+  }
+}
