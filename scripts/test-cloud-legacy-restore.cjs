@@ -12,7 +12,7 @@ async function maintenance(mode,signed=true){const job={purpose:'flora-legacy-re
  const applied=await maintenance('apply');assert.equal(applied.status,200,JSON.stringify(applied.data));assert.equal(applied.data.verifiedReadings,1);
  assert.deepEqual((await api()).data.balance,before);assert.equal((await api('projects')).data.length,1);
  const reading=await api('readings/'+rid);assert.equal(reading.data.legacyRestored,true);assert.equal(reading.data.legacyMessages[0].content,'原消息');assert.equal(reading.data.completedAt,at);
- assert.equal((await api('unlock',{readingId:rid})).status,200);assert.equal(aiCalls,0);
+ assert.equal((await api('unlock',{readingId:rid,confirmReveal:true})).status,200);assert.equal(aiCalls,0);
  assert.equal((await api('follow-up',{readingId:rid,question:'额外追问',requestKey:randomUUID()})).status,409);
  assert.equal((await api('readings/'+rid,undefined,'valid-other-token-1234567890')).status,404);
  assert.equal((await maintenance('apply')).data.alreadyRestored,true);

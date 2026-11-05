@@ -3,7 +3,9 @@ const { spawn } = require("node:child_process");
 const path = require("node:path");
 const fs = require("node:fs");
 const root = path.resolve(__dirname, "..");
+const revealPreview = process.argv.includes("--reveal-preview");
 const aiEnabled = process.argv.includes("--ai");
+if (revealPreview && aiEnabled) throw new Error("翻牌确认演示仅使用模拟解读。");
 if (aiEnabled && fs.existsSync(path.join(root, ".env.local"))) process.loadEnvFile(path.join(root, ".env.local"));
 const aiKey = aiEnabled ? (process.env.PAID_LOCAL_DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY || "").trim() : "";
 const aiModel = aiEnabled ? (process.env.PAID_LOCAL_DEEPSEEK_MODEL || process.env.DEEPSEEK_MODEL || "deepseek-flash").trim() : "";
@@ -17,7 +19,9 @@ for (const key of Object.keys(env)) {
 Object.assign(env, {
   NODE_ENV: "development", PAID_LOCAL_MODE: "1", NEXT_PUBLIC_PAID_LOCAL_MODE: "1", PAID_LOCAL_MODEL: aiEnabled ? "deepseek" : "mock",
   PAID_LOCAL_AI_KEY: aiKey, PAID_LOCAL_AI_MODEL: aiModel, NEXT_PUBLIC_PAID_LOCAL_AI: aiEnabled ? "1" : "0",
-  PAID_LOCAL_DB: path.join(root, ".local-paid", "v1.sqlite"),
+  PAID_LOCAL_DB: path.join(root, ".local-paid", revealPreview ? "reveal-preview.sqlite" : "v1.sqlite"),
+  NEXT_PUBLIC_PAID_LOCAL_REVEAL_PREVIEW: revealPreview ? "1" : "0",
+  NEXT_PUBLIC_PAID_ONLINE_MODE: "0",
   NEXT_PUBLIC_SUPABASE_URL: "http://127.0.0.1:9", NEXT_PUBLIC_SUPABASE_ANON_KEY: "",
   SUPABASE_SERVICE_ROLE_KEY: "", DEEPSEEK_API_KEY: "", ADMIN_EMAILS: "",
   NEXT_PUBLIC_SITE_URL: `http://127.0.0.1:${port}`,

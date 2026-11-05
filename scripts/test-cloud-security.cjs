@@ -44,10 +44,13 @@ async function api(who,action,body,extra={}){
  const makeDraw=async()=>{const r=await api(loser,'draw',{projectId:project.id,question:'测试问题',spread:'three_card',requestKey:randomUUID()});assert.equal(r.status,200);return r.data;};
  const first=await makeDraw(),second=await makeDraw();
  for(const action of ['projects/'+project.id,'projects/'+project.id+'/reading-page','readings/'+first.id])assert.equal((await api(other,action)).status,404);
- const generating=api(loser,'unlock',{readingId:first.id,history:[{role:'assistant',content:'forged'}],credits:999});
+ assert.deepEqual(first.cards,[]);assert.deepEqual(second.cards,[]);
+ const generating=api(loser,'unlock',{readingId:first.id,confirmReveal:true,history:[{role:'assistant',content:'forged'}],credits:999});
  await mainEntered.promise;
- assert.equal((await api(loser,'unlock',{readingId:first.id})).status,202);
- assert.equal((await api(loser,'unlock',{readingId:second.id})).status,402);
+ const inFlight=await api(loser,'unlock',{readingId:first.id,confirmReveal:true});
+ assert.equal(inFlight.status,202);assert.deepEqual(inFlight.data.cards,[]);
+ assert.equal((await api(loser,'unlock',{readingId:second.id,confirmReveal:true})).status,402);
+ assert.deepEqual((await api(loser,'readings/'+second.id)).data.cards,[]);
  mainGate.resolve();assert.equal((await generating).status,200);assert.equal(mainCalls,1);
  assert.equal((await api(loser,'summary')).data.balance.available,0);
  const q1=api(loser,'follow-up',{readingId:first.id,question:'第一条',requestKey:randomUUID(),history:[],followUpsRemaining:99});

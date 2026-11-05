@@ -4,7 +4,8 @@ import { getPaidLocalStore } from "@/lib/paid-local/store";
 import { generatePaidMain, generatePaidFollowUp } from "@/lib/paid-local/provider";
 import QRCode from "qrcode";
 import type { SimulationMode } from "@/lib/paid-local/payment-store";
-import type { PaidSpread } from "@/lib/paid-local/types";
+import { hideLockedReadingCards, hideSelectedCards, requireRevealConfirmation } from "@/lib/paid-local/reveal";
+import type { PaidDrawSession, PaidOverview, PaidReading, PaidSpread } from "@/lib/paid-local/types";
 import { xianyuConfig, reconcileXianyu } from "@/lib/paid-local/xianyu-config";
 import { GoofishError } from "@/lib/payments/goofish";
 import { cardCatalog } from "@/lib/paid-local/card-catalog";
@@ -15,6 +16,11 @@ const cookieName = "flora_paid_local_session";
 const adminCookie = "flora_paid_local_admin";
 type Context = { params: Promise<{ path?: string[] }> };
 const json = (value: unknown, status = 200) => NextResponse.json(value, { status, headers: { "Cache-Control": "no-store" } });
+// Keep unrevealed cards on the server even when a browser inspects responses.
+const revealPreview = process.env.NEXT_PUBLIC_PAID_LOCAL_REVEAL_PREVIEW === "1";
+const visibleReading = (reading: PaidReading) => revealPreview ? hideLockedReadingCards(reading) : reading;
+const visibleOverview = (overview: PaidOverview) => revealPreview ? { ...overview, readings: overview.readings.map(visibleReading) } : overview;
+const visibleDraw = (session: PaidDrawSession | null) => revealPreview ? hideSelectedCards(session) : session;
 function failure(error: unknown) {
   if (error instanceof GoofishError) return json({code:error.code,message:({OPEN_CHECKOUT:"你有一笔待付款闲鱼订单，请先从订单记录继续。",PRODUCT_NOT_CONFIGURED:"闲鱼套餐仍在配置，请暂勿付款。",NOT_FOUND:"订单不存在或不属于当前账号。",REQUEST_CONFLICT:"这次请求已用于其他订单。"} as Record<string,string>)[error.code] || "暂未核实订单，请稍后重试或联系反馈邮箱。"},error.code === "NOT_FOUND" ? 404 : 409);
   if (isLocalPaidError(error)) return json({ code: error.code, message: error.message }, error.status);
@@ -57,15 +63,15 @@ export async function GET(request: NextRequest, { params }: Context) {
     if (segments.length === 1 && segments[0] === "daily-status") return json(store.dailyStatus(userId));
     if (segments.length === 1 && segments[0] === "usage") return json(store.usagePage(userId, request.nextUrl.searchParams.get("cursor") || "", request.nextUrl.searchParams.get("days") || "all"));
     if (segments.length === 1 && segments[0] === "daily") return json(store.dailyCalendar(userId, request.nextUrl.searchParams.get("month") || undefined));
-    if (segments.length === 0) { const catalog = store.payments.catalog(userId); return json({ ...store.overview(userId), packages: catalog.packages, firstPurchaseEligible: catalog.firstPurchaseEligible }); }
+    if (segments.length === 0) { const catalog = store.payments.catalog(userId); return json({ ...visibleOverview(store.overview(userId)), packages: catalog.packages, firstPurchaseEligible: catalog.firstPurchaseEligible }); }
     if (segments[0] === "projects") {
       if (segments.length === 1) return json(store.projects(userId));
       if (segments.length === 2) return json(store.project(userId, segments[1]));
-      if (segments.length === 3 && segments[2] === "readings") return json(store.projectReadings(userId, segments[1]));
-      if (segments.length === 3 && segments[2] === "draw-session") return json(store.pendingDrawSession(userId, segments[1]));
+      if (segments.length === 3 && segments[2] === "readings") return json(store.projectReadings(userId, segments[1]).map(visibleReading));
+      if (segments.length === 3 && segments[2] === "draw-session") return json(visibleDraw(store.pendingDrawSession(userId, segments[1])));
     }
-    if (segments[0] === "readings" && segments.length === 2) return json(store.reading(userId, segments[1]));
-    if (segments[0] === "draw-sessions" && segments.length === 2) return json(store.drawSession(userId, segments[1]));
+    if (segments[0] === "readings" && segments.length === 2) return json(visibleReading(store.reading(userId, segments[1])));
+    if (segments[0] === "draw-sessions" && segments.length === 2) return json(visibleDraw(store.drawSession(userId, segments[1])));
     throw new LocalPaidError("NOT_FOUND", "接口不存在。", 404);
   } catch (error) { return failure(error); }
 }
@@ -111,7 +117,7 @@ export async function POST(request: NextRequest, { params }: Context) {
     }
     if (action === "session") {
       const session = store.login(field("account"), previousToken);
-      const response = json(store.overview(session.userId));
+      const response = json(visibleOverview(store.overview(session.userId)));
       response.cookies.set(cookieName, session.token, { httpOnly: true, sameSite: "strict", path: "/api/local-paid", maxAge: 7 * 86400 });
       return response;
     }
@@ -132,7 +138,7 @@ export async function POST(request: NextRequest, { params }: Context) {
     if (action === "payment-simulate") return json(store.payments.simulate(userId, field("orderId"), field("mode") as SimulationMode));
     if (action === "refund-request") return json(store.payments.requestRefund(userId, field("orderId"), field("requestKey"), field("reason")));
     if (action === "daily-check-in") return json(store.checkIn(userId));
-    if (action === "test-credits") return json(store.grantTestCredits(userId, field("requestKey")));
+    if (action === "test-credits") return json(visibleOverview(store.grantTestCredits(userId, field("requestKey"))));
     if (action === "logout") {
       if (previousToken) store.logout(previousToken);
       const response = json({ ok: true });
@@ -149,15 +155,16 @@ export async function POST(request: NextRequest, { params }: Context) {
     if (action === "project-touch") { store.touchProject(userId, field("projectId")); return json({ ok: true }); }
     if (action === "project-remove") { store.archiveProject(userId, field("projectId")); return json({ ok: true }); }
     const choices = Array.isArray(input.choices) ? input.choices.filter((value): value is string => typeof value === "string") : undefined;
-    if (action === "draw") return json(store.draw(userId, { question: field("question"), spread: field("spread") as PaidSpread, requestKey: field("requestKey"), projectId: field("projectId") || undefined, choices }));
-    if (action === "draw-session") return json(store.startDrawSession(userId, { projectId: field("projectId"), question: field("question"), spread: field("spread") as PaidSpread, requestKey: field("requestKey"), choices }));
-    if (action === "draw-pick") return json(store.pickDrawCard(userId, field("sessionId"), field("token"), Number(input.expectedCount)));
-    if (action === "draw-picks") return json(store.pickDrawCards(userId, field("sessionId"), input.tokens, Number(input.expectedCount)));
+    if (action === "draw") return json(visibleReading(store.draw(userId, { question: field("question"), spread: field("spread") as PaidSpread, requestKey: field("requestKey"), projectId: field("projectId") || undefined, choices })));
+    if (action === "draw-session") return json(visibleDraw(store.startDrawSession(userId, { projectId: field("projectId"), question: field("question"), spread: field("spread") as PaidSpread, requestKey: field("requestKey"), choices })));
+    if (action === "draw-pick") return json(visibleDraw(store.pickDrawCard(userId, field("sessionId"), field("token"), Number(input.expectedCount))));
+    if (action === "draw-picks") return json(visibleDraw(store.pickDrawCards(userId, field("sessionId"), input.tokens, Number(input.expectedCount))));
     if (action === "draw-abandon") { store.abandonDrawSession(userId, field("sessionId")); return json({ ok: true }); }
     if (action === "unlock") {
+      if (revealPreview) requireRevealConfirmation(input.confirmReveal);
       const readingId = field("readingId");
       const reserved = store.reserveReading(userId, readingId);
-      if (!reserved.runId) return json(reserved.reading, reserved.reading.state === "generating" ? 202 : 200);
+      if (!reserved.runId) return json(visibleReading(reserved.reading), reserved.reading.state === "generating" ? 202 : 200);
       let completed;
       try {
         const project = reserved.reading.projectId ? store.project(userId, reserved.reading.projectId) : undefined;

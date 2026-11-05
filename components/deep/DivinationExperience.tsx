@@ -3,7 +3,7 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { ArrowLeft, ArrowRight, Check, RotateCcw, Sparkles } from "lucide-react";
 import { deepSpreads, getDeepSpread, type DeepSpreadId } from "@/lib/deep-spreads";
-import { completePaidRequestKey, getPaidSiteSession, paidSiteEnabled, paidSiteRequest, stablePaidRequestKey } from "@/lib/paid-local/site-bridge";
+import { completePaidRequestKey, getPaidSiteSession, paidRevealConfirmationEnabled, paidSiteEnabled, paidSiteRequest, stablePaidRequestKey } from "@/lib/paid-local/site-bridge";
 import { clearDrawDraft, readDrawDraft, recoverDrawTokens, saveDrawDraft } from "@/lib/paid-local/draw-draft";
 import type { PaidDrawSession } from "@/lib/paid-local/types";
 import { generateDeepReading, saveReading } from "@/lib/project-store";
@@ -13,6 +13,7 @@ import { QuietCardBack } from "@/components/QuietCardBack";
 import { ServiceNotice } from "@/components/ServiceNotice";
 
 const pause = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+const savedPickCount = (session: PaidDrawSession) => session.selectedTokens?.length ?? session.selected.length;
 
 function CardFan({ session, busy, onPick }: { session: PaidDrawSession; busy: boolean; onPick: (token: string) => void }) {
   const fan = useRef<HTMLDivElement>(null);
@@ -60,7 +61,8 @@ export function DivinationExperience({ projectId, historyCount, ruleEngineTrialA
   const [useRuleEngineTrial, setUseRuleEngineTrial] = useState(false);
   const picking = useRef(false);
   const spread = getDeepSpread(session && (phase === "picking" || phase === "interpreting") ? session.spread : spreadId);
-  const selectedCount = (session?.selected.length || 0) + queued.length;
+  const selectedCount = (session ? savedPickCount(session) : 0) + queued.length;
+  const visibleCards = paidRevealConfirmationEnabled ? [] : session?.selected ?? [];
   function updateQueued(tokens:string[]) { queuedRef.current=tokens; setQueued(tokens); }
   useEffect(() => { document.querySelector('[data-divination-scroll="true"]')?.scrollTo({ top: 0 }); }, [phase]);
   useEffect(() => {
@@ -113,6 +115,10 @@ export function DivinationExperience({ projectId, historyCount, ruleEngineTrialA
 
   async function finish(value: PaidDrawSession) {
     if (!value.readingId) return;
+    if (paidRevealConfirmationEnabled) {
+      onComplete(value.readingId);
+      return;
+    }
     setPhase("interpreting");
     try {
       await Promise.all([paidSiteRequest("unlock", { readingId: value.readingId }), pause(1500)]);
@@ -124,7 +130,7 @@ export function DivinationExperience({ projectId, historyCount, ruleEngineTrialA
     picking.current = true; setBusy(true); setError("");
     try {
       if(!draftOwner.current||getPaidSiteSession()?.userId!==draftOwner.current)throw new Error("登录账号已变化，请重新进入这次抽牌。");
-      const saved = tokens.length ? await paidSiteRequest<PaidDrawSession>("draw-picks", {sessionId:value.id,tokens,expectedCount:value.selected.length}) : value;
+      const saved = tokens.length ? await paidSiteRequest<PaidDrawSession>("draw-picks", {sessionId:value.id,tokens,expectedCount:savedPickCount(value)}) : value;
       if(getPaidSiteSession()?.userId!==draftOwner.current)throw new Error("登录账号已变化，请重新进入这次抽牌。");
       updateQueued([]);setPendingQueuedCount(0);setSession(saved);setPending(saved.state==="picking"?saved:null);
       if(saved.state==="completed"){
@@ -150,13 +156,13 @@ export function DivinationExperience({ projectId, historyCount, ruleEngineTrialA
     const owner=getPaidSiteSession()?.userId||"";
     if(!owner||owner!==draftOwner.current){setError("登录账号已变化，请重新进入这次抽牌。");return;}
     const tokens=[...queuedRef.current,token];
-    if(session.selected.length+tokens.length>spread.positions.length)return;
+    if(savedPickCount(session)+tokens.length>spread.positions.length)return;
     setError("");
     const persisted=saveDrawDraft(owner,session,tokens);
     updateQueued(tokens);setPendingQueuedCount(tokens.length);
     // If browser storage is unavailable, immediately sync to the server rather
     // than claim that an in-memory selection survives a refresh.
-    if(!persisted||session.selected.length+tokens.length===spread.positions.length)void syncPicks(session,tokens);
+    if(!persisted||savedPickCount(session)+tokens.length===spread.positions.length)void syncPicks(session,tokens);
   }
   async function resume(value:PaidDrawSession){
     draftOwner.current=getPaidSiteSession()?.userId||"";
@@ -176,11 +182,11 @@ export function DivinationExperience({ projectId, historyCount, ruleEngineTrialA
     <div className="flex items-center justify-between gap-3"><button type="button" disabled={busy} onClick={() => void syncPicks(session,queuedRef.current,true)} className="inline-flex min-h-10 items-center gap-2 text-xs text-ink/50"><ArrowLeft size={14} />暂存并返回</button><span className="text-xs text-[#6E2638]" aria-live="polite">已抽 {selectedCount} / {spread.positions.length} 张</span></div>
     <h1 className="mt-3 font-serif text-2xl">{spread.name}</h1><p className="mt-2 break-words text-sm leading-6 text-ink/60">{session.question}</p>
     <div className="mt-6 grid items-center gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-10">
-      <div><SpreadLayout spreadId={spread.id} cards={session.selected} pendingCount={queued.length} choices={session.choices} compact /><p className="mt-3 text-center text-xs leading-6 text-ink/45" aria-live="polite">{busy ? "牌正在归位…" : `下一张 → ${spread.positions[selectedCount]?.label || "牌面已完整"}`}</p></div>
+      <div><SpreadLayout spreadId={spread.id} cards={visibleCards} pendingCount={selectedCount - visibleCards.length} choices={session.choices} compact /><p className="mt-3 text-center text-xs leading-6 text-ink/45" aria-live="polite">{busy ? "牌正在归位…" : `下一张 → ${spread.positions[selectedCount]?.label || "牌面已完整"}`}</p></div>
       <div className="min-w-0"><CardFan session={{...session,deck:session.deck.map(card=>({...card,picked:card.picked||queued.includes(card.token)}))}} busy={busy} onPick={pick} />
         {!selectedCount && <button type="button" disabled={busy} onClick={() => setPhase("shuffle")} className="mx-auto mt-5 flex min-h-10 items-center gap-2 text-xs text-[#6E2638]"><RotateCcw size={14} />再洗一次</button>}
-        {selectedCount===spread.positions.length&&!busy&&<button type="button" onClick={()=>void syncPicks(session,queuedRef.current)} className="mx-auto mt-5 flex min-h-11 items-center rounded-full bg-[#6E2638] px-6 text-sm text-[#FFF9F2]">同步并开始解读</button>}
-        <p className="mt-4 text-center text-[11px] leading-5 text-ink/40">选择会在本机暂存，选满后统一翻牌并解读，使用 1 花瓣；解读失败不扣花瓣。</p>
+        {selectedCount===spread.positions.length&&!busy&&<button type="button" onClick={()=>void syncPicks(session,queuedRef.current)} className="mx-auto mt-5 flex min-h-11 items-center rounded-full bg-[#6E2638] px-6 text-sm text-[#FFF9F2]">{paidRevealConfirmationEnabled ? "保存选好的牌" : "同步并开始解读"}</button>}
+        <p className="mt-4 text-center text-[11px] leading-5 text-ink/40">{paidRevealConfirmationEnabled ? "选牌免费。选满后可使用 1 花瓣翻牌并解读，含 2 次追问。" : "选择会在本机暂存，选满后统一翻牌并解读，使用 1 花瓣；解读失败不扣花瓣。"}</p>
       </div>
     </div>
     {error && <p role="alert" className="mt-5 rounded-lg border border-[#6E2638]/15 p-3 text-sm leading-6 text-[#8E4D4A]">{error}</p>}
@@ -189,7 +195,7 @@ export function DivinationExperience({ projectId, historyCount, ruleEngineTrialA
   return <form onSubmit={beginShuffle} className="py-6 sm:py-10">
     <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs uppercase tracking-[0.2em] text-clay/65">A question, a little clarity</p>{historyCount > 0 && <button type="button" onClick={onHistory} className="min-h-10 text-xs text-[#6E2638]">查看历史解读（{historyCount}）<ArrowRight size={13} className="ml-1 inline" /></button>}</div>
     <h1 className="mt-4 font-serif text-3xl sm:text-4xl">这一次，你想问什么？</h1><p className="mt-3 text-sm leading-7 text-ink/50">先放下一个具体的问题，再选择适合它的牌阵。</p>
-    {pending && <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#6E2638]/15 bg-[#FFFDF8] p-4"><div className="min-w-0"><p className="text-sm">有一次尚未完成的抽牌 · {pending.selected.length+pendingQueuedCount}/{getDeepSpread(pending.spread).positions.length} 张</p><p className="mt-1 max-w-xs truncate text-xs text-ink/45">{pending.question}</p></div><button type="button" onClick={() => void resume(pending)} className="min-h-10 text-sm text-[#6E2638]">继续抽牌</button></div>}
+    {pending && <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#6E2638]/15 bg-[#FFFDF8] p-4"><div className="min-w-0"><p className="text-sm">有一次尚未完成的抽牌 · {savedPickCount(pending)+pendingQueuedCount}/{getDeepSpread(pending.spread).positions.length} 张</p><p className="mt-1 max-w-xs truncate text-xs text-ink/45">{pending.question}</p></div><button type="button" onClick={() => void resume(pending)} className="min-h-10 text-sm text-[#6E2638]">继续抽牌</button></div>}
     <label htmlFor="deep-question" className="mt-7 block text-sm text-ink/65">你的问题</label><textarea id="deep-question" value={question} onChange={(event) => { setQuestion(event.target.value); setError(""); }} maxLength={300} required rows={3} placeholder="例如：未来一个月，这段关系会怎样发展？" className="mt-3 w-full resize-y rounded-xl border border-ink/15 bg-[#FFFDF8] p-4 text-base leading-7 outline-none focus:border-[#6E2638]/45" />
     <p className="mt-1 text-right text-xs text-ink/35">{question.length}/300</p>
     <fieldset className="mt-5"><legend className="text-sm text-ink/65">选择牌阵</legend><div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{deepSpreads.filter((item) => paidSiteEnabled || ["three_card","five_card_linear"].includes(item.id)).map((item) => <label key={item.id} className={`relative cursor-pointer rounded-xl border p-4 ${item.id === spreadId ? "border-[#6E2638]/65 bg-[#6E2638]/[0.035]" : "border-ink/10 bg-[#FFFDF8]/75"}`}>
@@ -202,6 +208,6 @@ export function DivinationExperience({ projectId, historyCount, ruleEngineTrialA
     {ruleEngineTrialAllowed && !paidSiteEnabled && <label className="mt-5 flex items-center gap-2 text-xs text-ink/50"><input type="checkbox" checked={useRuleEngineTrial} onChange={(event) => setUseRuleEngineTrial(event.target.checked)} />试用 V2 规则解读</label>}
     {error && <p role="alert" className="mt-4 text-sm text-[#8E4D4A]">{error}</p>}
     <ServiceNotice kind="deep" />
-    <div className="mt-6 flex flex-wrap items-center gap-4"><button type="submit" disabled={busy} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[#6E2638] px-8 text-sm text-[#FFF9F2] disabled:opacity-50"><Sparkles size={16} />洗牌，开始这次解读</button><p className="text-xs leading-6 text-ink/45">{paidSiteEnabled ? "自己选满牌位后使用 1 花瓣，含 2 次追问。" : "选择问题与牌阵后开始解读。"}</p></div>
+    <div className="mt-6 flex flex-wrap items-center gap-4"><button type="submit" disabled={busy} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[#6E2638] px-8 text-sm text-[#FFF9F2] disabled:opacity-50"><Sparkles size={16} />洗牌，开始这次解读</button><p className="text-xs leading-6 text-ink/45">{paidRevealConfirmationEnabled ? "选牌免费，确认后使用 1 花瓣翻牌并解读，含 2 次追问。" : paidSiteEnabled ? "自己选满牌位后使用 1 花瓣，含 2 次追问。" : "选择问题与牌阵后开始解读。"}</p></div>
   </form>;
 }

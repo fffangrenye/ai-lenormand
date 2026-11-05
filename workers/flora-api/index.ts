@@ -3,6 +3,7 @@ import { PaidLedger } from "../../lib/paid-local/ledger";
 import { createCloudProvider } from "../../lib/paid-local/cloud-provider";
 import { LocalPaidError, isLocalPaidError } from "../../lib/paid-local/guard";
 import { cardCatalog } from "../../lib/paid-local/card-catalog";
+import { hideLockedReadingCards, hideSelectedCards, requireRevealConfirmation } from "../../lib/paid-local/reveal";
 import type { PaidSpread } from "../../lib/paid-local/types";
 import { schema } from "./schema";
 import { costIndexes } from "./cost-indexes";
@@ -159,12 +160,15 @@ export class FloraLedger {
         if(parts[0]==="projects"){
           if(parts.length===1)return json(store.projects(user));
           if(parts.length===2)return json(store.project(user,parts[1]));
-          if(parts[2]==="readings")return json(store.projectReadingPage(user,parts[1]).items);
-          if(parts[2]==="reading-page")return json(store.projectReadingPage(user,parts[1],url.searchParams.get("cursor")||""));
-          if(parts[2]==="draw-session")return json(store.pendingDrawSession(user,parts[1]));
+          if(parts[2]==="readings")return json(store.projectReadingPage(user,parts[1]).items.map(hideLockedReadingCards));
+          if(parts[2]==="reading-page"){
+            const page=store.projectReadingPage(user,parts[1],url.searchParams.get("cursor")||"");
+            return json({...page,items:page.items.map(hideLockedReadingCards)});
+          }
+          if(parts[2]==="draw-session")return json(hideSelectedCards(store.pendingDrawSession(user,parts[1])));
         }
-        if(parts[0]==="readings" && parts.length===2)return json(store.reading(user,parts[1]));
-        if(parts[0]==="draw-sessions" && parts.length===2)return json(store.drawSession(user,parts[1]));
+        if(parts[0]==="readings" && parts.length===2)return json(hideLockedReadingCards(store.reading(user,parts[1])));
+        if(parts[0]==="draw-sessions" && parts.length===2)return json(hideSelectedCards(store.drawSession(user,parts[1])));
       }else if(request.method==="POST"){
         if(Number(request.headers.get("content-length")||0)>8000)throw new LocalPaidError("TOO_LARGE","请求过长。",413);
         const raw=await request.text();if(raw.length>8000)throw new LocalPaidError("TOO_LARGE","请求过长。",413);
@@ -189,15 +193,16 @@ export class FloraLedger {
         if(action==="project-remove"){store.archiveProject(user,field("projectId"));return json({ok:true});}
         const choices=Array.isArray(input.choices) ? input.choices.filter((x):x is string=>typeof x==="string") : undefined;
         const drawInput={projectId:field("projectId"),question:field("question"),spread:field("spread") as PaidSpread,requestKey:field("requestKey"),choices};
-        if(action==="draw-session")return json(store.startDrawSession(user,drawInput));
-        if(action==="draw")return json(store.draw(user,drawInput));
-        if(action==="draw-pick")return json(store.pickDrawCard(user,field("sessionId"),field("token"),Number(input.expectedCount)));
-        if(action==="draw-picks")return json(store.pickDrawCards(user,field("sessionId"),input.tokens,Number(input.expectedCount)));
+        if(action==="draw-session")return json(hideSelectedCards(store.startDrawSession(user,drawInput)));
+        if(action==="draw")return json(hideLockedReadingCards(store.draw(user,drawInput)));
+        if(action==="draw-pick")return json(hideSelectedCards(store.pickDrawCard(user,field("sessionId"),field("token"),Number(input.expectedCount))));
+        if(action==="draw-picks")return json(hideSelectedCards(store.pickDrawCards(user,field("sessionId"),input.tokens,Number(input.expectedCount))));
         if(action==="draw-abandon"){store.abandonDrawSession(user,field("sessionId"));return json({ok:true});}
         const provider=createCloudProvider({key:this.env.AI_KEY,model:this.env.AI_MODEL});
         if(action==="unlock"){
+          requireRevealConfirmation(input.confirmReveal);
           const id=field("readingId"),reserved=store.reserveReading(user,id);
-          if(!reserved.runId)return json(reserved.reading,reserved.reading.state==="generating"?202:200);
+          if(!reserved.runId)return json(hideLockedReadingCards(reserved.reading),reserved.reading.state==="generating"?202:200);
           try{const project=reserved.reading.projectId ? store.project(user,reserved.reading.projectId) : undefined;return json(store.completeReading(user,id,reserved.runId,await provider.generatePaidMain(reserved.reading,false,project)));}
           catch(error){store.releaseReading(user,id,reserved.runId);throw error;}
         }

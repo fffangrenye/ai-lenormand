@@ -9,7 +9,7 @@ import { BookOpen, Check, ChevronDown, Copy, Menu, Pencil, Plus, Sparkles, Trash
 import { trackAnalyticsEvent } from "@/components/AnalyticsTracker";
 import { getLenormandCardImagePath, preloadLenormandCardImages } from "@/lib/lenormand-cards";
 import { useCardSpreadLongPressSave } from "@/lib/use-card-spread-save";
-import { paidOnlineSiteEnabled, paidLocalAIEnabled, paidSiteEnabled, paidSiteRequest, restorePaidSiteSession } from "@/lib/paid-local/site-bridge";
+import { paidOnlineSiteEnabled, paidLocalAIEnabled, paidRevealConfirmationEnabled, paidSiteEnabled, paidSiteRequest, restorePaidSiteSession } from "@/lib/paid-local/site-bridge";
 import { getDeepSpread } from "@/lib/deep-spreads";
 import { SpreadLayout } from "@/components/deep/SpreadLayout";
 import { AIGeneratedLabel, ServiceNotice } from "@/components/ServiceNotice";
@@ -568,6 +568,8 @@ function QuotaNotice({ quota, message, readingId }: { quota: DeepQuota | null; m
 }
 
 function ReadingChapter({ reading, onUnlock, unlocking = false }: { reading: ReadingWithCards; onUnlock?: () => Promise<void>; unlocking?: boolean }) {
+  const cardsLocked = paidRevealConfirmationEnabled && reading.status !== "completed";
+  const spread = getDeepSpread(reading.spreadType);
   const paragraphs = reading.interpretation.split("\n\n").filter(Boolean);
   const [copyState, setCopyState] = useState<"idle" | "current" | "recent" | "failed">("idle");
   const [unlockError, setUnlockError] = useState("");
@@ -616,15 +618,17 @@ function ReadingChapter({ reading, onUnlock, unlocking = false }: { reading: Rea
       <p className="text-[12px] uppercase tracking-[0.17em] text-ink/36">{formatProjectDate(reading.createdAt)}</p>
       <h2 className="mt-4 whitespace-pre-wrap font-serif text-[27px] leading-relaxed text-ink sm:text-[32px]">{reading.question}</h2>
       <div className="mt-3 flex items-center justify-between gap-3">
-        <p className="text-sm leading-6 text-clay/65">{getDeepSpread(reading.spreadType).name}</p>
+        <p className="text-sm leading-6 text-clay/65">{spread.name}</p>
         <span className="shrink-0 rounded-full border border-ink/10 bg-ivory/70 px-3 py-1 text-[11px] uppercase tracking-[0.12em] text-ink/44">
-          {paidSiteEnabled ? reading.status === "completed" ? isLocalRealAI ? paidOnlineSiteEnabled ? "AI 生成" : "AI 生成 · 本地测试" : "AI 生成 · 本地模拟预览" : "原牌已保存" : isVerifiedRuleReading ? `Rule-based / ${reading.ruleEngineVersion}` : "AI 生成"}
+          {paidSiteEnabled ? reading.status === "completed" ? isLocalRealAI ? paidOnlineSiteEnabled ? "AI 生成" : "AI 生成 · 本地测试" : "AI 生成 · 本地模拟预览" : cardsLocked ? "牌面已锁定" : "原牌已保存" : isVerifiedRuleReading ? `Rule-based / ${reading.ruleEngineVersion}` : "AI 生成"}
         </span>
       </div>
 
-      <div {...cardSaveHandlers} className="mt-7 pb-2"><SpreadLayout spreadId={reading.spreadType} cards={reading.cards} choices={reading.choices} /></div>
+      <div {...(cardsLocked ? {} : cardSaveHandlers)} className="mt-7 pb-2">
+        <SpreadLayout spreadId={spread.id} cards={cardsLocked ? [] : reading.cards} pendingCount={cardsLocked ? spread.positions.length : 0} choices={reading.choices} />
+      </div>
 
-      <section className="mt-7">
+      {!cardsLocked && <section className="mt-7">
         <p className="text-[12px] uppercase tracking-[0.17em] text-clay/64">核心结论</p>
         <p className="mt-3 font-serif text-[22px] leading-8 text-ink">
           {paidSiteEnabled && reading.status === "drawing" ? "原问题和牌面已保存。解锁后可查看完整主解读，并获得 2 次追问。" : reading.status === "failed"
@@ -635,7 +639,7 @@ function ReadingChapter({ reading, onUnlock, unlocking = false }: { reading: Rea
               ? paidSiteEnabled && !paidLocalAIEnabled && !paidOnlineSiteEnabled ? "正在生成本地模拟解读，请稍候。" : "正在生成真实 AI 解读，请稍候。"
               : reading.coreConclusion}
         </p>
-      </section>
+      </section>}
 
       {reading.status === "completed" ? (
         <section className="mt-7 space-y-4 text-[16px] leading-8 text-ink/72">
@@ -648,13 +652,13 @@ function ReadingChapter({ reading, onUnlock, unlocking = false }: { reading: Rea
 
       {paidSiteEnabled && reading.status !== "completed" ? (
         <section className="mt-7 rounded-[6px] border border-clay/14 bg-[#FFFDF8]/72 p-4">
-          <p className="font-serif text-[20px] leading-7 text-ink">解锁本次深度解读</p>
-          <p className="mt-3 text-[14px] leading-6 text-ink/58">使用 1 花瓣，包含完整解读与 2 次追问。</p>
-          <Link prefetch={false} href={`/recharge?readingId=${encodeURIComponent(reading.id)}`} className="mt-3 inline-flex min-h-11 items-center text-sm text-[#6E2638] underline underline-offset-4">充值并返回本问题</Link>
+          <p className="font-serif text-[20px] leading-7 text-ink">{cardsLocked ? "牌已选好，等你翻开" : "解锁本次深度解读"}</p>
+          <p className="mt-3 text-[14px] leading-6 text-ink/58">{cardsLocked ? "使用 1 花瓣，揭晓这组牌面、完整解读和 2 次追问。解读失败会退回花瓣，可用同一组牌重试。" : "使用 1 花瓣，包含完整解读与 2 次追问。"}</p>
+          <Link prefetch={false} href={`/recharge?readingId=${encodeURIComponent(reading.id)}`} className="mt-3 inline-flex min-h-11 items-center text-sm text-[#6E2638] underline underline-offset-4">{cardsLocked ? "补充花瓣后回来继续" : "充值并返回本问题"}</Link>
           <button disabled={unlocking || reading.status === "generating"} onClick={() => {
             setUnlockError("");
             void onUnlock?.().catch((error: unknown) => setUnlockError(error instanceof Error ? error.message : "解读暂未完成，请重试。"));
-          }} className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[#6E2638] text-[13px] text-[#FFF9F2] disabled:opacity-50"><Sparkles size={15} />{unlocking || reading.status === "generating" ? "正在解读…" : "解锁深度解读 · 1 花瓣"}</button>
+          }} className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[#6E2638] text-[13px] text-[#FFF9F2] disabled:opacity-50"><Sparkles size={15} />{unlocking || reading.status === "generating" ? "正在解读…" : cardsLocked ? "使用 1 花瓣，翻牌并解读" : "解锁深度解读 · 1 花瓣"}</button>
           {unlockError ? <p role="status" className="mt-3 text-[13px] leading-6 text-[#8E4D4A]">{unlockError}</p> : null}
         </section>
       ) : reading.status === "quota_limited" || reading.status === "failed" ? (
@@ -759,7 +763,7 @@ function ReadingWorkspace({ project, readings, onReadingsChange, onLoadEarlier, 
   async function unlock(id: string) {
     setNotice("");
     setGeneratingId(id);
-    try { await generateDeepReading(id); }
+    try { await generateDeepReading(id, { confirmReveal: true }); }
     finally { setGeneratingId(null); onReadingsChange(); }
   }
   return <div className="flex min-h-0 flex-1 flex-col">

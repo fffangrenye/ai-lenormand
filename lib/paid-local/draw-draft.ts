@@ -29,6 +29,6 @@ export function recoverDrawTokens(session:PaidDrawSession,draft:Draft|null):stri
   const acknowledged=saved.slice(draft.baseTokens.length);
   if(acknowledged.some((token,index)=>draft.tokens[index]!==token))return [];
   const tokens=draft.tokens.slice(acknowledged.length);
-  if(tokens.length+session.selected.length>getDeepSpread(session.spread).positions.length || tokens.some(token=>!session.deck.some(card=>card.token===token&&!card.picked)))return [];
+  if(tokens.length+(session.selectedTokens?.length ?? session.selected.length)>getDeepSpread(session.spread).positions.length || tokens.some(token=>!session.deck.some(card=>card.token===token&&!card.picked)))return [];
   return tokens;
 }

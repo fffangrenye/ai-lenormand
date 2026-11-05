@@ -5,6 +5,7 @@ import type { PaidOverview, PaidReading, PaidSummary } from "./types";
 
 export const paidLocalSiteEnabled = process.env.NEXT_PUBLIC_PAID_LOCAL_MODE === "1";
 export const paidOnlineSiteEnabled = process.env.NEXT_PUBLIC_PAID_ONLINE_MODE === "1";
+export const paidRevealConfirmationEnabled = paidOnlineSiteEnabled || (paidLocalSiteEnabled && process.env.NEXT_PUBLIC_PAID_LOCAL_REVEAL_PREVIEW === "1");
 export const paidSiteEnabled = paidLocalSiteEnabled || paidOnlineSiteEnabled;
 export const paidLocalAIEnabled = paidLocalSiteEnabled && process.env.NEXT_PUBLIC_PAID_LOCAL_AI === "1";
 const sessionKey = "flora-paid-local:site-session";

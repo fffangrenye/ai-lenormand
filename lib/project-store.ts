@@ -1667,8 +1667,8 @@ export async function saveReading(input: { projectId: string; spreadType: Spread
   };
 }
 
-export async function generateDeepReading(readingId: string) {
-  if (paidSiteEnabled) { await paidSiteRequest<PaidReading>("unlock", { readingId }); return; }
+export async function generateDeepReading(readingId: string, options?: { confirmReveal: true }) {
+  if (paidSiteEnabled) { await paidSiteRequest<PaidReading>("unlock", { readingId, ...options }); return; }
   const existingReading = await loadReadingWithCards(readingId);
   if (!existingReading || existingReading.status !== "drawing") return;
 
