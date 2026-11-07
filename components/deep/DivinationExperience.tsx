@@ -151,18 +151,47 @@ export function DivinationExperience({ projectId, historyCount, ruleEngineTrialA
       }
     } finally { picking.current = false; setBusy(false); }
   }
-  function pick(token:string) {
-    if(!session||picking.current||queuedRef.current.includes(token)||session.deck.find(card=>card.token===token)?.picked)return;
-    const owner=getPaidSiteSession()?.userId||"";
-    if(!owner||owner!==draftOwner.current){setError("登录账号已变化，请重新进入这次抽牌。");return;}
-    const tokens=[...queuedRef.current,token];
-    if(savedPickCount(session)+tokens.length>spread.positions.length)return;
+  function queuePicks(value: PaidDrawSession, tokens: string[]) {
+    const owner = getPaidSiteSession()?.userId || "";
+    if (!owner || owner !== draftOwner.current) {
+      setError("登录账号已变化，请重新进入这次抽牌。");
+      return;
+    }
+    const total = savedPickCount(value) + tokens.length;
+    if (total > spread.positions.length) return;
     setError("");
-    const persisted=saveDrawDraft(owner,session,tokens);
-    updateQueued(tokens);setPendingQueuedCount(tokens.length);
+    const persisted = saveDrawDraft(owner, value, tokens);
+    updateQueued(tokens);
+    setPendingQueuedCount(tokens.length);
     // If browser storage is unavailable, immediately sync to the server rather
     // than claim that an in-memory selection survives a refresh.
-    if(!persisted||savedPickCount(session)+tokens.length===spread.positions.length)void syncPicks(session,tokens);
+    if (!persisted || total === spread.positions.length) void syncPicks(value, tokens);
+  }
+  function pick(token: string) {
+    if (busy || picking.current || session?.state !== "picking" || queuedRef.current.includes(token)) return;
+    if (!session.deck.some((card) => card.token === token && !card.picked)) return;
+    queuePicks(session, [...queuedRef.current, token]);
+  }
+  function autoPickRemaining() {
+    if (busy || picking.current || session?.state !== "picking") return;
+    const tokens = [...queuedRef.current];
+    const remaining = spread.positions.length - savedPickCount(session) - tokens.length;
+    if (remaining <= 0) return;
+    const pool = session.deck.filter((card) => !card.picked && !tokens.includes(card.token));
+    if (pool.length < remaining) return;
+
+    const sample = new Uint32Array(1);
+    const sampleRange = 2 ** 32;
+    for (let index = 0; index < remaining; index++) {
+      // Reject the uneven tail so each card in the remaining pool has equal odds.
+      const limit = sampleRange - (sampleRange % pool.length);
+      do {
+        crypto.getRandomValues(sample);
+      } while (sample[0] >= limit);
+      const [card] = pool.splice(sample[0] % pool.length, 1);
+      tokens.push(card.token);
+    }
+    queuePicks(session, tokens);
   }
   async function resume(value:PaidDrawSession){
     draftOwner.current=getPaidSiteSession()?.userId||"";
@@ -184,7 +213,10 @@ export function DivinationExperience({ projectId, historyCount, ruleEngineTrialA
     <div className="mt-6 grid items-center gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-10">
       <div><SpreadLayout spreadId={spread.id} cards={visibleCards} pendingCount={selectedCount - visibleCards.length} choices={session.choices} compact /><p className="mt-3 text-center text-xs leading-6 text-ink/45" aria-live="polite">{busy ? "牌正在归位…" : `下一张 → ${spread.positions[selectedCount]?.label || "牌面已完整"}`}</p></div>
       <div className="min-w-0"><CardFan session={{...session,deck:session.deck.map(card=>({...card,picked:card.picked||queued.includes(card.token)}))}} busy={busy} onPick={pick} />
-        {!selectedCount && <button type="button" disabled={busy} onClick={() => setPhase("shuffle")} className="mx-auto mt-5 flex min-h-10 items-center gap-2 text-xs text-[#6E2638]"><RotateCcw size={14} />再洗一次</button>}
+        {selectedCount < spread.positions.length && <div className="mt-5 flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
+          <button type="button" disabled={busy} onClick={autoPickRemaining} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#6E2638]/25 px-5 text-sm text-[#6E2638] hover:bg-[#6E2638]/5 disabled:opacity-50"><Sparkles size={15} aria-hidden="true" />自动选牌</button>
+          {!selectedCount && <button type="button" disabled={busy} onClick={() => setPhase("shuffle")} className="inline-flex min-h-11 items-center gap-2 text-xs text-[#6E2638]"><RotateCcw size={14} />再洗一次</button>}
+        </div>}
         {selectedCount===spread.positions.length&&!busy&&<button type="button" onClick={()=>void syncPicks(session,queuedRef.current)} className="mx-auto mt-5 flex min-h-11 items-center rounded-full bg-[#6E2638] px-6 text-sm text-[#FFF9F2]">{paidRevealConfirmationEnabled ? "保存选好的牌" : "同步并开始解读"}</button>}
         <p className="mt-4 text-center text-[11px] leading-5 text-ink/40">{paidRevealConfirmationEnabled ? "选牌免费。选满后可使用 1 花瓣翻牌并解读，含 2 次追问。" : "选择会在本机暂存，选满后统一翻牌并解读，使用 1 花瓣；解读失败不扣花瓣。"}</p>
       </div>
