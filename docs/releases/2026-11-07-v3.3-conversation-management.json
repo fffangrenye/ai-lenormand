@@ -1,0 +1,201 @@
+{
+  "productVersion": "3.3",
+  "releaseName": "Flora V3.3 · 自动选牌、对话管理与长期记忆",
+  "sourceTag": "flora-v3.3-complete-20261107",
+  "sourceCommit": "629de54980d1beef450283ef5d05a42301579b80",
+  "branch": "codex/v3.3-auto-pick-20261107",
+  "environment": "production",
+  "domain": "https://floralenormand.site",
+  "sourceCheckpoint": {
+    "tag": "flora-v3.3-20261107",
+    "deployed": false
+  },
+  "features": [
+    "深度解读自动随机选牌，保留已手选的牌",
+    "单条对话移动和确认删除",
+    "我的主页内的 30 天对话回收站",
+    "项目创建与后续编辑共用长期记忆"
+  ],
+  "workers": [
+    {
+      "name": "flora-domain-info",
+      "config": "wrangler.flora-v3-site.jsonc",
+      "version": "080d5713-1061-4ecc-9e6a-e6796ce0eb18",
+      "recordedAt": "2026-11-07T14:12:39.954Z",
+      "rollback": {
+        "deploymentId": "3db7416d-0aab-4760-8f2b-e25ffbbe0457",
+        "createdAt": "2026-11-05T09:40:09.033289Z",
+        "versions": [
+          {
+            "version": "88c9e729-fa93-4c09-b605-ab7dec3435d1",
+            "percentage": 100
+          }
+        ]
+      },
+      "checks": [
+        {
+          "command": "node scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 808
+        },
+        {
+          "command": "node scripts/secure-cloudflare-build.cjs --flora-v3",
+          "passed": true,
+          "durationMs": 86663
+        },
+        {
+          "command": "node scripts/scan-cloudflare-artifacts.cjs",
+          "passed": true,
+          "durationMs": 4473
+        },
+        {
+          "command": "node scripts/test-public-assets.cjs",
+          "passed": true,
+          "durationMs": 2190
+        },
+        {
+          "command": "node scripts/test-site-runtime.cjs",
+          "passed": true,
+          "durationMs": 6673
+        },
+        {
+          "command": "node scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 913
+        }
+      ]
+    },
+    {
+      "name": "flora-v3-api",
+      "config": "wrangler.flora-v3-api.jsonc",
+      "version": "0439469d-a73c-4caa-ac79-10bc0d1cc97e",
+      "recordedAt": "2026-11-07T14:10:31.248Z",
+      "rollback": {
+        "deploymentId": "6ca8bc1e-5c6e-4246-b8b1-f73b3407fecb",
+        "createdAt": "2026-11-07T14:08:53.612421Z",
+        "versions": [
+          {
+            "version": "0b861797-775d-4da8-b229-7af54cc50d59",
+            "percentage": 100
+          }
+        ]
+      },
+      "checks": [
+        {
+          "command": "node scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 831
+        },
+        {
+          "command": "node node_modules/wrangler/bin/wrangler.js deploy --config wrangler.flora-v3-api.jsonc --dry-run --outdir .local-paid/cloud-api-build",
+          "passed": true,
+          "durationMs": 2215
+        },
+        {
+          "command": "node scripts/test-cloud-ledger.cjs",
+          "passed": true,
+          "durationMs": 1234
+        },
+        {
+          "command": "node scripts/test-cloud-security.cjs",
+          "passed": true,
+          "durationMs": 1307
+        },
+        {
+          "command": "node scripts/test-cloud-legacy-restore.cjs",
+          "passed": true,
+          "durationMs": 1096
+        },
+        {
+          "command": "node scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 837
+        }
+      ]
+    }
+  ],
+  "activeDeployments": [
+    {
+      "name": "flora-domain-info",
+      "deploymentId": "24317e8d-50e0-4221-b76e-b05836ec9be5",
+      "version": "080d5713-1061-4ecc-9e6a-e6796ce0eb18",
+      "percentage": 100
+    },
+    {
+      "name": "flora-v3-api",
+      "deploymentId": "6ca86906-9ef1-4b10-93c3-4138bafdc642",
+      "version": "0439469d-a73c-4caa-ac79-10bc0d1cc97e",
+      "percentage": 100
+    }
+  ],
+  "liveVerification": {
+    "checkedAt": "2026-11-07T14:12:55.921Z",
+    "checks": [
+      {
+        "route": "/",
+        "status": 200
+      },
+      {
+        "route": "/login?returnTo=%2Fdeep",
+        "status": 200
+      },
+      {
+        "route": "/deep",
+        "status": 200
+      },
+      {
+        "route": "/profile",
+        "status": 200
+      },
+      {
+        "route": "/daily",
+        "status": 200
+      },
+      {
+        "route": "/yes-no",
+        "status": 200
+      },
+      {
+        "route": "/api/flora/summary",
+        "status": 401
+      },
+      {
+        "route": "/api/flora/reading-trash",
+        "status": 401
+      }
+    ],
+    "assetChecks": [
+      {
+        "label": "对话回收站",
+        "route": "/_next/static/chunks/1625-af71b7b58f073ab9.js",
+        "digest": "ce355fc3115630250cc6e09810d38292fc87579c9699ac249cc2f88861b46b2e"
+      },
+      {
+        "label": "自动选牌",
+        "route": "/_next/static/chunks/3477-471dfe366f1d6a36.js",
+        "digest": "43ee841a5dcc5c35958f4a93e4e60d6a56520f521c18dd301056c5f968ee979d"
+      },
+      {
+        "label": "长期记忆",
+        "route": "/_next/static/chunks/3477-471dfe366f1d6a36.js",
+        "digest": "43ee841a5dcc5c35958f4a93e4e60d6a56520f521c18dd301056c5f968ee979d"
+      }
+    ]
+  },
+  "localVerification": {
+    "focusedTestsPassed": 7,
+    "cloudApiRuntime": true,
+    "cloudBackupRuntime": true
+  },
+  "rollback": {
+    "frontendVersion": "88c9e729-fa93-4c09-b605-ab7dec3435d1",
+    "compatibleApiVersion": "0b861797-775d-4da8-b229-7af54cc50d59",
+    "compatibleApiSourceCommit": "ea67cc2ebae45f5bda8c1208fe11f236bd93da54",
+    "sequence": [
+      "先将前端回滚到旧版，移除新版入口",
+      "如需回滚 API，使用兼容版本，继续隐藏回收站内的记录"
+    ],
+    "database": "保留版本 11 的数据库结构与已记录的删除时间。API 不可回滚到不识别删除时间的 V3.2 版本。",
+    "retention": "超过 30 天后无法从回收站恢复，数据库当前保留软删除记录。"
+  }
+}
