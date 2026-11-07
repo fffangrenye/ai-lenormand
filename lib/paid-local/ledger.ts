@@ -9,7 +9,9 @@ import type { DailyCheckInResult, DailyCheckInState, DailyFortuneEntry } from ".
 import { LocalPaidError } from "./guard";
 import { LocalRedemptions } from "./redemption-store";
 import {restoreLegacyHistory,type LegacySnapshot} from "./legacy-restore";
-import type { PaidCard, PaidDrawSession, PaidOverview, PaidProject, PaidReading, PaidResult, PaidSpread, PaidLedgerPage } from "./types";
+import type { PaidCard, PaidDrawSession, PaidOverview, PaidProject, PaidReading, PaidResult, PaidSpread, PaidLedgerPage, ReadingTrashPage } from "./types";
+
+const readingTrashDurationMs = 30 * 24 * 60 * 60 * 1000;
 
 type Row = Record<string, string | number | null>;
 type ReadingRelations = { follows: Row[]; projectId?: string; completedAt?: string };
@@ -17,8 +19,10 @@ type ReadingRelations = { follows: Row[]; projectId?: string; completedAt?: stri
 export class PaidLedger {
   private initializedUsers = new Map<string, string>();
   private checkedProjectLinks = new Set<string>();
+  protected readingManagementEnabled = false;
   readonly redemptions: LocalRedemptions;
-  constructor(protected db: DatabaseSync, private transaction: <T>(work: () => T) => T, protected clock: () => number = Date.now, codeConfig?: { key: () => string; prefix: string }) {
+  constructor(protected db: DatabaseSync, private transaction: <T>(work: () => T) => T, protected clock: () => number = Date.now, codeConfig?: { key: () => string; prefix: string }, readingManagementEnabled = false) {
+    this.readingManagementEnabled = readingManagementEnabled;
     this.redemptions = new LocalRedemptions(this.port(), codeConfig);
   }
   protected port() { return { one:(sql: string,...params: SQLInputValue[])=>this.one(sql,...params), all:(sql: string,...params: SQLInputValue[])=>this.all(sql,...params), run:(sql: string,...params: SQLInputValue[])=>this.run(sql,...params), tx:<T>(action:()=>T)=>this.tx(action), clock:()=>this.clock(), grant:(user: string,count: number,source: string,event: string,reason?: string)=>this.grant(user,count,source,event,reason), ledger:(user: string,batch: string,event: string,kind: string,available: number,reserved: number,consumed: number,reason: string)=>this.ledger(user,batch,event,kind,available,reserved,consumed,reason) }; }
@@ -161,14 +165,93 @@ export class PaidLedger {
   }
   touchProject(userId: string, id: string) { const row = this.ownedProject(userId, id); if(this.clock()-Date.parse(String(row.last_opened_at))>=300_000)this.run("UPDATE local_projects SET last_opened_at=? WHERE id=?", this.now(), id); }
   archiveProject(userId: string, id: string) { this.ownedProject(userId, id); this.run("UPDATE local_projects SET archived_at=? WHERE id=?", this.now(), id); }
+  private visibleReadingFilter(prefix = "") {
+    return this.readingManagementEnabled ? " AND " + prefix + "deleted_at IS NULL" : "";
+  }
+  private assertReadingManagement() {
+    if (!this.readingManagementEnabled) throw new LocalPaidError("NOT_FOUND", "对话管理尚未开启。", 404);
+  }
+  private assertReadingIdle(reading: Row) {
+    const busy = reading.state === "generating" || this.one("SELECT id FROM paid_follow_ups WHERE reading_id=? AND state='reserved' LIMIT 1", reading.id);
+    if (busy) throw new LocalPaidError("READING_BUSY", "正在生成回复，等这次回复完成后再移动或删除。", 409);
+  }
+  private readingProjectId(readingId: string) {
+    return this.one("SELECT project_id FROM local_reading_projects WHERE reading_id=?", readingId)?.project_id as string | undefined;
+  }
+  private relinkReading(userId: string, readingId: string, previousProjectId: string | undefined, targetProjectId: string) {
+    if (previousProjectId === targetProjectId) return;
+    this.run("INSERT INTO local_reading_projects(reading_id,project_id) VALUES (?,?) ON CONFLICT(reading_id) DO UPDATE SET project_id=excluded.project_id", readingId, targetProjectId);
+    if (previousProjectId) this.run("UPDATE paid_draw_sessions SET project_id=? WHERE user_id=? AND project_id=? AND state='completed' AND reading_id=?", targetProjectId, userId, previousProjectId, readingId);
+  }
+  moveReading(userId: string, readingId: string, fromProjectId: string, targetProjectId: string) {
+    this.assertReadingManagement();
+    this.recoverExpired(userId);
+    return this.tx(() => {
+      const reading = this.owned(userId, readingId);
+      const currentProjectId = this.readingProjectId(readingId);
+      this.ownedProject(userId, targetProjectId);
+      if (currentProjectId === targetProjectId) return { id: readingId, projectId: targetProjectId };
+      if (currentProjectId !== fromProjectId) throw new LocalPaidError("READING_MOVED", "这条对话所在的项目已变化，请刷新。", 409);
+      this.ownedProject(userId, fromProjectId);
+      this.assertReadingIdle(reading);
+      this.relinkReading(userId, readingId, currentProjectId, targetProjectId);
+      return { id: readingId, projectId: targetProjectId };
+    });
+  }
+  trashReading(userId: string, readingId: string, fromProjectId: string) {
+    this.assertReadingManagement();
+    this.recoverExpired(userId);
+    return this.tx(() => {
+      const reading = this.owned(userId, readingId, true);
+      if (this.readingProjectId(readingId) !== fromProjectId) throw new LocalPaidError("READING_MOVED", "这条对话所在的项目已变化，请刷新。", 409);
+      this.ownedProject(userId, fromProjectId);
+      if (!reading.deleted_at) {
+        this.assertReadingIdle(reading);
+        this.run("UPDATE paid_readings SET deleted_at=? WHERE id=? AND user_id=?", this.now(), readingId, userId);
+      }
+      return { id: readingId };
+    });
+  }
+  readingTrash(userId: string, cursor = ""): ReadingTrashPage {
+    this.assertReadingManagement();
+    const before = this.readCursor(cursor);
+    const cutoff = new Date(this.clock() - readingTrashDurationMs).toISOString();
+    const rows = this.all("SELECT r.id,r.question,r.deleted_at,p.id project_id,p.title project_title FROM paid_readings r LEFT JOIN local_reading_projects l ON l.reading_id=r.id LEFT JOIN local_projects p ON p.id=l.project_id AND p.user_id=r.user_id WHERE r.user_id=? AND r.deleted_at>?" + (before ? " AND (r.deleted_at,r.id)<(?,?)" : "") + " ORDER BY r.deleted_at DESC,r.id DESC LIMIT 21", userId, cutoff, ...(before ? [before.time, before.id] : []));
+    const items = rows.slice(0, 20).map(row => ({
+      id: String(row.id), question: String(row.question), projectId: row.project_id as string | null, projectTitle: row.project_title as string | null,
+      deletedAt: String(row.deleted_at), expiresAt: new Date(Date.parse(String(row.deleted_at)) + readingTrashDurationMs).toISOString()
+    }));
+    const last = items.at(-1);
+    return { items, nextCursor: rows.length > 20 && last ? last.deletedAt + "|" + last.id : null };
+  }
+  restoreReading(userId: string, readingId: string, targetProjectId?: string) {
+    this.assertReadingManagement();
+    return this.tx(() => {
+      const reading = this.owned(userId, readingId, true);
+      const currentProjectId = this.readingProjectId(readingId);
+      if (!reading.deleted_at) {
+        if (!currentProjectId) throw new LocalPaidError("NOT_FOUND", "找不到这条对话所在的项目。", 404);
+        return { id: readingId, projectId: currentProjectId };
+      }
+      if (Date.parse(String(reading.deleted_at)) + readingTrashDurationMs <= this.clock()) {
+        throw new LocalPaidError("TRASH_EXPIRED", "这条对话已超过 30 天恢复期限。", 410);
+      }
+      const destination = targetProjectId || currentProjectId;
+      if (!destination) throw new LocalPaidError("PROJECT_REQUIRED", "请选择要恢复到的项目。", 409);
+      this.ownedProject(userId, destination);
+      this.relinkReading(userId, readingId, currentProjectId, destination);
+      this.run("UPDATE paid_readings SET deleted_at=NULL WHERE id=? AND user_id=?", readingId, userId);
+      return { id: readingId, projectId: destination };
+    });
+  }
   projectReadings(userId: string, projectId: string) {
     this.ownedProject(userId, projectId); this.recoverExpired(userId);
-    return this.all("SELECT p.* FROM paid_readings p JOIN local_reading_projects l ON l.reading_id=p.id WHERE p.user_id=? AND l.project_id=? ORDER BY p.created_at DESC,p.id DESC", userId, projectId).map((row) => this.serialize(row));
+    return this.all("SELECT p.* FROM paid_readings p JOIN local_reading_projects l ON l.reading_id=p.id WHERE p.user_id=? AND l.project_id=?" + this.visibleReadingFilter("p.") + " ORDER BY p.created_at DESC,p.id DESC", userId, projectId).map((row) => this.serialize(row));
   }
   projectReadingPage(userId: string, projectId: string, cursor = "") {
     this.ownedProject(userId, projectId); this.recoverExpired(userId);
     const before = this.readCursor(cursor);
-    const rows = this.all("SELECT p.*,l.project_id FROM paid_readings p JOIN local_reading_projects l ON l.reading_id=p.id WHERE p.user_id=? AND l.project_id=?" + (before ? " AND (p.created_at,p.id)<(?,?)" : "") + " ORDER BY p.created_at DESC,p.id DESC LIMIT 21", userId, projectId, ...(before ? [before.time, before.id] : []));
+    const rows = this.all("SELECT p.*,l.project_id FROM paid_readings p JOIN local_reading_projects l ON l.reading_id=p.id WHERE p.user_id=? AND l.project_id=?" + this.visibleReadingFilter("p.") + (before ? " AND (p.created_at,p.id)<(?,?)" : "") + " ORDER BY p.created_at DESC,p.id DESC LIMIT 21", userId, projectId, ...(before ? [before.time, before.id] : []));
     return this.readingPage(rows, false);
   }
   private readCursor(cursor: string) {
@@ -206,7 +289,7 @@ export class PaidLedger {
     const before = this.readCursor(cursor);
     if (!["all", "7", "30"].includes(days)) throw new LocalPaidError("INVALID_PERIOD", "请选择有效时间范围。");
     const since = days === "all" ? "" : new Date(this.clock() - Number(days) * 86400000).toISOString();
-    const rows = this.all("SELECT p.id,p.question,p.spread,p.state,p.created_at,l.project_id,json_type(p.result_json,'$.legacy')='object' is_legacy,(SELECT count(*) FROM paid_follow_ups f WHERE f.reading_id=p.id AND f.state IN ('reserved','completed')) follow_count FROM paid_readings p LEFT JOIN local_reading_projects l ON l.reading_id=p.id WHERE p.user_id=? AND p.state='completed'" + (since ? " AND p.created_at>=?" : "") + (before ? " AND (p.created_at,p.id)<(?,?)" : "") + " ORDER BY p.created_at DESC,p.id DESC LIMIT 21", userId, ...(since ? [since] : []), ...(before ? [before.time, before.id] : []));
+    const rows = this.all("SELECT p.id,p.question,p.spread,p.state,p.created_at,l.project_id,json_type(p.result_json,'$.legacy')='object' is_legacy,(SELECT count(*) FROM paid_follow_ups f WHERE f.reading_id=p.id AND f.state IN ('reserved','completed')) follow_count FROM paid_readings p LEFT JOIN local_reading_projects l ON l.reading_id=p.id WHERE p.user_id=? AND p.state='completed'" + this.visibleReadingFilter("p.") + (since ? " AND p.created_at>=?" : "") + (before ? " AND (p.created_at,p.id)<(?,?)" : "") + " ORDER BY p.created_at DESC,p.id DESC LIMIT 21", userId, ...(since ? [since] : []), ...(before ? [before.time, before.id] : []));
     return this.readingPage(rows, true);
   }
   summary(userId: string) {
@@ -236,8 +319,8 @@ export class PaidLedger {
     const ledger = section === "ledger" ? this.ledgerPage(userId, "", days) : null;
     return {...summary, readings:usage?.items || [],historyCursor:usage?.nextCursor || null,ledger:ledger?.items || [],ledgerCursor:ledger?.nextCursor || null};
   }
-  protected owned(userId: string, readingId: string) {
-    const row = this.one("SELECT * FROM paid_readings WHERE id=? AND user_id=?", readingId, userId);
+  protected owned(userId: string, readingId: string, includeTrash = false) {
+    const row = this.one("SELECT * FROM paid_readings WHERE id=? AND user_id=?" + (includeTrash ? "" : this.visibleReadingFilter()), readingId, userId);
     if (!row) throw new LocalPaidError("NOT_FOUND", "找不到这条解读。", 404);
     return row;
   }
@@ -268,7 +351,7 @@ export class PaidLedger {
     return {
       user: { id: userId, label: String(user.label), kind: String(user.kind) },
       balance: { available: Number(balance.available), reserved: Number(balance.reserved), consumed: Number(balance.consumed) },
-      readings: this.all("SELECT * FROM paid_readings WHERE user_id=? ORDER BY created_at DESC,id DESC", userId).map((row) => this.serialize(row)),
+      readings: this.all("SELECT * FROM paid_readings WHERE user_id=?" + this.visibleReadingFilter() + " ORDER BY created_at DESC,id DESC", userId).map((row) => this.serialize(row)),
       ledger: this.all("SELECT * FROM credit_ledger WHERE user_id=? ORDER BY created_at DESC,rowid DESC LIMIT 200", userId).map((row) => ({
         id: String(row.id), kind: String(row.kind), availableDelta: Number(row.available_delta), reservedDelta: Number(row.reserved_delta), consumedDelta: Number(row.consumed_delta), reason: String(row.reason), createdAt: String(row.created_at)
       }))
@@ -285,6 +368,7 @@ export class PaidLedger {
       if (input.projectId) this.ownedProject(userId, input.projectId);
       const previous = this.one("SELECT * FROM paid_readings WHERE user_id=? AND request_key=?", userId, input.requestKey);
       if (previous) {
+        if (this.readingManagementEnabled && previous.deleted_at) throw new LocalPaidError("NOT_FOUND", "这条对话已移出项目记录。", 404);
         const previousProject = this.one("SELECT project_id FROM local_reading_projects WHERE reading_id=?", previous.id)?.project_id;
         if (previous.question !== question || previous.spread !== input.spread || String(previous.choices_json || "[]") !== JSON.stringify(choices) || (input.projectId && previousProject !== input.projectId)) throw new LocalPaidError("REQUEST_CONFLICT", "同一请求不能变更问题、牌阵或项目。", 409);
         return this.serialize(previous);
@@ -314,6 +398,7 @@ export class PaidLedger {
     const row = this.one("SELECT * FROM paid_draw_sessions WHERE id=? AND user_id=?", id, userId);
     if (!row) throw new LocalPaidError("NOT_FOUND", "找不到这次抽牌。", 404);
     this.ownedProject(userId, String(row.project_id));
+    if (this.readingManagementEnabled && row.reading_id) this.owned(userId, String(row.reading_id));
     return row;
   }
   protected serializeDraw(row: Row): PaidDrawSession {
@@ -344,6 +429,7 @@ export class PaidLedger {
       this.ownedProject(userId, input.projectId);
       const previous = this.one("SELECT * FROM paid_draw_sessions WHERE user_id=? AND request_key=?", userId, input.requestKey);
       if (previous) {
+        if (this.readingManagementEnabled && previous.reading_id) this.owned(userId, String(previous.reading_id));
         if (previous.question !== question || previous.spread !== input.spread || previous.project_id !== input.projectId || previous.choices_json !== JSON.stringify(choices)) throw new LocalPaidError("REQUEST_CONFLICT", "请勿改变同一次洗牌的问题或牌阵。", 409);
         return this.serializeDraw(previous);
       }

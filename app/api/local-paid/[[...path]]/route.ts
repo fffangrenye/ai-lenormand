@@ -59,6 +59,7 @@ export async function GET(request: NextRequest, { params }: Context) {
     }
     if (segments.length === 1 && segments[0] === "summary") return json(store.summary(userId));
     if (segments.length === 1 && segments[0] === "profile") return json(store.profileSection(userId,request.nextUrl.searchParams.get("section")||"usage",request.nextUrl.searchParams.get("days")||"all"));
+    if (segments.length === 1 && segments[0] === "reading-trash") return json(store.readingTrash(userId, request.nextUrl.searchParams.get("cursor") || ""));
     if (segments.length === 1 && segments[0] === "ledger") return json(store.ledgerPage(userId,request.nextUrl.searchParams.get("cursor")||"",request.nextUrl.searchParams.get("days")||"all"));
     if (segments.length === 1 && segments[0] === "daily-status") return json(store.dailyStatus(userId));
     if (segments.length === 1 && segments[0] === "usage") return json(store.usagePage(userId, request.nextUrl.searchParams.get("cursor") || "", request.nextUrl.searchParams.get("days") || "all"));
@@ -145,7 +146,7 @@ export async function POST(request: NextRequest, { params }: Context) {
       response.cookies.set(cookieName, "", { httpOnly: true, sameSite: "strict", path: "/api/local-paid", maxAge: 0 });
       return response;
     }
-    if (action === "projects") return json(store.saveProject(userId, { title: field("title"), background: field("background") }));
+    if (action === "projects") return json(store.saveProject(userId, { title: field("title"), background: field("background"), memorySummary: field("memorySummary") }));
     if (action === "project-default") return json(store.ensureDefaultProject(userId));
     if (action === "project-update") return json(store.saveProject(userId, {
       ...(typeof input.title === "string" ? { title: input.title } : {}),
@@ -153,6 +154,9 @@ export async function POST(request: NextRequest, { params }: Context) {
       ...(typeof input.memorySummary === "string" ? { memorySummary: input.memorySummary } : {})
     }, field("projectId")));
     if (action === "project-touch") { store.touchProject(userId, field("projectId")); return json({ ok: true }); }
+    if (action === "reading-trash") return json(store.trashReading(userId, field("readingId"), field("projectId")));
+    if (action === "reading-restore") return json(store.restoreReading(userId, field("readingId"), field("targetProjectId") || undefined));
+    if (action === "reading-move") return json(store.moveReading(userId, field("readingId"), field("projectId"), field("targetProjectId")));
     if (action === "project-remove") { store.archiveProject(userId, field("projectId")); return json({ ok: true }); }
     const choices = Array.isArray(input.choices) ? input.choices.filter((value): value is string => typeof value === "string") : undefined;
     if (action === "draw") return json(visibleReading(store.draw(userId, { question: field("question"), spread: field("spread") as PaidSpread, requestKey: field("requestKey"), projectId: field("projectId") || undefined, choices })));

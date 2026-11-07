@@ -17,6 +17,8 @@ async function req(action='',body,token='valid-owner-token-1234567890'){
 (async()=>{try{
   assert.equal((await mf.dispatchFetch('https://example.invalid/api/flora')).status,401);
   assert.equal((await req()).data.balance.available,1);assert.equal((await req()).data.balance.available,1);
+  assert.deepEqual((await req('reading-trash')).data.items,[]);
+  assert.equal((await req('reading-trash',{readingId:randomUUID(),projectId:randomUUID()})).status,404);
   assert.equal((await req('card-catalog')).data.packages.some(x=>x.ready),false);
   assert.equal((await req('test-credits',{requestKey:randomUUID()})).status,404);
   assert.equal((await req('payment-simulate',{mode:'success'})).status,404);

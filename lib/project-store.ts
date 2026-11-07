@@ -981,7 +981,7 @@ export async function loadProject(projectId: string) {
   return rows[0] ? mapRemoteProject(rows[0]) : null;
 }
 
-export function createProject(input: { title: string; background?: string }) {
+export function createProject(input: { title: string; background?: string; memorySummary?: string }) {
   const session = getSession();
   if (!session) throw new Error("Not signed in");
 
@@ -991,7 +991,7 @@ export function createProject(input: { title: string; background?: string }) {
     userEmail: session.email,
     title: input.title.trim().slice(0, 100),
     background: (input.background ?? "").trim(),
-    memorySummary: "",
+    memorySummary: (input.memorySummary ?? "").trim().slice(0, 2000),
     createdAt: timestamp,
     updatedAt: timestamp,
     lastOpenedAt: timestamp
@@ -1001,7 +1001,7 @@ export function createProject(input: { title: string; background?: string }) {
   return project;
 }
 
-export async function saveProject(input: { title: string; background?: string }) {
+export async function saveProject(input: { title: string; background?: string; memorySummary?: string }) {
   if (paidSiteEnabled) return paidSiteRequest<DeepProject>("projects", input);
   if (!canUseRemoteStore()) return createProject(input);
 
@@ -1016,7 +1016,7 @@ export async function saveProject(input: { title: string; background?: string })
       user_id: session.userId,
       title: input.title.trim().slice(0, 100),
       background: (input.background ?? "").trim(),
-      memory_summary: "",
+      memory_summary: (input.memorySummary ?? "").trim().slice(0, 2000),
       created_at: timestamp,
       updated_at: timestamp,
       last_opened_at: timestamp

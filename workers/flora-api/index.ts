@@ -7,6 +7,7 @@ import { hideLockedReadingCards, hideSelectedCards, requireRevealConfirmation } 
 import type { PaidSpread } from "../../lib/paid-local/types";
 import { schema } from "./schema";
 import { costIndexes } from "./cost-indexes";
+import { readingTrashMigration } from "../../lib/paid-local/reading-trash-migration";
 import { recoverPassword } from "./password-recovery";
 import { ensureTelemetrySchema, readDailyReport, recordSiteEvent, SITE_HOST, type SiteEvent } from "./telemetry";
 import {verifyRestoreJob} from "./legacy-maintenance";
@@ -17,7 +18,7 @@ import { verifyMaintenance } from "./maintenance";
 type Environment = {
   LEDGER: {idFromName(name:string):unknown;get(id:unknown):{fetch(request:Request):Promise<Response>}};
   SUPABASE_URL:string; SUPABASE_ANON_KEY:string; AI_KEY:string; AI_MODEL:string;
-  CODE_SIGNING_KEY:string; ADMIN_EMAILS:string; SALES_ENABLED?:string; TELEMETRY_ENABLED?:string;
+  CODE_SIGNING_KEY:string; ADMIN_EMAILS:string; SALES_ENABLED?:string; TELEMETRY_ENABLED?:string; READING_MANAGEMENT_MUTATIONS?:string;
 };
 type Storage = {sql:{exec(query:string,...args:unknown[]):{toArray():Record<string,unknown>[]}};transactionSync<T>(work:()=>T):T};
 const json=(value:unknown,status=200)=>Response.json(value,{status,headers:{"Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}});
@@ -93,11 +94,12 @@ export class FloraLedger {
     const sql=ctx.storage.sql;
     if(!sql.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='local_schema_versions'").toArray().length)ctx.storage.transactionSync(()=>sql.exec(schema));
     if(!sql.exec("SELECT version FROM local_schema_versions WHERE version=10").toArray().length)ctx.storage.transactionSync(()=>sql.exec(costIndexes));
+    if(!sql.exec("SELECT version FROM local_schema_versions WHERE version=11").toArray().length)ctx.storage.transactionSync(()=>sql.exec(readingTrashMigration));
     ensureTelemetrySchema(sql);
     const execute=measuredSql(sql);
     const db={prepare:(query:string)=>({all:(...args:unknown[])=>execute(query,...args),get:(...args:unknown[])=>execute(query,...args)[0],run:(...args:unknown[])=>{execute(query,...args);return{};}}),exec:(query:string)=>execute(query),close:()=>{}};
     if(!env.CODE_SIGNING_KEY || env.CODE_SIGNING_KEY.length<48)throw new Error("Missing voucher configuration");
-    this.store=new PaidLedger(db as unknown as DatabaseSync,work=>ctx.storage.transactionSync(work),Date.now,{key:()=>env.CODE_SIGNING_KEY,prefix:"FLORA"});
+    this.store=new PaidLedger(db as unknown as DatabaseSync,work=>ctx.storage.transactionSync(work),Date.now,{key:()=>env.CODE_SIGNING_KEY,prefix:"FLORA"},true);
     this.backup=new SnapshotBackup(ctx.storage as unknown as {sql:BackupSql;transactionSync<T>(work:()=>T):T});
   }
   async fetch(request:Request){
@@ -127,7 +129,7 @@ export class FloraLedger {
       const rate=this.rates.get(user)||{at:now,n:0};rate.n++;this.rates.set(user,rate);
       if(rate.n>60)throw new LocalPaidError("RATE_LIMIT","操作太频繁，请稍后重试。",429);
       const url=new URL(request.url),parts=url.pathname.replace(/^\/api\/flora\/?/,"").split("/").filter(Boolean),action=parts.join("/"),store=this.store;
-      if (request.method === "GET" && (!action || ["usage","ledger","profile"].includes(action) || /\/(readings|reading-page)$/.test(action))) {
+      if (request.method === "GET" && (!action || ["usage","ledger","profile","reading-trash"].includes(action) || /\/(readings|reading-page)$/.test(action))) {
         this.historyRates.forEach((entry,id)=>{if(now-entry.at>=60000)this.historyRates.delete(id);});
         const history=this.historyRates.get(user)||{at:now,n:0};history.n++;this.historyRates.set(user,history);
         if(history.n>12)throw new LocalPaidError("RATE_LIMIT","历史记录读取较频繁，请稍后再试。",429);
@@ -151,6 +153,7 @@ export class FloraLedger {
         if(action==="profile")return json(store.profileSection(user,url.searchParams.get("section")||"usage",url.searchParams.get("days")||"all"));
         if(action==="ledger")return json(store.ledgerPage(user,url.searchParams.get("cursor")||"",url.searchParams.get("days")||"all"));
         if(action==="usage")return json(store.usagePage(user,url.searchParams.get("cursor")||"",url.searchParams.get("days")||"all"));
+        if(action==="reading-trash")return json(store.readingTrash(user,url.searchParams.get("cursor")||""));
         if(action==="daily-status")return json(store.dailyStatus(user));
         if(action==="card-catalog")return json(cardCatalog(false,this.env.SALES_ENABLED==="1"));
         if(action==="redemptions")return json(store.redemptions.history(user));
@@ -186,11 +189,16 @@ export class FloraLedger {
           return json(store.redemptions.redeem(user,field("code"),field("readingId")||undefined));
         }
         if(action==="daily-check-in")return json(store.checkIn(user));
-        if(action==="projects")return json(store.saveProject(user,{title:field("title"),background:field("background")}));
+        if(action==="projects")return json(store.saveProject(user,{title:field("title"),background:field("background"),memorySummary:field("memorySummary")}));
         if(action==="project-default")return json(store.ensureDefaultProject(user));
         if(action==="project-update")return json(store.saveProject(user,Object.fromEntries(["title","background","memorySummary"].filter(key=>typeof input[key]==="string").map(key=>[key,input[key]])),field("projectId")));
         if(action==="project-touch"){store.touchProject(user,field("projectId"));return json({ok:true});}
         if(action==="project-remove"){store.archiveProject(user,field("projectId"));return json({ok:true});}
+        if(this.env.READING_MANAGEMENT_MUTATIONS==="1"){
+          if(action==="reading-trash")return json(store.trashReading(user,field("readingId"),field("projectId")));
+          if(action==="reading-restore")return json(store.restoreReading(user,field("readingId"),field("targetProjectId")||undefined));
+          if(action==="reading-move")return json(store.moveReading(user,field("readingId"),field("projectId"),field("targetProjectId")));
+        }
         const choices=Array.isArray(input.choices) ? input.choices.filter((x):x is string=>typeof x==="string") : undefined;
         const drawInput={projectId:field("projectId"),question:field("question"),spread:field("spread") as PaidSpread,requestKey:field("requestKey"),choices};
         if(action==="draw-session")return json(hideSelectedCards(store.startDrawSession(user,drawInput)));

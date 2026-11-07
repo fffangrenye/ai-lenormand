@@ -38,7 +38,9 @@ test("the original site project-store uses isolated paid APIs end to end", async
     await bridge.loginPaidSite("new");
     assert.equal(site.getSession()?.userId, "local-new");
     assert.equal((await site.loadDeepReadingQuota()).remaining, 1);
-    const project = await site.saveProject({ title: "原站项目", background: "本地背景" });
+    const project = await site.saveProject({ title: "原站项目", background: "本地背景", memorySummary: "创建时填写的长期记忆" });
+    assert.equal(project.memorySummary, "创建时填写的长期记忆");
+    assert.equal((await site.loadProject(project.id))?.memorySummary, "创建时填写的长期记忆");
     assert.equal((await site.loadProjects())[0].id, project.id);
     await site.saveProjectUpdate(project.id, { memorySummary: "保留长期记忆" });
     assert.equal((await site.loadProject(project.id))?.memorySummary, "保留长期记忆");

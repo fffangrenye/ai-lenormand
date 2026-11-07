@@ -9,12 +9,13 @@ import { BookOpen, Check, ChevronDown, Copy, Menu, Pencil, Plus, Sparkles, Trash
 import { trackAnalyticsEvent } from "@/components/AnalyticsTracker";
 import { getLenormandCardImagePath, preloadLenormandCardImages } from "@/lib/lenormand-cards";
 import { useCardSpreadLongPressSave } from "@/lib/use-card-spread-save";
-import { paidOnlineSiteEnabled, paidLocalAIEnabled, paidRevealConfirmationEnabled, paidSiteEnabled, paidSiteRequest, restorePaidSiteSession } from "@/lib/paid-local/site-bridge";
+import { conversationManagementEnabled, paidOnlineSiteEnabled, paidLocalAIEnabled, paidRevealConfirmationEnabled, paidSiteEnabled, paidSiteRequest, restorePaidSiteSession } from "@/lib/paid-local/site-bridge";
 import { getDeepSpread } from "@/lib/deep-spreads";
 import { SpreadLayout } from "@/components/deep/SpreadLayout";
 import { AIGeneratedLabel, ServiceNotice } from "@/components/ServiceNotice";
 import serviceNotices from "@/lib/service-notices.json";
 import { DivinationExperience } from "@/components/deep/DivinationExperience";
+import { ConversationButtons, ConversationDialog, type ConversationAction } from "@/components/deep/ConversationManagement";
 import { AccountMenu, PetalTopUp } from "@/components/AccountMenu";
 import {
   DeepProject,
@@ -47,7 +48,7 @@ type DrawingPhase = "shuffle" | "draw" | "interpret" | "reveal";
 
 type ProjectFormState = {
   title: string;
-  background: string;
+  memorySummary: string;
 };
 
 type ShellActionChildren = (actions: { openCreate: () => void }) => ReactNode;
@@ -56,10 +57,25 @@ type ProjectActionTarget = {
   project: DeepProject;
 };
 
+const projectMemoryHint = "写下希望后续解读和追问参考的背景或关键信息，也可以留空。";
+const projectMemoryLimit = 2000;
+
+function projectMemoryText(project?: DeepProject | null) {
+  const background = project?.background?.trim() || "";
+  const memory = project?.memorySummary?.trim() || "";
+  if (background && memory && background !== memory) return background + "\n\n" + memory;
+  return memory || background;
+}
+
+function projectMemoryUpdate(memorySummary: string) {
+  // Consolidate the old background only when the user explicitly saves the shared field.
+  return { background: "", memorySummary };
+}
+
 function defaultForm(project?: DeepProject | null): ProjectFormState {
   return {
     title: project?.title ?? "",
-    background: project?.background ?? ""
+    memorySummary: projectMemoryText(project)
   };
 }
 
@@ -331,11 +347,18 @@ function ProjectSheet({
       return;
     }
 
+    const memorySummary = form.memorySummary.trim();
+    const memoryChanged = memorySummary !== projectMemoryText(initialProject);
+    if (memoryChanged && memorySummary.length > projectMemoryLimit) {
+      setError("长期记忆最多可保存 2000 字，请适当精简。");
+      return;
+    }
+
     try {
       const project =
         mode === "create"
-          ? await saveProject({ title: form.title, background: form.background })
-          : await saveProjectUpdate(initialProject?.id ?? "", { title: form.title, background: form.background });
+          ? await saveProject({ title: form.title, memorySummary })
+          : await saveProjectUpdate(initialProject?.id ?? "", { title: form.title, ...(memoryChanged ? projectMemoryUpdate(memorySummary) : {}) });
 
       if (!project) return;
       onSaved(project);
@@ -377,14 +400,15 @@ function ProjectSheet({
             className="mt-2 h-12 w-full rounded-[4px] border border-ink/12 bg-white/70 px-4 text-[15px] outline-none focus:border-ink/35"
           />
 
-          <label htmlFor="project-background" className="mt-5 block text-[13px] text-ink/58">
-            简单说说背景
+          <label htmlFor="project-memory" className="mt-5 block text-[13px] text-ink/58">
+            长期记忆
           </label>
           <textarea
-            id="project-background"
-            value={form.background}
-            onChange={(event) => setForm((current) => ({ ...current, background: event.target.value }))}
-            placeholder="可以写下目前发生了什么、你最在意什么。也可以暂时留空。"
+            id="project-memory"
+            value={form.memorySummary}
+            onChange={(event) => { setForm((current) => ({ ...current, memorySummary: event.target.value })); setError(""); }}
+            maxLength={projectMemoryLimit}
+            placeholder={projectMemoryHint}
             rows={5}
             className="mt-2 w-full resize-none rounded-[4px] border border-ink/12 bg-white/70 px-4 py-3 text-[15px] leading-6 outline-none focus:border-ink/35"
           />
@@ -467,10 +491,10 @@ function EmptyState({
           </button>
         )}
 
-        {project?.background ? (
+        {projectMemoryText(project) ? (
           <div className="mt-7 border-t border-ink/8 pt-5">
-            <p className="text-[12px] uppercase tracking-[0.18em] text-ink/36">Background</p>
-            <p className="mt-3 whitespace-pre-wrap text-[14px] leading-6 text-ink/56">{project.background}</p>
+            <p className="text-[12px] uppercase tracking-[0.18em] text-ink/36">长期记忆</p>
+            <p className="mt-3 whitespace-pre-wrap text-[14px] leading-6 text-ink/56">{projectMemoryText(project)}</p>
           </div>
         ) : null}
       </section>
@@ -478,29 +502,36 @@ function EmptyState({
   );
 }
 
-function ProjectMemory({ project, onSaved }: { project: DeepProject; onSaved: () => void }) {
-  const [draft, setDraft] = useState(project.memorySummary ?? "");
+function ProjectMemory({ project, onSaved }: { project: DeepProject; onSaved: (project: DeepProject) => void }) {
+  const memory = projectMemoryText(project);
+  const [editing, setEditing] = useState<string | null>(null);
+  const draft = editing ?? memory;
   const [open, setOpen] = useState(false);
   const [saved, setSaved] = useState(false);
-  const hasMemory = Boolean((project.memorySummary ?? "").trim());
-
-  useEffect(() => {
-    setDraft(project.memorySummary ?? "");
-    setSaved(false);
-  }, [project.id, project.memorySummary]);
+  const [error, setError] = useState("");
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    try {
-      const updatedProject = await saveProjectUpdate(project.id, { memorySummary: draft });
-      if (!updatedProject) return;
-
-      setDraft(updatedProject.memorySummary);
+    const nextMemory = draft.trim();
+    if (nextMemory === memory) {
+      setEditing(null);
       setSaved(true);
-      onSaved();
-    } catch {
+      return;
+    }
+    if (nextMemory.length > projectMemoryLimit) {
+      setError("长期记忆最多可保存 2000 字，请适当精简。");
+      return;
+    }
+    try {
+      const updatedProject = await saveProjectUpdate(project.id, projectMemoryUpdate(nextMemory));
+      if (!updatedProject) throw new Error("找不到这个项目。");
+      onSaved(updatedProject);
+      setEditing(null);
+      setSaved(true);
+    } catch (cause) {
       setSaved(false);
+      setError(cause instanceof Error ? cause.message : "暂时无法保存长期记忆。");
     }
   }
 
@@ -514,8 +545,8 @@ function ProjectMemory({ project, onSaved }: { project: DeepProject; onSaved: ()
           className="flex min-h-[46px] w-full items-center justify-between gap-4 px-4 py-3 text-left"
         >
           <div>
-            <p className="text-[12px] uppercase tracking-[0.17em] text-clay/64">Memory</p>
-            <p className="mt-1 line-clamp-1 text-[13px] leading-5 text-ink/48">{hasMemory ? project.memorySummary : "未填写长期记忆"}</p>
+            <p className="text-[12px] uppercase tracking-[0.17em] text-clay/64">长期记忆</p>
+            <p className="mt-1 line-clamp-1 text-[13px] leading-5 text-ink/48">{memory || "未填写长期记忆"}</p>
           </div>
           <ChevronDown size={18} aria-hidden="true" className={`shrink-0 text-ink/42 transition-transform ${open ? "rotate-180" : ""}`} />
         </button>
@@ -534,18 +565,21 @@ function ProjectMemory({ project, onSaved }: { project: DeepProject; onSaved: ()
 
             <textarea
               value={draft}
-              maxLength={2000}
+              aria-label="长期记忆"
+              maxLength={projectMemoryLimit}
               rows={5}
               onChange={(event) => {
-                setDraft(event.target.value);
+                setEditing(event.target.value);
                 setSaved(false);
+                setError("");
               }}
-              placeholder="记录这个项目里长期有效的信息：人物关系、关键事实、反复出现的模式、你已经确认过的现实背景..."
+              placeholder={projectMemoryHint}
               className="mt-4 w-full resize-none rounded-[5px] border border-ink/12 bg-white/72 px-3 py-3 text-[14px] leading-6 outline-none focus:border-ink/35"
             />
+            {error && <p role="alert" className="mt-2 text-xs text-[#8E4D4A]">{error}</p>}
             <div className="mt-2 flex items-center justify-between text-[12px] text-ink/38">
-              <span>{saved ? "已保存到本地。" : "不会自动总结，也不会自动调用 AI。"}</span>
-              <span>{draft.length}/2000</span>
+              <span>{saved ? "长期记忆已保存。" : "不会自动总结，也不会自动调用 AI。"}</span>
+              <span>{draft.length}/{projectMemoryLimit}</span>
             </div>
           </div>
         ) : null}
@@ -567,7 +601,7 @@ function QuotaNotice({ quota, message, readingId }: { quota: DeepQuota | null; m
   );
 }
 
-function ReadingChapter({ reading, onUnlock, unlocking = false }: { reading: ReadingWithCards; onUnlock?: () => Promise<void>; unlocking?: boolean }) {
+function ReadingChapter({ reading, onUnlock, unlocking = false, actions }: { reading: ReadingWithCards; onUnlock?: () => Promise<void>; unlocking?: boolean; actions?: ReactNode }) {
   const cardsLocked = paidRevealConfirmationEnabled && reading.status !== "completed";
   const spread = getDeepSpread(reading.spreadType);
   const paragraphs = reading.interpretation.split("\n\n").filter(Boolean);
@@ -615,7 +649,10 @@ function ReadingChapter({ reading, onUnlock, unlocking = false }: { reading: Rea
 
   return (
     <article className="break-words py-6 sm:py-8" data-reading-id={reading.id}>
-      <p className="text-[12px] uppercase tracking-[0.17em] text-ink/36">{formatProjectDate(reading.createdAt)}</p>
+      <div className="flex flex-wrap items-center justify-between gap-x-3">
+        <p className="text-[12px] uppercase tracking-[0.17em] text-ink/36">{formatProjectDate(reading.createdAt)}</p>
+        {actions}
+      </div>
       <h2 className="mt-4 whitespace-pre-wrap font-serif text-[27px] leading-relaxed text-ink sm:text-[32px]">{reading.question}</h2>
       <div className="mt-3 flex items-center justify-between gap-3">
         <p className="text-sm leading-6 text-clay/65">{spread.name}</p>
@@ -730,8 +767,19 @@ function ReadingFollowUps({ reading }: { reading: ReadingWithCards }) {
   </section>;
 }
 
-function ReadingWorkspace({ project, readings, onReadingsChange, onLoadEarlier, loadingEarlier }: { project: DeepProject; readings: ReadingWithCards[]; onReadingsChange: () => void; onLoadEarlier?: () => void; loadingEarlier?: boolean }) {
+function ReadingWorkspace({ project, projects, readings, onProjectSaved, onReadingsChange, onReadingRemoved, onLoadEarlier, loadingEarlier }: {
+  project: DeepProject;
+  projects: DeepProject[];
+  readings: ReadingWithCards[];
+  onReadingsChange: () => void;
+  onReadingRemoved: (readingId: string) => void;
+  onProjectSaved: (project: DeepProject) => void;
+  onLoadEarlier?: () => void;
+  loadingEarlier?: boolean;
+}) {
   const [view, setView] = useState<"compose" | "history">("compose");
+  const [conversationAction, setConversationAction] = useState<ConversationAction | null>(null);
+  const [managementNotice, setManagementNotice] = useState<{ message: string; destinationId?: string } | null>(null);
   const [quota, setQuota] = useState<DeepQuota | null>(null);
   const [notice, setNotice] = useState("");
   const [generatingId, setGeneratingId] = useState<string | null>(null);
@@ -767,17 +815,50 @@ function ReadingWorkspace({ project, readings, onReadingsChange, onLoadEarlier, 
     finally { setGeneratingId(null); onReadingsChange(); }
   }
   return <div className="flex min-h-0 flex-1 flex-col">
-    <div className="relative z-20 shrink-0"><QuotaNotice quota={quota} message={notice} readingId={activeId || latestId} />{view === "history" && <ProjectMemory project={project} onSaved={onReadingsChange} />}</div>
+    <div className="relative z-20 shrink-0">
+      <QuotaNotice quota={quota} message={notice} readingId={activeId || latestId} />
+      {managementNotice && <p role="status" className="py-2 text-xs leading-5 text-ink/65">
+        {managementNotice.message}
+        {managementNotice.destinationId ? (
+          <Link prefetch={false} href={"/deep/project/" + encodeURIComponent(managementNotice.destinationId) + "?view=history"} className="ml-2 text-[#6E2638] underline underline-offset-2">打开目标项目</Link>
+        ) : (
+          <Link prefetch={false} href="/profile#conversation-trash" className="ml-2 text-[#6E2638] underline underline-offset-2">前往我的主页</Link>
+        )}
+      </p>}
+      {view === "history" && <ProjectMemory project={project} onSaved={onProjectSaved} />}
+    </div>
     <div ref={scroll} data-divination-scroll="true" className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain pb-10 [scrollbar-gutter:stable]" aria-label={view === "compose" ? "开始深度解读" : "项目解读记录"}>
       {view === "compose" ? <DivinationExperience key={project.id} projectId={project.id} historyCount={readings.length} ruleEngineTrialAllowed={ruleEngineTrialAllowed} onHistory={() => setView("history")} onComplete={(id, message) => { setActiveId(id); setNotice(message || ""); setView("history"); onReadingsChange(); }} /> : <div className="mx-auto w-full max-w-[760px] px-1 sm:px-4">
         <div className="flex items-center justify-between gap-3 py-5"><p className="text-xs text-ink/45">按时间排列 · 最新问题在下方</p><button type="button" onClick={() => setView("compose")} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[#6E2638] px-5 text-sm text-[#FFF9F2]"><Plus size={15} />新的解读</button></div>
         {onLoadEarlier && <button type="button" disabled={loadingEarlier} onClick={onLoadEarlier} className="mb-5 min-h-11 w-full rounded-full border border-ink/15 text-sm text-ink/60 disabled:opacity-50">{loadingEarlier ? "正在读取…" : "查看更早的解读"}</button>}
-        {ordered.map((reading) => <div key={reading.id} id={`reading-${reading.id}`} className="mb-6 rounded-xl border border-ink/10 bg-[#FFFDF8]/70 px-4 shadow-sm sm:px-7"><ReadingChapter reading={reading} onUnlock={() => unlock(reading.id)} unlocking={generatingId === reading.id} />{reading.status === "completed" && <ReadingFollowUps reading={reading} />}</div>)}
+        {ordered.map(reading => (
+          <div key={reading.id} id={"reading-" + reading.id} className="mb-6 rounded-xl border border-ink/10 bg-[#FFFDF8]/70 px-4 shadow-sm sm:px-7">
+            <ReadingChapter
+              reading={reading}
+              onUnlock={() => unlock(reading.id)}
+              unlocking={generatingId === reading.id}
+              actions={conversationManagementEnabled ? <ConversationButtons disabled={reading.status === "generating" || generatingId === reading.id} onAction={kind => setConversationAction({ kind, reading: { id: reading.id, question: reading.question } })} /> : undefined}
+            />
+            {reading.status === "completed" && <ReadingFollowUps reading={reading} />}
+          </div>
+        ))}
         {notice && <button type="button" onClick={onReadingsChange} className="mb-4 min-h-11 text-sm text-[#6E2638] underline">重新读取解读与余额</button>}
         {!ordered.length && <EmptyState project={project} onStartReading={() => setView("compose")} />}
         <button type="button" onClick={() => setView("compose")} className="mx-auto mb-3 mt-3 flex min-h-12 items-center gap-2 rounded-full border border-[#6E2638]/25 px-7 text-sm text-[#6E2638]"><Plus size={15} />带着新问题，再抽一次牌</button>
       </div>}
     </div>
+    {conversationAction && <ConversationDialog
+      action={conversationAction}
+      projectId={project.id}
+      projects={projects}
+      onClose={() => setConversationAction(null)}
+      onDone={(readingId, destination) => {
+        setConversationAction(null);
+        setActiveId(id => id === readingId ? null : id);
+        onReadingRemoved(readingId);
+        setManagementNotice(destination ? { message: "已移到「" + destination.title + "」。", destinationId: destination.id } : { message: "对话已移入「我的主页 → 对话回收站」，30 天内可恢复。" });
+      }}
+    />}
   </div>;
 }
 
@@ -1114,7 +1195,7 @@ export function DeepProjectPageClient({ projectId }: { projectId: string }) {
 
   return (
     <Shell title={project?.title ?? "Deep Reading"} currentProject={project} projects={projects} email={email} onProjectsChange={refresh}>
-      {project ? <ReadingWorkspace key={project.id} project={project} readings={readings} onReadingsChange={refreshReadings} onLoadEarlier={historyCursor ? () => void loadEarlier() : undefined} loadingEarlier={loadingEarlier} /> : null}
+      {project ? <ReadingWorkspace key={project.id} project={project} projects={projects} readings={readings} onProjectSaved={updated => { setProject(updated); setProjects(current => current.map(item => item.id === updated.id ? updated : item)); }} onReadingsChange={refreshReadings} onReadingRemoved={readingId => setReadings(current => current.filter(reading => reading.id !== readingId))} onLoadEarlier={historyCursor ? () => void loadEarlier() : undefined} loadingEarlier={loadingEarlier} /> : null}
     </Shell>
   );
 }

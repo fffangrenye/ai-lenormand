@@ -6,6 +6,7 @@ import { paidConfig } from "./config";
 import { assertLocalEnvironment, LocalPaidError } from "./guard";
 import { LocalPayments } from "./payment-store";
 import { LocalXianyuPayments } from "./xianyu-store";
+import { readingTrashMigration } from "./reading-trash-migration";
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 
 import { PaidLedger } from "./ledger";
@@ -43,6 +44,14 @@ export class PaidLocalStore extends PaidLedger {
     if (!this.one("SELECT version FROM local_schema_versions WHERE version=9")) this.tx(() => {
       if (!this.one("SELECT version FROM local_schema_versions WHERE version=9")) this.db.exec(readFileSync(path.join(process.cwd(), "lib/paid-local/migrations/009_redemption_codes.sql"), "utf8"));
     });
+    if (process.env.NEXT_PUBLIC_PAID_LOCAL_CONVERSATION_PREVIEW === "1") {
+      this.tx(() => {
+        if (!this.one("SELECT version FROM local_schema_versions WHERE version=11")) {
+          this.db.exec(readingTrashMigration);
+        }
+      });
+      this.readingManagementEnabled = true;
+    }
     this.tx(() => { for (const user of this.all("SELECT id FROM local_users")) this.adjustTrialCredits(String(user.id)); });
   }
   close() { this.db.close(); }

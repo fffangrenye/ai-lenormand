@@ -40,6 +40,8 @@ export type PaidOverview = {
 export type PaidLedgerEntry = { id: string; kind: string; availableDelta: number; reservedDelta: number; consumedDelta: number; reason: string; createdAt: string };
 export type PaidLedgerPage = { items: PaidLedgerEntry[]; nextCursor: string | null };
 export type PaidSummary = Pick<PaidOverview, "user" | "balance">;
+export type TrashedReading = { id: string; question: string; projectId: string | null; projectTitle: string | null; deletedAt: string; expiresAt: string };
+export type ReadingTrashPage = { items: TrashedReading[]; nextCursor: string | null };
 export type PaidReadingPage = { items: PaidReading[]; nextCursor: string | null };
 
 export type PaymentChannel = "wechat" | "waffo";

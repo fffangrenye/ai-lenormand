@@ -5,7 +5,7 @@ const ids={admin:randomUUID(),alice:randomUUID(),bob:randomUUID()};
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return{promise,resolve};};
 let mainCalls=0,followCalls=0;
 const mainEntered=deferred(),mainGate=deferred(),twoFollowsEntered=deferred(),followGate=deferred();
-const mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'security-test',modules:true,scriptPath:'.local-paid/cloud-api-build/index.js',compatibilityDate:'2026-09-04',compatibilityFlags:['nodejs_compat'],durableObjects:{LEDGER:{className:'FloraLedger',useSQLite:true}},bindings:{SUPABASE_URL:'https://auth.invalid',SUPABASE_ANON_KEY:'test-public',AI_KEY:'test-ai',AI_MODEL:'test',CODE_SIGNING_KEY:'test-only-'.repeat(8),ADMIN_EMAILS:'admin@example.invalid'},outboundService:async request=>{
+const mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'security-test',modules:true,scriptPath:'.local-paid/cloud-api-build/index.js',compatibilityDate:'2026-09-04',compatibilityFlags:['nodejs_compat'],durableObjects:{LEDGER:{className:'FloraLedger',useSQLite:true}},bindings:{SUPABASE_URL:'https://auth.invalid',SUPABASE_ANON_KEY:'test-public',AI_KEY:'test-ai',AI_MODEL:'test',CODE_SIGNING_KEY:'test-only-'.repeat(8),ADMIN_EMAILS:'admin@example.invalid',READING_MANAGEMENT_MUTATIONS:'1'},outboundService:async request=>{
  const auth=request.headers.get('authorization')||'';
  if(request.url.startsWith('https://auth.invalid/')){
   if(auth.includes('forged'))return Response.json({error:'invalid token'},{status:401});
@@ -40,7 +40,8 @@ async function api(who,action,body,extra={}){
  const a=(await api('alice','summary')).data.balance.available,b=(await api('bob','summary')).data.balance.available;
  assert.equal(a+b,3);
  const loser=a===1?'alice':'bob',other=loser==='alice'?'bob':'alice';
- const project=(await api(loser,'projects',{title:'security fixture'})).data;
+ const project=(await api(loser,'projects',{title:'security fixture',memorySummary:'测试长期记忆'})).data;
+ assert.equal(project.memorySummary,'测试长期记忆');
  const makeDraw=async()=>{const r=await api(loser,'draw',{projectId:project.id,question:'测试问题',spread:'three_card',requestKey:randomUUID()});assert.equal(r.status,200);return r.data;};
  const first=await makeDraw(),second=await makeDraw();
  for(const action of ['projects/'+project.id,'projects/'+project.id+'/reading-page','readings/'+first.id])assert.equal((await api(other,action)).status,404);
@@ -59,5 +60,22 @@ async function api(who,action,body,extra={}){
  assert.equal((await api(loser,'follow-up',{readingId:first.id,question:'第三条',requestKey:randomUUID()})).status,429);
  followGate.resolve();assert.ok((await Promise.all([q1,q2])).every(r=>r.status===200));assert.equal(followCalls,2);
  const reading=(await api(loser,'readings/'+first.id)).data;assert.equal(reading.followUpsRemaining,0);
+ const target=(await api(loser,'projects',{title:'moved conversation fixture'})).data;
+ const deletion={readingId:first.id,projectId:project.id};
+ assert.equal((await api(other,'reading-trash',deletion)).status,404);
+ assert.equal((await api(other,'reading-move',{...deletion,targetProjectId:target.id})).status,404);
+ assert.equal((await api(loser,'reading-move',{...deletion,targetProjectId:target.id})).status,200);
+ assert.equal((await api(loser,'reading-trash',deletion)).status,409);
+ const movedDeletion={...deletion,projectId:target.id};
+ assert.equal((await api(loser,'reading-trash',movedDeletion)).status,200);
+ assert.equal((await api(loser,'reading-trash',movedDeletion)).status,200);
+ assert.equal((await api(loser,'readings/'+first.id)).status,404);
+ assert.deepEqual((await api(loser,'projects/'+target.id+'/reading-page')).data.items,[]);
+ assert.deepEqual((await api(other,'reading-trash')).data.items,[]);
+ assert.equal((await api(other,'reading-restore',{readingId:first.id})).status,404);
+ assert.deepEqual((await api(loser,'reading-trash')).data.items.map(row=>row.id),[first.id]);
+ assert.equal((await api(loser,'reading-restore',{readingId:first.id})).status,200);
+ assert.deepEqual((await api(loser,'readings/'+first.id)).data,{...reading,projectId:target.id});
+ assert.equal((await api(loser,'summary')).data.balance.available,0);
  console.log(JSON.stringify({productionServicesUsed:false,forgedIdentityRejected:true,metadataAdminIgnored:true,unconfirmedUserRejected:true,transientAuthFailurePreservesSession:true,crossAccountHistoryRejected:true,concurrentCodeGrantExactlyOnce:true,concurrentOnePetalReserveExactlyOnce:true,concurrentFollowUpLimitTwo:true,aiCalls:{main:mainCalls,follow:followCalls}}));
 }finally{mainGate.resolve();followGate.resolve();await mf.dispose();}})().catch(error=>{console.error(error);process.exitCode=1;});

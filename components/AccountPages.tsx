@@ -5,12 +5,13 @@ import { replaceSiteRoute } from "@/lib/public-routes";
 import Link from "@/components/SiteLink";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowUpRight, Flower2, LogOut, UserRound } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, Flower2, LogOut, Trash2, UserRound } from "lucide-react";
 import { AccountMenu } from "@/components/AccountMenu";
+import { ReadingTrashDialog } from "@/components/deep/ConversationManagement";
 import { getDeepSpread } from "@/lib/deep-spreads";
 import { FeedbackContact, OrderList } from "@/components/PaymentBits";
 import { CodeHistory } from "./RedemptionHistory";
-import { PaidSiteError, paidOnlineSiteEnabled, paidSiteEnabled, paidSiteRequest, subscribePaidSiteRefresh } from "@/lib/paid-local/site-bridge";
+import { conversationManagementEnabled, PaidSiteError, paidOnlineSiteEnabled, paidSiteEnabled, paidSiteRequest, subscribePaidSiteRefresh } from "@/lib/paid-local/site-bridge";
 import type { PaidOverview, PaidSummary, PaidReadingPage, PaidLedgerPage, LocalOrder } from "@/lib/paid-local/types";
 import { getSession, signOut } from "@/lib/project-store";
 
@@ -40,7 +41,14 @@ export function ProfileClient() {
   const [tab, setTab] = useState<"usage" | "ledger" | "orders">("usage");
   const [period, setPeriod] = useState("all");
   const [loadingMore, setLoadingMore] = useState(false);
+  const [trashOpen, setTrashOpen] = useState(false);
   const sequence = useRef(0);
+  const locateTrash = useCallback((button: HTMLButtonElement | null) => {
+    if (button && window.location.hash === "#conversation-trash") {
+      button.scrollIntoView({ block: "start" });
+      button.focus({ preventScroll: true });
+    }
+  }, []);
   const refresh = useCallback(async () => {
     const request = ++sequence.current;
     setLoading(true); setLoadingMore(false); setError("");
@@ -62,7 +70,7 @@ export function ProfileClient() {
   useEffect(() => {
     void refresh();
     const unsubscribe=subscribePaidSiteRefresh(reason=>{
-      if(reason!=="resume"){if(reason==="account")setWallet(null);void refresh();return;}
+      if(reason!=="resume"){if(reason==="account"){setWallet(null);setTrashOpen(false);}void refresh();return;}
       const request=sequence.current;
       void paidSiteRequest<PaidSummary>("summary").then(account=>{
         if(request!==sequence.current)return;
@@ -104,6 +112,13 @@ export function ProfileClient() {
         <p className="col-span-1 rounded-xl border border-ink/8 px-5 py-4 text-xs leading-6 text-ink/50 sm:col-span-2">1 花瓣可解锁 1 次深度解读，包含 2 次追问。抽牌不扣花瓣，解读失败会返还预留的花瓣。</p>
       </section>
       <Link prefetch={false} href="/daily#daily-calendar" className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#6E2638]/15 bg-[#FFFDF8]/70 p-5"><span><span className="block font-serif text-xl">每日运势与牌面日历</span><span className="mt-2 block text-xs leading-6 text-ink/50">每连续签到满 3 天，赠送 1 花瓣。漏签重新计数，跨月连签有效。</span></span><span className="inline-flex items-center gap-2 text-sm text-[#6E2638]">去看看<ArrowUpRight size={15} /></span></Link>
+      {conversationManagementEnabled && (
+        <button id="conversation-trash" ref={locateTrash} type="button" onClick={() => setTrashOpen(true)} className="mt-5 flex w-full scroll-mt-5 flex-wrap items-center justify-between gap-3 rounded-xl border border-[#6E2638]/15 bg-[#FFFDF8]/70 p-5 text-left hover:border-[#6E2638]/35">
+          <span><span className="block font-serif text-xl">对话回收站</span><span className="mt-2 block text-xs leading-6 text-ink/50">查看已删除的深度解读对话，30 天内可恢复。</span></span>
+          <span className="inline-flex items-center gap-2 text-sm text-[#6E2638]"><Trash2 size={15} aria-hidden="true" />打开</span>
+        </button>
+      )}
+      {conversationManagementEnabled && trashOpen && <ReadingTrashDialog onClose={() => setTrashOpen(false)} />}
       <section className="mt-10" aria-label="消费管理">
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink/10">
           <div className="flex gap-5" aria-label="消费记录类型">
