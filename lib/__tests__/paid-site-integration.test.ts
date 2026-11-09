@@ -5,6 +5,8 @@ import { randomUUID } from "node:crypto";
 import { NextRequest } from "next/server";
 import { GET, POST } from "../../app/api/local-paid/[[...path]]/route";
 import { getPaidLocalStore } from "../paid-local/store";
+import { bindGuestDraw, clearGuestDraw, readGuestDraw, saveGuestDraw } from "../paid-local/guest-draw";
+import type { PaidDrawSession, PaidReading } from "../paid-local/types";
 
 test("the original site project-store uses isolated paid APIs end to end", async () => {
   const savedEnv = { ...process.env };
@@ -35,6 +37,11 @@ test("the original site project-store uses isolated paid APIs end to end", async
     // Load only after enabling the public build flag, just as the local launcher does.
     const bridge = require("../paid-local/site-bridge") as typeof import("../paid-local/site-bridge");
     const site = require("../project-store") as typeof import("../project-store");
+    const draft = { id: randomUUID(), question: "游客选牌保留的问题", spread: "choice_two" as const, choices: ["选项 A", "选项 B"], slots: [17, 3, 10, 2, 35, 12] };
+    const claim = { ...draft, requestKey: draft.id, expectedUserId: "local-new" };
+    saveGuestDraw(draft);
+    assert.deepEqual(readGuestDraw(draft.id)?.slots, draft.slots);
+    await assert.rejects(() => bridge.paidSiteRequest("claim-guest-draw", claim), { status: 401 });
     await bridge.loginPaidSite("new");
     assert.equal(site.getSession()?.userId, "local-new");
     assert.equal((await site.loadDeepReadingQuota()).remaining, 1);
@@ -44,6 +51,26 @@ test("the original site project-store uses isolated paid APIs end to end", async
     assert.equal((await site.loadProjects())[0].id, project.id);
     await site.saveProjectUpdate(project.id, { memorySummary: "保留长期记忆" });
     assert.equal((await site.loadProject(project.id))?.memorySummary, "保留长期记忆");
+    assert.equal(bindGuestDraw(readGuestDraw(draft.id)!, "local-new"), true);
+    assert.equal(bindGuestDraw(readGuestDraw(draft.id)!, "local-other"), false);
+    const pending = await bridge.paidSiteRequest<PaidDrawSession>("draw-session", { projectId: project.id, question: "已登录的另一组抽牌", spread: "three_card", requestKey: randomUUID() });
+    await assert.rejects(() => bridge.paidSiteRequest("claim-guest-draw", { ...claim, expectedUserId: "local-other" }), { status: 409 });
+    await assert.rejects(() => bridge.paidSiteRequest("claim-guest-draw", { ...claim, slots: [0, 0, 0, 0, 0, 0] }), { code: "INVALID_CARDS" });
+    const [firstClaim, replay] = await Promise.all([
+      bridge.paidSiteRequest<PaidReading>("claim-guest-draw", claim),
+      bridge.paidSiteRequest<PaidReading>("claim-guest-draw", claim)
+    ]);
+    assert.equal(firstClaim.id, replay.id);
+    assert.equal(firstClaim.projectId, project.id);
+    assert.equal(firstClaim.question, draft.question);
+    assert.deepEqual(firstClaim.choices, draft.choices);
+    assert.equal(firstClaim.state, "locked");
+    assert.deepEqual(firstClaim.cards, []);
+    assert.equal(firstClaim.result, null);
+    assert.equal((await bridge.paidSiteRequest<PaidDrawSession>(`projects/${project.id}/draw-session`)).id, pending.id);
+    assert.equal((await site.loadDeepReadingQuota()).remaining, 1);
+    clearGuestDraw(draft.id);
+    assert.equal(readGuestDraw(draft.id), null);
     const reading = await site.saveReading({ projectId: project.id, spreadType: "three_card", question: "接下来会如何发展？" });
     assert.equal(reading.status, "drawing");
     assert.equal((await site.loadDeepReadingQuota()).remaining, 1);
@@ -80,6 +107,7 @@ test("the original site project-store uses isolated paid APIs end to end", async
     assert.equal(otherAccount.readings.length, 0);
     assert.equal(otherAccount.balance.consumed, 0);
     assert.equal(otherAccount.ledger.length, 1);
+    await assert.rejects(() => bridge.paidSiteRequest(`readings/${firstClaim.id}`), { status: 404 });
     await assert.rejects(() => bridge.paidSiteRequest(`draw-sessions/${manual.id}`));
     await assert.rejects(() => site.loadProject(project.id));
     await assert.rejects(() => site.saveReading({ projectId: project.id, spreadType: "three_card", question: "越权问题" }));

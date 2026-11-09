@@ -1,10 +1,12 @@
 "use client";
 
 import { FormEvent, useEffect, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, Check, RotateCcw, Sparkles } from "lucide-react";
 import { deepSpreads, getDeepSpread, type DeepSpreadId } from "@/lib/deep-spreads";
 import { completePaidRequestKey, getPaidSiteSession, paidRevealConfirmationEnabled, paidSiteEnabled, paidSiteRequest, stablePaidRequestKey } from "@/lib/paid-local/site-bridge";
 import { clearDrawDraft, readDrawDraft, recoverDrawTokens, saveDrawDraft } from "@/lib/paid-local/draw-draft";
+import { guestDeckSize, saveGuestDraw } from "@/lib/paid-local/guest-draw";
 import type { PaidDrawSession } from "@/lib/paid-local/types";
 import { generateDeepReading, saveReading } from "@/lib/project-store";
 import { SpreadLayout } from "./SpreadLayout";
@@ -45,7 +47,8 @@ function CardFan({ session, busy, onPick }: { session: PaidDrawSession; busy: bo
   </div>;
 }
 
-export function DivinationExperience({ projectId, historyCount, ruleEngineTrialAllowed, onHistory, onComplete }: { projectId: string; historyCount: number; ruleEngineTrialAllowed: boolean; onHistory: () => void; onComplete: (readingId: string, notice?: string) => void }) {
+export function DivinationExperience({ projectId = "", historyCount = 0, ruleEngineTrialAllowed = false, onHistory, onComplete, guest = false }: { projectId?: string; historyCount?: number; ruleEngineTrialAllowed?: boolean; onHistory?: () => void; onComplete?: (readingId: string, notice?: string) => void; guest?: boolean }) {
+  const router = useRouter();
   const [question, setQuestion] = useState("");
   const [spreadId, setSpreadId] = useState<DeepSpreadId>("three_card");
   const [choices, setChoices] = useState(["", "", ""]);
@@ -66,7 +69,7 @@ export function DivinationExperience({ projectId, historyCount, ruleEngineTrialA
   function updateQueued(tokens:string[]) { queuedRef.current=tokens; setQueued(tokens); }
   useEffect(() => { document.querySelector('[data-divination-scroll="true"]')?.scrollTo({ top: 0 }); }, [phase]);
   useEffect(() => {
-    if (!paidSiteEnabled) return;
+    if (!paidSiteEnabled || guest) return;
     let active = true;
     const owner=getPaidSiteSession()?.userId||""; draftOwner.current=owner;
     void (async()=>{
@@ -76,7 +79,7 @@ export function DivinationExperience({ projectId, historyCount, ruleEngineTrialA
       if(active&&getPaidSiteSession()?.userId===owner){setPending(value);setPendingQueuedCount(value?recoverDrawTokens(value,draft).length:0);}
     })().catch(() => undefined);
     return () => { active = false; };
-  }, [projectId]);
+  }, [guest, projectId]);
 
   function beginShuffle(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -96,9 +99,20 @@ export function DivinationExperience({ projectId, historyCount, ruleEngineTrialA
         const reading = await saveReading({ projectId, question, spreadType: spreadId, explicitSource: ruleEngineTrialAllowed && useRuleEngineTrial ? "rule_engine" : undefined });
         setPhase("interpreting");
         await Promise.all([generateDeepReading(reading.id), pause(1400)]);
-        onComplete(reading.id); return;
+        onComplete?.(reading.id); return;
       }
       const values = choices.slice(0, selected.choiceCount || 0).map((value) => value.trim());
+      if (guest) {
+        await pause(900);
+        setSession({
+          id: crypto.randomUUID(), projectId: "", question: question.trim(), spread: spreadId, choices: values,
+          deck: Array.from({ length: guestDeckSize }, (_, index) => ({ token: String(index), picked: false })),
+          selected: [], state: "picking", readingId: null
+        });
+        updateQueued([]);
+        setPhase("picking");
+        return;
+      }
       const owner=getPaidSiteSession()?.userId||"";
       const scope = `manual:${projectId}:${spreadId}:${question.trim()}:${JSON.stringify(values)}`;
       const [value] = await Promise.all([
@@ -116,14 +130,14 @@ export function DivinationExperience({ projectId, historyCount, ruleEngineTrialA
   async function finish(value: PaidDrawSession) {
     if (!value.readingId) return;
     if (paidRevealConfirmationEnabled) {
-      onComplete(value.readingId);
+      onComplete?.(value.readingId);
       return;
     }
     setPhase("interpreting");
     try {
       await Promise.all([paidSiteRequest("unlock", { readingId: value.readingId }), pause(1500)]);
-      onComplete(value.readingId);
-    } catch (cause) { onComplete(value.readingId, cause instanceof Error ? cause.message : "解读暂未完成，原牌已经保存，可以重试。"); }
+      onComplete?.(value.readingId);
+    } catch (cause) { onComplete?.(value.readingId, cause instanceof Error ? cause.message : "解读暂未完成，原牌已经保存，可以重试。"); }
   }
   async function syncPicks(value:PaidDrawSession,tokens:string[],back=false) {
     if(picking.current)return;
@@ -152,13 +166,18 @@ export function DivinationExperience({ projectId, historyCount, ruleEngineTrialA
     } finally { picking.current = false; setBusy(false); }
   }
   function queuePicks(value: PaidDrawSession, tokens: string[]) {
+    const total = savedPickCount(value) + tokens.length;
+    if (total > spread.positions.length) return;
+    if (guest) {
+      setError("");
+      updateQueued(tokens);
+      return;
+    }
     const owner = getPaidSiteSession()?.userId || "";
     if (!owner || owner !== draftOwner.current) {
       setError("登录账号已变化，请重新进入这次抽牌。");
       return;
     }
-    const total = savedPickCount(value) + tokens.length;
-    if (total > spread.positions.length) return;
     setError("");
     const persisted = saveDrawDraft(owner, value, tokens);
     updateQueued(tokens);
@@ -193,6 +212,17 @@ export function DivinationExperience({ projectId, historyCount, ruleEngineTrialA
     }
     queuePicks(session, tokens);
   }
+  function continueToLogin() {
+    if (!session || queuedRef.current.length !== spread.positions.length || picking.current) return;
+    try {
+      saveGuestDraw({ id: session.id, question: session.question, spread: session.spread, choices: session.choices, slots: queuedRef.current.map(Number) });
+      picking.current = true;
+      setBusy(true);
+      router.push(`/login?returnTo=${encodeURIComponent(`/deep?resumeDraw=${session.id}`)}`);
+    } catch {
+      setError("浏览器无法暂存选牌。请允许此网站保存数据，然后再试。");
+    }
+  }
   async function resume(value:PaidDrawSession){
     draftOwner.current=getPaidSiteSession()?.userId||"";
     setSession(value);setQuestion(value.question);setSpreadId(value.spread);setChoices([...value.choices,"","",""] .slice(0,3));
@@ -208,7 +238,10 @@ export function DivinationExperience({ projectId, historyCount, ruleEngineTrialA
   </section>;
 
   if (phase === "picking" && session) return <section className="py-5 sm:py-8">
-    <div className="flex items-center justify-between gap-3"><button type="button" disabled={busy} onClick={() => void syncPicks(session,queuedRef.current,true)} className="inline-flex min-h-10 items-center gap-2 text-xs text-ink/50"><ArrowLeft size={14} />暂存并返回</button><span className="text-xs text-[#6E2638]" aria-live="polite">已抽 {selectedCount} / {spread.positions.length} 张</span></div>
+    <div className="flex items-center justify-between gap-3"><button type="button" disabled={busy} onClick={() => {
+      if (guest) { setSession(null); updateQueued([]); setPhase("setup"); }
+      else void syncPicks(session,queuedRef.current,true);
+    }} className="inline-flex min-h-10 items-center gap-2 text-xs text-ink/50"><ArrowLeft size={14} />{guest ? "返回问题" : "暂存并返回"}</button><span className="text-xs text-[#6E2638]" aria-live="polite">已抽 {selectedCount} / {spread.positions.length} 张</span></div>
     <h1 className="mt-3 font-serif text-2xl">{spread.name}</h1><p className="mt-2 break-words text-sm leading-6 text-ink/60">{session.question}</p>
     <div className="mt-6 grid items-center gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-10">
       <div><SpreadLayout spreadId={spread.id} cards={visibleCards} pendingCount={selectedCount - visibleCards.length} choices={session.choices} compact /><p className="mt-3 text-center text-xs leading-6 text-ink/45" aria-live="polite">{busy ? "牌正在归位…" : `下一张 → ${spread.positions[selectedCount]?.label || "牌面已完整"}`}</p></div>
@@ -217,8 +250,8 @@ export function DivinationExperience({ projectId, historyCount, ruleEngineTrialA
           <button type="button" disabled={busy} onClick={autoPickRemaining} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#6E2638]/25 px-5 text-sm text-[#6E2638] hover:bg-[#6E2638]/5 disabled:opacity-50"><Sparkles size={15} aria-hidden="true" />自动选牌</button>
           {!selectedCount && <button type="button" disabled={busy} onClick={() => setPhase("shuffle")} className="inline-flex min-h-11 items-center gap-2 text-xs text-[#6E2638]"><RotateCcw size={14} />再洗一次</button>}
         </div>}
-        {selectedCount===spread.positions.length&&!busy&&<button type="button" onClick={()=>void syncPicks(session,queuedRef.current)} className="mx-auto mt-5 flex min-h-11 items-center rounded-full bg-[#6E2638] px-6 text-sm text-[#FFF9F2]">{paidRevealConfirmationEnabled ? "保存选好的牌" : "同步并开始解读"}</button>}
-        <p className="mt-4 text-center text-[11px] leading-5 text-ink/40">{paidRevealConfirmationEnabled ? "选牌免费。选满后可使用 1 花瓣翻牌并解读，含 2 次追问。" : "选择会在本机暂存，选满后统一翻牌并解读，使用 1 花瓣；解读失败不扣花瓣。"}</p>
+        {selectedCount === spread.positions.length && (guest || !busy) && <button type="button" disabled={busy} onClick={guest ? continueToLogin : () => void syncPicks(session, queuedRef.current)} className="mx-auto mt-5 flex min-h-11 items-center rounded-full bg-[#6E2638] px-6 text-sm text-[#FFF9F2] disabled:opacity-50">{guest ? "登录后继续解读" : paidRevealConfirmationEnabled ? "保存选好的牌" : "同步并开始解读"}</button>}
+        <p className="mt-4 text-center text-[11px] leading-5 text-ink/55">{guest ? "选牌免费。登录后会保留你的选择，确认翻牌时使用 1 花瓣，含 2 次追问。" : paidRevealConfirmationEnabled ? "选牌免费。选满后可使用 1 花瓣翻牌并解读，含 2 次追问。" : "选择会在本机暂存，选满后统一翻牌并解读，使用 1 花瓣；解读失败不扣花瓣。"}</p>
       </div>
     </div>
     {error && <p role="alert" className="mt-5 rounded-lg border border-[#6E2638]/15 p-3 text-sm leading-6 text-[#8E4D4A]">{error}</p>}

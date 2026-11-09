@@ -160,6 +160,10 @@ export async function POST(request: NextRequest, { params }: Context) {
     if (action === "project-remove") { store.archiveProject(userId, field("projectId")); return json({ ok: true }); }
     const choices = Array.isArray(input.choices) ? input.choices.filter((value): value is string => typeof value === "string") : undefined;
     if (action === "draw") return json(visibleReading(store.draw(userId, { question: field("question"), spread: field("spread") as PaidSpread, requestKey: field("requestKey"), projectId: field("projectId") || undefined, choices })));
+    if (action === "claim-guest-draw") {
+      if (field("expectedUserId") !== userId) throw new LocalPaidError("ACCOUNT_CHANGED", "登录账号已变更，请重新登录后继续。", 409);
+      return json(hideLockedReadingCards(store.claimGuestDraw(userId, { question: field("question"), spread: field("spread") as PaidSpread, requestKey: field("requestKey"), choices, slots: input.slots })));
+    }
     if (action === "draw-session") return json(visibleDraw(store.startDrawSession(userId, { projectId: field("projectId"), question: field("question"), spread: field("spread") as PaidSpread, requestKey: field("requestKey"), choices })));
     if (action === "draw-pick") return json(visibleDraw(store.pickDrawCard(userId, field("sessionId"), field("token"), Number(input.expectedCount))));
     if (action === "draw-picks") return json(visibleDraw(store.pickDrawCards(userId, field("sessionId"), input.tokens, Number(input.expectedCount))));

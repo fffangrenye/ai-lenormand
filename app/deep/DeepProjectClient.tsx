@@ -3,13 +3,14 @@
 import { replaceSiteRoute } from "@/lib/public-routes";
 
 import Link from "@/components/SiteLink";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, ReactNode, TouchEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { BookOpen, Check, ChevronDown, Copy, Menu, Pencil, Plus, Sparkles, Trash2, X } from "lucide-react";
 import { trackAnalyticsEvent } from "@/components/AnalyticsTracker";
 import { getLenormandCardImagePath, preloadLenormandCardImages } from "@/lib/lenormand-cards";
 import { useCardSpreadLongPressSave } from "@/lib/use-card-spread-save";
-import { conversationManagementEnabled, paidOnlineSiteEnabled, paidLocalAIEnabled, paidRevealConfirmationEnabled, paidSiteEnabled, paidSiteRequest, restorePaidSiteSession } from "@/lib/paid-local/site-bridge";
+import { conversationManagementEnabled, getPaidSiteSession, PaidSiteError, paidOnlineSiteEnabled, paidLocalAIEnabled, paidRevealConfirmationEnabled, paidSiteEnabled, paidSiteRequest, restorePaidSiteSession } from "@/lib/paid-local/site-bridge";
+import { bindGuestDraw, clearGuestDraw, readGuestDraw } from "@/lib/paid-local/guest-draw";
 import { getDeepSpread } from "@/lib/deep-spreads";
 import { SpreadLayout } from "@/components/deep/SpreadLayout";
 import { AIGeneratedLabel, ServiceNotice } from "@/components/ServiceNotice";
@@ -79,7 +80,7 @@ function defaultForm(project?: DeepProject | null): ProjectFormState {
   };
 }
 
-function useDeepSession(returnTo: string) {
+function useDeepSession(returnTo: string, allowGuest = false) {
   const router = useRouter();
   const [ready, setReady] = useState(false);
   const [email, setEmail] = useState("");
@@ -87,13 +88,15 @@ function useDeepSession(returnTo: string) {
   useEffect(() => {
     let cancelled = false;
     void (async () => {
-      const session = paidSiteEnabled ? await restorePaidSiteSession() : getSession();
+      const session = paidSiteEnabled
+        ? allowGuest && !getPaidSiteSession() ? null : await restorePaidSiteSession()
+        : getSession();
       if (cancelled) return;
-      if (!session) { router.replace(`/login?returnTo=${encodeURIComponent(returnTo)}`); return; }
-      setEmail(session.email); setReady(true);
+      if (!session && !allowGuest) { router.replace(`/login?returnTo=${encodeURIComponent(returnTo)}`); return; }
+      setEmail(session?.email ?? ""); setReady(true);
     })();
     return () => { cancelled = true; };
-  }, [returnTo, router]);
+  }, [allowGuest, returnTo, router]);
 
   return { ready, email };
 }
@@ -985,10 +988,14 @@ function Shell({
 export function DeepLandingClient() {
   const pathname = usePathname();
   const router = useRouter();
-  const { ready, email } = useDeepSession(pathname);
+  const resumeId = useSearchParams().get("resumeDraw") || "";
+  const returnTo = resumeId ? `/deep?resumeDraw=${encodeURIComponent(resumeId)}` : pathname;
+  const { ready, email } = useDeepSession(returnTo, paidRevealConfirmationEnabled);
   const [projects, setProjects] = useState<DeepProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
+  const [attempt, setAttempt] = useState(0);
+  const [expiredDraft, setExpiredDraft] = useState(false);
 
   function refresh() {
     void loadProjects()
@@ -1002,14 +1009,40 @@ export function DeepLandingClient() {
   }
 
   useEffect(() => {
-    if (!ready) return;
+    if (!ready || !email) return;
     let cancelled = false;
 
     void (async () => {
       setLoading(true);
       setLoadError("");
+      setExpiredDraft(false);
 
       try {
+        if (resumeId && paidRevealConfirmationEnabled) {
+          const draft = readGuestDraw(resumeId);
+          if (!draft) {
+            setExpiredDraft(true);
+            setLoadError("这次选牌已经过期或保存在另一台设备上。你可以重新开始。");
+            return;
+          }
+          const owner = getPaidSiteSession()?.userId;
+          if (!owner) throw new PaidSiteError("UNAUTHORIZED", "请先登录。", 401);
+          if (!bindGuestDraw(draft, owner)) {
+            setExpiredDraft(true);
+            setLoadError("这次选牌已和另一个账号关联，切回原账号后可以继续。");
+            return;
+          }
+          const result = await paidSiteRequest<{ id: string; projectId: string }>("claim-guest-draw", {
+            question: draft.question, spread: draft.spread, choices: draft.choices, slots: draft.slots,
+            requestKey: draft.id, expectedUserId: owner
+          });
+          if (cancelled) return;
+          if (getPaidSiteSession()?.userId !== owner) throw new PaidSiteError("ACCOUNT_CHANGED", "登录账号已变更，请重新登录后继续。", 401);
+          if (!result.projectId) throw new Error("暂时无法找到这次解读所在的项目。");
+          clearGuestDraw(resumeId);
+          window.location.replace(`/deep/project/${result.projectId}?view=history&reading=${encodeURIComponent(result.id)}`);
+          return;
+        }
         const loadedProjects = await loadProjects();
         if (cancelled) return;
 
@@ -1024,9 +1057,9 @@ export function DeepLandingClient() {
       } catch (error) {
         if (cancelled) return;
 
-        if (isAuthLoadError(error)) {
+        if (resumeId ? error instanceof PaidSiteError && error.status === 401 : isAuthLoadError(error)) {
           signOut();
-          router.replace(`/login?returnTo=${encodeURIComponent(pathname)}`);
+          router.replace(`/login?returnTo=${encodeURIComponent(returnTo)}`);
           return;
         }
 
@@ -1039,20 +1072,32 @@ export function DeepLandingClient() {
     return () => {
       cancelled = true;
     };
-  }, [pathname, ready, router]);
+  }, [attempt, email, ready, resumeId, returnTo, router]);
 
   const currentTitle = useMemo(() => "Deep Reading", []);
 
   if (!ready) {
     return <main className="min-h-dvh bg-paper" />;
   }
+  if (!email && paidRevealConfirmationEnabled) {
+    if (resumeId) return <DeepLoadState title="登录后继续解读" message="请登录后取回这次选好的牌。" actionLabel="去登录" onAction={() => router.replace(`/login?returnTo=${encodeURIComponent(returnTo)}`)} />;
+    return <main className="min-h-dvh bg-paper px-4 py-5 sm:px-8">
+      <div className="mx-auto max-w-[960px]">
+        <header className="flex items-center justify-between gap-4 border-b border-ink/10 pb-3">
+          <Link href="/" className="min-h-10 content-center font-serif text-lg text-ink/80">Flora Lenormand</Link>
+          <Link prefetch={false} href="/login?returnTo=%2Fdeep" className="min-h-10 content-center text-sm text-[#6E2638]">登录</Link>
+        </header>
+        <DivinationExperience guest />
+      </div>
+    </main>;
+  }
 
   if (loading) {
-    return <DeepLoadState title="正在进入 Deep Reading" message="正在读取你的项目，请稍候。" />;
+    return <DeepLoadState title={resumeId ? "正在恢复你选好的牌" : "正在进入 Deep Reading"} message={resumeId ? "原问题和选牌会一起保存，请稍候。" : "正在读取你的项目，请稍候。"} />;
   }
 
   if (loadError) {
-    return <DeepLoadState title="暂时没有读取成功" message={loadError} actionLabel="重新读取" onAction={refresh} />;
+    return <DeepLoadState title="暂时没有读取成功" message={loadError} actionLabel={expiredDraft ? "重新开始" : "重试"} onAction={() => expiredDraft ? router.replace("/deep") : setAttempt(value => value + 1)} />;
   }
 
   return (

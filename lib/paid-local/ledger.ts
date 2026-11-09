@@ -1,6 +1,7 @@
 import { randomUUID, randomInt } from "node:crypto";
 import type { DatabaseSync, SQLInputValue } from "node:sqlite";
 import { lenormandCards } from "../lenormand-cards";
+import { validGuestSlots } from "./guest-draw";
 import { getDeepSpread, isDeepSpread, positionLabels } from "../deep-spreads";
 import { paidConfig } from "./config";
 import { dailyDeck, readingForDailyCard } from "../daily-fortune";
@@ -142,13 +143,15 @@ export class PaidLedger {
   }
   project(userId: string, id: string) { return this.serializeProject(this.ownedProject(userId, id)); }
   ensureDefaultProject(userId: string) {
-    return this.tx(() => {
-      const existing = this.one("SELECT * FROM local_projects WHERE user_id=? AND archived_at IS NULL ORDER BY last_opened_at DESC,id LIMIT 1", userId);
-      if (existing) return this.serializeProject(existing);
-      const id = randomUUID();
-      this.run("INSERT INTO local_projects(id,user_id,title,created_at,updated_at,last_opened_at) VALUES (?,?,?,?,?,?)", id, userId, "我的解读", this.now(), this.now(), this.now());
-      return this.project(userId, id);
-    });
+    return this.tx(() => this.serializeProject(this.defaultProjectRow(userId)));
+  }
+  private defaultProjectRow(userId: string) {
+    const existing = this.one("SELECT * FROM local_projects WHERE user_id=? AND archived_at IS NULL ORDER BY last_opened_at DESC,id LIMIT 1", userId);
+    if (existing) return existing;
+    const id = randomUUID();
+    const now = this.now();
+    this.run("INSERT INTO local_projects(id,user_id,title,created_at,updated_at,last_opened_at) VALUES (?,?,?,?,?,?)", id, userId, "我的解读", now, now, now);
+    return this.ownedProject(userId, id);
   }
   saveProject(userId: string, input: { title?: string; background?: string; memorySummary?: string }, id?: string) {
     return this.tx(() => {
@@ -393,6 +396,30 @@ export class PaidLedger {
     const values = Array.isArray(choices) ? choices.map((value) => typeof value === "string" ? value.trim() : "") : [];
     if (size && (values.length !== size || values.some((value) => !value || value.length > 80) || new Set(values.map((value) => value.toLowerCase())).size !== size)) throw new LocalPaidError("INVALID_CHOICES", `请填写 ${size} 个不同的具体选项，每项不超过 80 字。`);
     return size ? values : [];
+  }
+  claimGuestDraw(userId: string, input: { question: string; spread: PaidSpread; choices?: string[]; requestKey: string; slots: unknown }) {
+    if (!isDeepSpread(input.spread) || !validGuestSlots(input.slots, input.spread)) {
+      throw new LocalPaidError("INVALID_CARDS", "选好的牌与牌阵不匹配，请重新选牌。");
+    }
+    const slots = input.slots;
+    this.validateKey(input.requestKey);
+    const requestKey = "guest_" + input.requestKey;
+    const choices = this.validateChoices(input.spread, input.choices);
+    return this.tx(() => {
+      const previous = this.one("SELECT id FROM paid_readings WHERE user_id=? AND request_key=?", userId, requestKey);
+      const projectId = previous ? this.readingProjectId(String(previous.id)) : String(this.defaultProjectRow(userId).id);
+      const readingInput = { question: input.question, spread: input.spread, projectId, requestKey, choices };
+      if (previous) return this.drawInTransaction(userId, readingInput);
+      const positions = positionLabels(getDeepSpread(input.spread), choices);
+      // Guests select positions of face-down cards. The server assigns card identities.
+      const deck = [...lenormandCards];
+      for (let index = deck.length - 1; index > 0; index--) {
+        const swap = randomInt(index + 1);
+        [deck[index], deck[swap]] = [deck[swap], deck[index]];
+      }
+      const cards = slots.map((slot, index) => ({ ...deck[slot], position: positions[index] }));
+      return this.drawInTransaction(userId, readingInput, cards);
+    });
   }
   protected drawSessionRow(userId: string, id: string) {
     const row = this.one("SELECT * FROM paid_draw_sessions WHERE id=? AND user_id=?", id, userId);

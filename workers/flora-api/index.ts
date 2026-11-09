@@ -201,6 +201,10 @@ export class FloraLedger {
         }
         const choices=Array.isArray(input.choices) ? input.choices.filter((x):x is string=>typeof x==="string") : undefined;
         const drawInput={projectId:field("projectId"),question:field("question"),spread:field("spread") as PaidSpread,requestKey:field("requestKey"),choices};
+        if(action==="claim-guest-draw"){
+          if(field("expectedUserId")!==user)throw new LocalPaidError("ACCOUNT_CHANGED","登录账号已变更，请重新登录后继续。",409);
+          return json(hideLockedReadingCards(store.claimGuestDraw(user,{...drawInput,slots:input.slots})));
+        }
         if(action==="draw-session")return json(hideSelectedCards(store.startDrawSession(user,drawInput)));
         if(action==="draw")return json(hideLockedReadingCards(store.draw(user,drawInput)));
         if(action==="draw-pick")return json(hideSelectedCards(store.pickDrawCard(user,field("sessionId"),field("token"),Number(input.expectedCount))));
