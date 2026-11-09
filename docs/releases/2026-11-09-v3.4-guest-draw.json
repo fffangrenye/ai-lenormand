@@ -1,0 +1,137 @@
+{
+  "productVersion": "3.4",
+  "releaseName": "Flora V3.4 · 先选牌，后登录",
+  "environment": "production",
+  "domain": "https://floralenormand.site",
+  "sourceTag": "flora-v3.4-20261109",
+  "sourceCommit": "0bd413ea58f4a48d55fb4b881ba319018b57c722",
+  "branch": "codex/v3.4-guest-draw-20261109",
+  "workers": [
+    {
+      "name": "flora-domain-info",
+      "config": "wrangler.flora-v3-site.jsonc",
+      "version": "bf58dcd7-5c42-48c4-9944-6331ebde17f5",
+      "deploymentId": "f503b760-241f-42fe-a0ae-b386d1c5eaff",
+      "recordedAt": "2026-11-09T11:12:46.288Z",
+      "rollback": {
+        "deploymentId": "24317e8d-50e0-4221-b76e-b05836ec9be5",
+        "createdAt": "2026-11-07T14:12:33.676879Z",
+        "versions": [
+          {
+            "version": "080d5713-1061-4ecc-9e6a-e6796ce0eb18",
+            "percentage": 100
+          }
+        ]
+      },
+      "checks": [
+        {
+          "command": "node scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 1192
+        },
+        {
+          "command": "node scripts/secure-cloudflare-build.cjs --flora-v3",
+          "passed": true,
+          "durationMs": 190780
+        },
+        {
+          "command": "node scripts/scan-cloudflare-artifacts.cjs",
+          "passed": true,
+          "durationMs": 19051
+        },
+        {
+          "command": "node scripts/test-public-assets.cjs",
+          "passed": true,
+          "durationMs": 8815
+        },
+        {
+          "command": "node scripts/test-site-runtime.cjs",
+          "passed": true,
+          "durationMs": 17881
+        },
+        {
+          "command": "node scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 4908
+        }
+      ]
+    },
+    {
+      "name": "flora-v3-api",
+      "config": "wrangler.flora-v3-api.jsonc",
+      "version": "16d8d90c-9327-41bc-a835-58f8b28b0231",
+      "deploymentId": "9e881cba-f627-4670-9993-21a1dab04cb5",
+      "recordedAt": "2026-11-09T11:08:13.524Z",
+      "rollback": {
+        "deploymentId": "6ca86906-9ef1-4b10-93c3-4138bafdc642",
+        "createdAt": "2026-11-07T14:10:26.289571Z",
+        "versions": [
+          {
+            "version": "0439469d-a73c-4caa-ac79-10bc0d1cc97e",
+            "percentage": 100
+          }
+        ]
+      },
+      "checks": [
+        {
+          "command": "node scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 1133
+        },
+        {
+          "command": "node node_modules/wrangler/bin/wrangler.js deploy --config wrangler.flora-v3-api.jsonc --dry-run --outdir .local-paid/cloud-api-build",
+          "passed": true,
+          "durationMs": 3604
+        },
+        {
+          "command": "node scripts/test-cloud-ledger.cjs",
+          "passed": true,
+          "durationMs": 2725
+        },
+        {
+          "command": "node scripts/test-cloud-security.cjs",
+          "passed": true,
+          "durationMs": 2153
+        },
+        {
+          "command": "node scripts/test-cloud-legacy-restore.cjs",
+          "passed": true,
+          "durationMs": 2524
+        },
+        {
+          "command": "node scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 1275
+        }
+      ]
+    }
+  ],
+  "liveVerification": {
+    "checkedAt": "2026-11-09T11:13:42.884Z",
+    "guestEntryStatus": 200,
+    "mobileViewport": true,
+    "manualThenAutomaticSelection": true,
+    "threeCardBacksBeforeLogin": true,
+    "loginAfterPicking": true,
+    "questionAbsentFromUrl": true,
+    "guestBusinessRequests": 0,
+    "anonymousClaimStatus": 401,
+    "missingOriginStatus": 403,
+    "liveAccountUsed": false,
+    "realAiCalls": 0,
+    "browserErrors": 0
+  },
+  "localVerification": {
+    "focusedTestsPassed": 7,
+    "mobileBrowserLoginAndMockReveal": true,
+    "productionApiBundleWithMockIdentity": true
+  },
+  "rollback": {
+    "order": [
+      "flora-domain-info",
+      "flora-v3-api"
+    ],
+    "databaseMigration": false,
+    "notes": "先回滚前端，再回滚后端。保留已经写入的待翻牌记录。"
+  }
+}
