@@ -1,0 +1,111 @@
+{
+  "productVersion": "3.4.1",
+  "releaseName": "Flora V3.4.1 · 补充花瓣套餐展示",
+  "environment": "production",
+  "domain": "https://floralenormand.site",
+  "sourceTag": "flora-v3.4.1-20261109",
+  "sourceCommit": "de8fbae0d1f45bf37ad8b0649ed7ec84a31b8648",
+  "branch": "codex/v3.4.1-petal-offers-20261109",
+  "workers": [
+    {
+      "name": "flora-domain-info",
+      "deploymentId": "9508e532-aacd-4b93-952e-555e70c7924e",
+      "version": "d11fd824-66b7-42c0-8999-6efb79b83f8c",
+      "percentage": 100,
+      "sourceCommit": "de8fbae0d1f45bf37ad8b0649ed7ec84a31b8648",
+      "config": "wrangler.flora-v3-site.jsonc",
+      "recordedAt": "2026-11-09T14:30:35.466Z",
+      "rollback": {
+        "deploymentId": "f503b760-241f-42fe-a0ae-b386d1c5eaff",
+        "createdAt": "2026-11-09T11:12:37.873404Z",
+        "versions": [
+          {
+            "version": "bf58dcd7-5c42-48c4-9944-6331ebde17f5",
+            "percentage": 100
+          }
+        ]
+      },
+      "checks": [
+        {
+          "command": "node scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 1157
+        },
+        {
+          "command": "node scripts/secure-cloudflare-build.cjs --flora-v3",
+          "passed": true,
+          "durationMs": 146783
+        },
+        {
+          "command": "node scripts/scan-cloudflare-artifacts.cjs",
+          "passed": true,
+          "durationMs": 7063
+        },
+        {
+          "command": "node scripts/test-public-assets.cjs",
+          "passed": true,
+          "durationMs": 6403
+        },
+        {
+          "command": "node scripts/test-site-runtime.cjs",
+          "passed": true,
+          "durationMs": 15074
+        },
+        {
+          "command": "node scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 1228
+        }
+      ]
+    },
+    {
+      "name": "flora-v3-api",
+      "deploymentId": "9e881cba-f627-4670-9993-21a1dab04cb5",
+      "version": "16d8d90c-9327-41bc-a835-58f8b28b0231",
+      "percentage": 100,
+      "sourceCommit": "0bd413ea58f4a48d55fb4b881ba319018b57c722",
+      "releasedInThisVersion": false
+    }
+  ],
+  "verification": {
+    "localBrowser": [
+      "mobile",
+      "desktop"
+    ],
+    "typeCheck": true,
+    "originalFontSubsetsVerified": 101,
+    "purchaseAndRedemptionTestsPassed": 10,
+    "production": {
+      "checkedAt": "2026-11-09T14:30:56.555Z",
+      "liveFrontend": true,
+      "catalogFixture": true,
+      "realAccountUsed": false,
+      "realPurchase": false,
+      "outcomes": [
+        {
+          "device": "mobile",
+          "pageStatus": 200,
+          "featuredTen": true,
+          "pricesAndBenefitsVerified": true,
+          "visibleRedeem": true,
+          "preservedReadingId": true,
+          "catalogRequests": 1
+        },
+        {
+          "device": "desktop",
+          "pageStatus": 200,
+          "featuredTen": true,
+          "pricesAndBenefitsVerified": true,
+          "visibleRedeem": true,
+          "preservedReadingId": true,
+          "catalogRequests": 1
+        }
+      ]
+    }
+  },
+  "rollback": {
+    "worker": "flora-domain-info",
+    "version": "bf58dcd7-5c42-48c4-9944-6331ebde17f5",
+    "databaseMigration": false
+  }
+}
