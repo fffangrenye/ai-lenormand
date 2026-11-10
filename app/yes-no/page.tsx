@@ -83,20 +83,6 @@ function MiniCard({ card, revealed, index }: { card: LenormandCard; revealed: bo
   );
 }
 
-function mockReading(result: ResultKind, cards: LenormandCard[]) {
-  const names = cards.map((card) => card.nameEn).join("、");
-
-  if (result === "YES") {
-    return `这组三张牌整体更倾向于“是”。${names} 组合起来，像是事情有推进的空间，但推进方式偏轻、偏试探，不一定马上进入很深的交流。可以把它理解为一个开放的窗口，而不是绝对承诺。`;
-  }
-
-  if (result === "NO") {
-    return `这组三张牌整体更倾向于“否”。${names} 放在一起，阻力比推动力更明显，短期内事情可能不容易自然发生，或需要先处理现实层面的卡点。这个 No 不是永久结论，只代表当前趋势偏弱。`;
-  }
-
-  return `这组三张牌目前不够明确。${names} 之间有推动，也有保留，说明答案还取决于接下来现实中的互动变化。与其立刻定论，不如先观察一个更具体的信号。`;
-}
-
 export default function YesNoPage() {
   const [stage, setStage] = useState<Stage>("input");
   const [question, setQuestion] = useState("");
@@ -104,7 +90,6 @@ export default function YesNoPage() {
   const [cards, setCards] = useState<LenormandCard[]>([]);
   const [result, setResult] = useState<ResultKind>("UNCLEAR");
   const [revealed, setRevealed] = useState(false);
-  const [interpretation, setInterpretation] = useState("");
   const [unsuitable, setUnsuitable] = useState(false);
   const [starting, setStarting] = useState(false);
   const startingRef = useRef(false);
@@ -134,7 +119,6 @@ export default function YesNoPage() {
     setCards([]);
     setResult("UNCLEAR");
     setRevealed(false);
-    setInterpretation("");
     setUnsuitable(false);
   }
 
@@ -169,7 +153,6 @@ export default function YesNoPage() {
     try {
       const picked = drawCards();
       const tendency = getYesNoResult(picked);
-      const reading = mockReading(tendency, picked);
       // Record a completed local draw before the animation. The lock coordinates tabs.
       const claim = () => consumeYesNoQuota(window.localStorage);
       const claimed = navigator.locks?.request
@@ -189,10 +172,7 @@ export default function YesNoPage() {
       setResult(tendency);
       setStage("drawing");
       window.setTimeout(() => setRevealed(true), 900);
-      window.setTimeout(() => {
-        setInterpretation(reading);
-        setStage("result");
-      }, 2600);
+      window.setTimeout(() => setStage("result"), 2600);
     } catch {
       setError("暂时无法读取今日次数，请稍后重试，或使用深度解读。");
     } finally {
@@ -292,8 +272,7 @@ export default function YesNoPage() {
                 </div>
 
                 <article className="mt-7 rounded-[4px] border border-ink/12 bg-ivory px-5 py-5 text-[15px] leading-7 text-ink/68 shadow-entry">
-                  {interpretation}
-                  这是一份快速倾向参考，仅依据三张牌的正负倾向给出简答，未结合具体问题、牌位与组合关系展开分析，可能与实际情况不符。如果想结合你的具体情况，进一步梳理这件事的原因、阻碍和下一步，可以使用深度解读。
+                  这是一份快速倾向参考，仅依据三张牌的正负倾向给出简答，未结合具体问题、牌位与组合关系展开分析，可能与实际情况不符。
                 </article>
 
                 <aside aria-label="进一步了解这个问题" className="mt-6 rounded-[6px] border border-[#C9CEBC]/65 bg-[#F2F1E9]/70 px-5 py-6 text-center sm:px-8">
