@@ -5,6 +5,7 @@ import { DeepFollowUpResult, DeepReadingResult, assertDeepFollowUpResult, assert
 import { InterpretationSource, getRuleEngineFeatureFlags, resolveInterpretationSource, spreadSizeForSpreadType } from "./reading-source";
 import { getPasswordResetRedirectUrl, getPublicSiteUrl } from "./site-config";
 import { FREE_DEEP_READING_LIMIT } from "./reading-quota";
+import { projectMemoryLimit } from "./project-memory";
 import { paidLocalSiteEnabled, paidOnlineSiteEnabled, paidSiteEnabled, getPaidSiteSession, logoutPaidSite, paidSiteRequest, paidSiteQuota, paidReadingForSite, paidFollowUpsForSite, stablePaidRequestKey, completePaidRequestKey } from "./paid-local/site-bridge";
 import type { PaidReading } from "./paid-local/types";
 export { FREE_DEEP_READING_LIMIT } from "./reading-quota";
@@ -991,7 +992,7 @@ export function createProject(input: { title: string; background?: string; memor
     userEmail: session.email,
     title: input.title.trim().slice(0, 100),
     background: (input.background ?? "").trim(),
-    memorySummary: (input.memorySummary ?? "").trim().slice(0, 2000),
+    memorySummary: (input.memorySummary ?? "").trim().slice(0, projectMemoryLimit),
     createdAt: timestamp,
     updatedAt: timestamp,
     lastOpenedAt: timestamp
@@ -1016,7 +1017,7 @@ export async function saveProject(input: { title: string; background?: string; m
       user_id: session.userId,
       title: input.title.trim().slice(0, 100),
       background: (input.background ?? "").trim(),
-      memory_summary: (input.memorySummary ?? "").trim().slice(0, 2000),
+      memory_summary: (input.memorySummary ?? "").trim().slice(0, projectMemoryLimit),
       created_at: timestamp,
       updated_at: timestamp,
       last_opened_at: timestamp
@@ -1039,7 +1040,7 @@ export function updateProject(projectId: string, input: { title?: string; backgr
       ...project,
       title: input.title === undefined ? project.title : input.title.trim().slice(0, 100),
       background: input.background === undefined ? project.background : input.background.trim(),
-      memorySummary: input.memorySummary === undefined ? project.memorySummary : input.memorySummary.trim().slice(0, 2000),
+      memorySummary: input.memorySummary === undefined ? project.memorySummary : input.memorySummary.trim().slice(0, projectMemoryLimit),
       updatedAt: now()
     };
 
@@ -1059,7 +1060,7 @@ export async function saveProjectUpdate(projectId: string, input: { title?: stri
   };
   if (input.title !== undefined) patch.title = input.title.trim().slice(0, 100);
   if (input.background !== undefined) patch.background = input.background.trim();
-  if (input.memorySummary !== undefined) patch.memory_summary = input.memorySummary.trim().slice(0, 2000);
+  if (input.memorySummary !== undefined) patch.memory_summary = input.memorySummary.trim().slice(0, projectMemoryLimit);
 
   const rows = await supabaseRest<RemoteProjectRow[]>(`/deep_projects?id=eq.${encodeURIComponent(projectId)}&select=*`, {
     method: "PATCH",

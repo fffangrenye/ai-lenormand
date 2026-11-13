@@ -42,6 +42,15 @@ async function api(who,action,body,extra={}){
  const loser=a===1?'alice':'bob',other=loser==='alice'?'bob':'alice';
  const project=(await api(loser,'projects',{title:'security fixture',memorySummary:'测试长期记忆'})).data;
  assert.equal(project.memorySummary,'测试长期记忆');
+ const memoryAtLimit='记'.repeat(200), memoryOverLimit=memoryAtLimit+'忆';
+ const oversized=await api(loser,'projects',{title:'memory boundary',memorySummary:memoryOverLimit});
+ assert.equal(oversized.status,400);
+ assert.equal(oversized.data.code,'INVALID_PROJECT');
+ const accepted=await api(loser,'project-update',{projectId:project.id,memorySummary:memoryAtLimit});
+ assert.equal(accepted.status,200);
+ assert.equal(accepted.data.memorySummary,memoryAtLimit);
+ assert.equal((await api(loser,'project-update',{projectId:project.id,memorySummary:memoryOverLimit})).status,400);
+ assert.equal((await api(loser,'projects/'+project.id)).data.memorySummary,memoryAtLimit);
  const makeDraw=async()=>{const r=await api(loser,'draw',{projectId:project.id,question:'测试问题',spread:'three_card',requestKey:randomUUID()});assert.equal(r.status,200);return r.data;};
  const first=await makeDraw(),second=await makeDraw();
  for(const action of ['projects/'+project.id,'projects/'+project.id+'/reading-page','readings/'+first.id])assert.equal((await api(other,action)).status,404);

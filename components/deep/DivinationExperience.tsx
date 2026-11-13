@@ -11,6 +11,7 @@ import type { PaidDrawSession } from "@/lib/paid-local/types";
 import { generateDeepReading, saveReading } from "@/lib/project-store";
 import { SpreadLayout } from "./SpreadLayout";
 import { ShuffleRitual } from "./ShuffleRitual";
+import { ReadingMemoryPrompt } from "./ReadingMemoryPrompt";
 import { QuietCardBack } from "@/components/QuietCardBack";
 import { ServiceNotice } from "@/components/ServiceNotice";
 
@@ -47,7 +48,15 @@ function CardFan({ session, busy, onPick }: { session: PaidDrawSession; busy: bo
   </div>;
 }
 
-export function DivinationExperience({ projectId = "", historyCount = 0, ruleEngineTrialAllowed = false, onHistory, onComplete, guest = false }: { projectId?: string; historyCount?: number; ruleEngineTrialAllowed?: boolean; onHistory?: () => void; onComplete?: (readingId: string, notice?: string) => void; guest?: boolean }) {
+export function DivinationExperience({ projectId = "", historyCount = 0, ruleEngineTrialAllowed = false, onHistory, onComplete, guest = false, memoryPrompt }: {
+  projectId?: string;
+  historyCount?: number;
+  ruleEngineTrialAllowed?: boolean;
+  onHistory?: () => void;
+  onComplete?: (readingId: string, notice?: string) => void;
+  guest?: boolean;
+  memoryPrompt?: { hasMemory: boolean; maxLength: number; onSave: (memory: string) => Promise<void> };
+}) {
   const router = useRouter();
   const [question, setQuestion] = useState("");
   const [spreadId, setSpreadId] = useState<DeepSpreadId>("three_card");
@@ -61,6 +70,7 @@ export function DivinationExperience({ projectId = "", historyCount = 0, ruleEng
   const [phase, setPhase] = useState<"setup" | "shuffle" | "shuffling" | "picking" | "interpreting">("setup");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [showMemoryPrompt, setShowMemoryPrompt] = useState(false);
   const [useRuleEngineTrial, setUseRuleEngineTrial] = useState(false);
   const picking = useRef(false);
   const spread = getDeepSpread(session && (phase === "picking" || phase === "interpreting") ? session.spread : spreadId);
@@ -88,7 +98,17 @@ export function DivinationExperience({ projectId = "", historyCount = 0, ruleEng
     const values = choices.slice(0, size).map((value) => value.trim().toLowerCase());
     if (!question.trim()) { setError("先写下这次想问的具体问题。"); return; }
     if (size && (values.some((value) => !value) || new Set(values).size !== size)) { setError(`请填写 ${size} 个不同的具体选项。`); return; }
-    setError(""); setPhase("shuffle");
+    setError("");
+    if (memoryPrompt && !memoryPrompt.hasMemory) {
+      setShowMemoryPrompt(true);
+      return;
+    }
+    setPhase("shuffle");
+  }
+
+  function continueToShuffle() {
+    setShowMemoryPrompt(false);
+    setPhase("shuffle");
   }
   async function start() {
     if (busy || !question.trim()) { if (!question.trim()) setError("先写下这次想问的具体问题。"); return; }
@@ -257,7 +277,7 @@ export function DivinationExperience({ projectId = "", historyCount = 0, ruleEng
     {error && <p role="alert" className="mt-5 rounded-lg border border-[#6E2638]/15 p-3 text-sm leading-6 text-[#8E4D4A]">{error}</p>}
   </section>;
 
-  return <form onSubmit={beginShuffle} className="py-6 sm:py-10">
+  return <><form onSubmit={beginShuffle} className="py-6 sm:py-10">
     <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs uppercase tracking-[0.2em] text-clay/65">A question, a little clarity</p>{historyCount > 0 && <button type="button" onClick={onHistory} className="min-h-10 text-xs text-[#6E2638]">查看历史解读（{historyCount}）<ArrowRight size={13} className="ml-1 inline" /></button>}</div>
     <h1 className="mt-4 font-serif text-3xl sm:text-4xl">这一次，你想问什么？</h1><p className="mt-3 text-sm leading-7 text-ink/50">先放下一个具体的问题，再选择适合它的牌阵。</p>
     {pending && <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#6E2638]/15 bg-[#FFFDF8] p-4"><div className="min-w-0"><p className="text-sm">有一次尚未完成的抽牌 · {savedPickCount(pending)+pendingQueuedCount}/{getDeepSpread(pending.spread).positions.length} 张</p><p className="mt-1 max-w-xs truncate text-xs text-ink/45">{pending.question}</p></div><button type="button" onClick={() => void resume(pending)} className="min-h-10 text-sm text-[#6E2638]">继续抽牌</button></div>}
@@ -274,5 +294,17 @@ export function DivinationExperience({ projectId = "", historyCount = 0, ruleEng
     {error && <p role="alert" className="mt-4 text-sm text-[#8E4D4A]">{error}</p>}
     <ServiceNotice kind="deep" />
     <div className="mt-6 flex flex-wrap items-center gap-4"><button type="submit" disabled={busy} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[#6E2638] px-8 text-sm text-[#FFF9F2] disabled:opacity-50"><Sparkles size={16} />洗牌，开始这次解读</button><p className="text-xs leading-6 text-ink/45">{paidRevealConfirmationEnabled ? "选牌免费，确认后使用 1 花瓣翻牌并解读，含 2 次追问。" : paidSiteEnabled ? "自己选满牌位后使用 1 花瓣，含 2 次追问。" : "选择问题与牌阵后开始解读。"}</p></div>
-  </form>;
+  </form>
+    {showMemoryPrompt && memoryPrompt && (
+      <ReadingMemoryPrompt
+        maxLength={memoryPrompt.maxLength}
+        onClose={() => setShowMemoryPrompt(false)}
+        onSkip={continueToShuffle}
+        onSave={async (memory) => {
+          await memoryPrompt.onSave(memory);
+          continueToShuffle();
+        }}
+      />
+    )}
+  </>;
 }

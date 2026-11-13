@@ -1,6 +1,7 @@
 import { randomUUID, randomInt } from "node:crypto";
 import type { DatabaseSync, SQLInputValue } from "node:sqlite";
 import { lenormandCards } from "../lenormand-cards";
+import { projectMemoryLimit, projectMemoryLimitMessage } from "../project-memory";
 import { validGuestSlots } from "./guest-draw";
 import { getDeepSpread, isDeepSpread, positionLabels } from "../deep-spreads";
 import { paidConfig } from "./config";
@@ -158,8 +159,10 @@ export class PaidLedger {
       const previous = id ? this.ownedProject(userId, id) : null;
       const title = (input.title ?? String(previous?.title ?? "")).trim();
       const background = (input.background ?? String(previous?.background ?? "")).trim();
-      const memory = (input.memorySummary ?? String(previous?.memory_summary ?? "")).trim();
-      if (!title || title.length > 100 || background.length > 5000 || memory.length > 2000) throw new LocalPaidError("INVALID_PROJECT", "项目名称需要 1–100 字，背景最多 5000 字，记忆最多 2000 字。");
+      const savedMemory = String(previous?.memory_summary ?? "");
+      const memory = input.memorySummary?.trim() ?? savedMemory;
+      if (memory !== savedMemory && memory.length > projectMemoryLimit) throw new LocalPaidError("INVALID_PROJECT", projectMemoryLimitMessage);
+      if (!title || title.length > 100 || background.length > 5000) throw new LocalPaidError("INVALID_PROJECT", "项目名称需要 1–100 字，背景最多 5000 字。");
       const projectId = id || randomUUID();
       if (previous) this.run("UPDATE local_projects SET title=?,background=?,memory_summary=?,updated_at=? WHERE id=?", title, background, memory, this.now(), projectId);
       else this.run("INSERT INTO local_projects(id,user_id,title,background,memory_summary,created_at,updated_at,last_opened_at) VALUES (?,?,?,?,?,?,?,?)", projectId, userId, title, background, memory, this.now(), this.now(), this.now());

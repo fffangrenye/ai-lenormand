@@ -12,6 +12,7 @@ import { useCardSpreadLongPressSave } from "@/lib/use-card-spread-save";
 import { conversationManagementEnabled, getPaidSiteSession, PaidSiteError, paidOnlineSiteEnabled, paidLocalAIEnabled, paidRevealConfirmationEnabled, paidSiteEnabled, paidSiteRequest, restorePaidSiteSession } from "@/lib/paid-local/site-bridge";
 import { bindGuestDraw, clearGuestDraw, readGuestDraw } from "@/lib/paid-local/guest-draw";
 import { getDeepSpread } from "@/lib/deep-spreads";
+import { projectMemoryLimit, projectMemoryLimitMessage } from "@/lib/project-memory";
 import { SpreadLayout } from "@/components/deep/SpreadLayout";
 import { AIGeneratedLabel, ServiceNotice } from "@/components/ServiceNotice";
 import serviceNotices from "@/lib/service-notices.json";
@@ -59,7 +60,6 @@ type ProjectActionTarget = {
 };
 
 const projectMemoryHint = "写下希望后续解读和追问参考的背景或关键信息，也可以留空。";
-const projectMemoryLimit = 2000;
 
 function projectMemoryText(project?: DeepProject | null) {
   const background = project?.background?.trim() || "";
@@ -353,7 +353,7 @@ function ProjectSheet({
     const memorySummary = form.memorySummary.trim();
     const memoryChanged = memorySummary !== projectMemoryText(initialProject);
     if (memoryChanged && memorySummary.length > projectMemoryLimit) {
-      setError("长期记忆最多可保存 2000 字，请适当精简。");
+      setError(projectMemoryLimitMessage);
       return;
     }
 
@@ -416,6 +416,7 @@ function ProjectSheet({
             className="mt-2 w-full resize-none rounded-[4px] border border-ink/12 bg-white/70 px-4 py-3 text-[15px] leading-6 outline-none focus:border-ink/35"
           />
 
+          <p className="mt-1 text-right text-xs text-ink/55">{form.memorySummary.length}/{projectMemoryLimit}</p>
           {error ? <p className="mt-3 text-[13px] text-[#8E4D4A]">{error}</p> : null}
 
           <div className="mt-6 flex gap-3">
@@ -523,7 +524,7 @@ function ProjectMemory({ project, onSaved }: { project: DeepProject; onSaved: (p
       return;
     }
     if (nextMemory.length > projectMemoryLimit) {
-      setError("长期记忆最多可保存 2000 字，请适当精简。");
+      setError(projectMemoryLimitMessage);
       return;
     }
     try {
@@ -817,6 +818,11 @@ function ReadingWorkspace({ project, projects, readings, onProjectSaved, onReadi
     try { await generateDeepReading(id, { confirmReveal: true }); }
     finally { setGeneratingId(null); onReadingsChange(); }
   }
+  async function saveMemoryBeforeDraw(memory: string) {
+    const updated = await saveProjectUpdate(project.id, projectMemoryUpdate(memory));
+    if (!updated) throw new Error("找不到这个项目。");
+    onProjectSaved(updated);
+  }
   return <div className="flex min-h-0 flex-1 flex-col">
     <div className="relative z-20 shrink-0">
       <QuotaNotice quota={quota} message={notice} readingId={activeId || latestId} />
@@ -831,7 +837,15 @@ function ReadingWorkspace({ project, projects, readings, onProjectSaved, onReadi
       {view === "history" && <ProjectMemory project={project} onSaved={onProjectSaved} />}
     </div>
     <div ref={scroll} data-divination-scroll="true" className="relative min-h-0 flex-1 overflow-y-auto overscroll-contain pb-10 [scrollbar-gutter:stable]" aria-label={view === "compose" ? "开始深度解读" : "项目解读记录"}>
-      {view === "compose" ? <DivinationExperience key={project.id} projectId={project.id} historyCount={readings.length} ruleEngineTrialAllowed={ruleEngineTrialAllowed} onHistory={() => setView("history")} onComplete={(id, message) => { setActiveId(id); setNotice(message || ""); setView("history"); onReadingsChange(); }} /> : <div className="mx-auto w-full max-w-[760px] px-1 sm:px-4">
+      {view === "compose" ? <DivinationExperience
+        key={project.id}
+        projectId={project.id}
+        historyCount={readings.length}
+        ruleEngineTrialAllowed={ruleEngineTrialAllowed}
+        memoryPrompt={{ hasMemory: Boolean(projectMemoryText(project)), maxLength: projectMemoryLimit, onSave: saveMemoryBeforeDraw }}
+        onHistory={() => setView("history")}
+        onComplete={(id, message) => { setActiveId(id); setNotice(message || ""); setView("history"); onReadingsChange(); }}
+      /> : <div className="mx-auto w-full max-w-[760px] px-1 sm:px-4">
         <div className="flex items-center justify-between gap-3 py-5"><p className="text-xs text-ink/45">按时间排列 · 最新问题在下方</p><button type="button" onClick={() => setView("compose")} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[#6E2638] px-5 text-sm text-[#FFF9F2]"><Plus size={15} />新的解读</button></div>
         {onLoadEarlier && <button type="button" disabled={loadingEarlier} onClick={onLoadEarlier} className="mb-5 min-h-11 w-full rounded-full border border-ink/15 text-sm text-ink/60 disabled:opacity-50">{loadingEarlier ? "正在读取…" : "查看更早的解读"}</button>}
         {ordered.map(reading => (
