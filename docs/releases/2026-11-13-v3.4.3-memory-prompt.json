@@ -1,0 +1,162 @@
+{
+  "productVersion": "3.4.3",
+  "releaseName": "Flora V3.4.3 · 抽牌前长期记忆提示",
+  "environment": "production",
+  "domain": "https://floralenormand.site",
+  "sourceTag": "flora-v3.4.3-20261113",
+  "sourceCommit": "88db1ba5488b4dfb05046ee72e5ca3a547aa9492",
+  "branch": "codex/v3.4.3-memory-prompt-20261113",
+  "workers": [
+    {
+      "name": "flora-domain-info",
+      "deploymentId": "9b9b9d3f-93b9-4b72-a293-c14205f284c8",
+      "version": "8d8dfe1c-2aee-49b5-8d5a-ca2cb08f4bf3",
+      "percentage": 100,
+      "sourceCommit": "88db1ba5488b4dfb05046ee72e5ca3a547aa9492",
+      "config": "wrangler.flora-v3-site.jsonc",
+      "recordedAt": "2026-11-13T04:40:23.750Z",
+      "rollback": {
+        "deploymentId": "a99ab1e1-f6a3-4ffa-9394-c006c81a3fed",
+        "createdAt": "2026-11-10T03:36:42.903088Z",
+        "versions": [
+          {
+            "version": "8006cc18-ef8d-4479-b48c-981e51f407aa",
+            "percentage": 100
+          }
+        ]
+      },
+      "checks": [
+        {
+          "command": "node scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 1222
+        },
+        {
+          "command": "node scripts/secure-cloudflare-build.cjs --flora-v3",
+          "passed": true,
+          "durationMs": 155101
+        },
+        {
+          "command": "node scripts/scan-cloudflare-artifacts.cjs",
+          "passed": true,
+          "durationMs": 5297
+        },
+        {
+          "command": "node scripts/test-public-assets.cjs",
+          "passed": true,
+          "durationMs": 2747
+        },
+        {
+          "command": "node scripts/test-site-runtime.cjs",
+          "passed": true,
+          "durationMs": 9933
+        },
+        {
+          "command": "node scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 913
+        }
+      ]
+    },
+    {
+      "name": "flora-v3-api",
+      "deploymentId": "35d34080-9186-4a6c-b79a-48f59c5b6829",
+      "version": "fad27979-986e-44c7-8dc5-900ec9651c00",
+      "percentage": 100,
+      "sourceCommit": "88db1ba5488b4dfb05046ee72e5ca3a547aa9492",
+      "config": "wrangler.flora-v3-api.jsonc",
+      "recordedAt": "2026-11-13T04:36:40.670Z",
+      "rollback": {
+        "deploymentId": "9e881cba-f627-4670-9993-21a1dab04cb5",
+        "createdAt": "2026-11-09T11:08:05.374494Z",
+        "versions": [
+          {
+            "version": "16d8d90c-9327-41bc-a835-58f8b28b0231",
+            "percentage": 100
+          }
+        ]
+      },
+      "checks": [
+        {
+          "command": "node scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 872
+        },
+        {
+          "command": "node node_modules/wrangler/bin/wrangler.js deploy --config wrangler.flora-v3-api.jsonc --dry-run --outdir .local-paid/cloud-api-build",
+          "passed": true,
+          "durationMs": 8743
+        },
+        {
+          "command": "node scripts/test-cloud-ledger.cjs",
+          "passed": true,
+          "durationMs": 9419
+        },
+        {
+          "command": "node scripts/test-cloud-security.cjs",
+          "passed": true,
+          "durationMs": 1626
+        },
+        {
+          "command": "node scripts/test-cloud-legacy-restore.cjs",
+          "passed": true,
+          "durationMs": 2016
+        },
+        {
+          "command": "node scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 1048
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "localTypecheck": true,
+    "localRegressionPassed": 24,
+    "isolatedMobileBrowser": {
+      "viewportWidth": 360,
+      "twoColumnExample": true,
+      "writingPrompts": true,
+      "skipWithoutSave": true,
+      "failedSaveRetry": true,
+      "maxLength": 200,
+      "acceptedLimitAndContinuedToDraw": true,
+      "retainedOriginalQuestionAndSpread": true,
+      "savedMemoryBypassesPrompt": true,
+      "guestFlowPreserved": true
+    },
+    "isolatedApi": {
+      "accepted200": true,
+      "rejected201OnCreateAndUpdate": true,
+      "rejectedUpdatePreservedSavedValue": true,
+      "renamedProjectPreservedExisting240Characters": true
+    },
+    "knownLocalSecretsMatched": 0,
+    "production": {
+      "checkedAt": "2026-11-13T04:41:35.724Z",
+      "statuses": {
+        "/": 200,
+        "/login": 200,
+        "/deep": 200,
+        "/recharge": 200,
+        "/api/flora/summary": 401
+      },
+      "updatedAsset": "/_next/static/chunks/8827-998bf4e2e9f5a634.js",
+      "productionAccountUsed": false,
+      "aiCalls": 0
+    }
+  },
+  "rollback": {
+    "databaseMigration": false,
+    "workers": [
+      {
+        "name": "flora-domain-info",
+        "version": "8006cc18-ef8d-4479-b48c-981e51f407aa"
+      },
+      {
+        "name": "flora-v3-api",
+        "version": "16d8d90c-9327-41bc-a835-58f8b28b0231"
+      }
+    ]
+  }
+}
