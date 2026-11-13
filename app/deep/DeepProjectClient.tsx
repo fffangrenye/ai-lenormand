@@ -84,26 +84,33 @@ function useDeepSession(returnTo: string, allowGuest = false) {
   const router = useRouter();
   const [ready, setReady] = useState(false);
   const [email, setEmail] = useState("");
+  const [sessionError, setSessionError] = useState("");
+  const [attempt, setAttempt] = useState(0);
 
   useEffect(() => {
     let cancelled = false;
+    setSessionError("");
     void (async () => {
       const session = paidSiteEnabled
         ? allowGuest && !getPaidSiteSession() ? null : await restorePaidSiteSession()
         : getSession();
       if (cancelled) return;
-      if (!session && !allowGuest) { router.replace(`/login?returnTo=${encodeURIComponent(returnTo)}`); return; }
+      if (!session && !allowGuest) {
+        router.replace(`/login?returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`);
+        return;
+      }
       setEmail(session?.email ?? ""); setReady(true);
-    })();
+    })().catch(error => {
+      if (!cancelled) setSessionError(getDeepLoadErrorMessage(error));
+    });
     return () => { cancelled = true; };
-  }, [allowGuest, returnTo, router]);
+  }, [allowGuest, attempt, returnTo, router]);
 
-  return { ready, email };
+  return { ready, email, sessionError, retrySession: () => setAttempt(value => value + 1) };
 }
 
 function isAuthLoadError(error: unknown) {
-  const message = error instanceof Error ? error.message : String(error ?? "");
-  return message.includes("登录") || message.includes("Not signed in") || message.includes("401");
+  return error instanceof PaidSiteError && error.status === 401;
 }
 
 function getDeepLoadErrorMessage(error: unknown) {
@@ -112,6 +119,7 @@ function getDeepLoadErrorMessage(error: unknown) {
   if (isAuthLoadError(error)) {
     return "登录状态已过期，请重新登录后再进入 Deep Reading。";
   }
+  if (error instanceof PaidSiteError && error.code === "AUTH_UNAVAILABLE") return error.message;
 
   if (message.includes("AbortError") || message.includes("aborted") || message.includes("Failed to fetch") || message.includes("NetworkError")) {
     return "网络连接有点慢，Deep Reading 暂时没有读取成功。";
@@ -1004,7 +1012,7 @@ export function DeepLandingClient() {
   const router = useRouter();
   const resumeId = useSearchParams().get("resumeDraw") || "";
   const returnTo = resumeId ? `/deep?resumeDraw=${encodeURIComponent(resumeId)}` : pathname;
-  const { ready, email } = useDeepSession(returnTo, paidRevealConfirmationEnabled);
+  const { ready, email, sessionError, retrySession } = useDeepSession(returnTo, paidRevealConfirmationEnabled);
   const [projects, setProjects] = useState<DeepProject[]>([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState("");
@@ -1071,8 +1079,7 @@ export function DeepLandingClient() {
       } catch (error) {
         if (cancelled) return;
 
-        if (resumeId ? error instanceof PaidSiteError && error.status === 401 : isAuthLoadError(error)) {
-          signOut();
+        if (isAuthLoadError(error)) {
           router.replace(`/login?returnTo=${encodeURIComponent(returnTo)}`);
           return;
         }
@@ -1090,6 +1097,7 @@ export function DeepLandingClient() {
 
   const currentTitle = useMemo(() => "Deep Reading", []);
 
+  if (sessionError) return <DeepLoadState title="暂时无法恢复登录" message={sessionError} actionLabel="重试" onAction={retrySession} />;
   if (!ready) {
     return <main className="min-h-dvh bg-paper" />;
   }
@@ -1124,7 +1132,7 @@ export function DeepLandingClient() {
 export function DeepProjectPageClient({ projectId }: { projectId: string }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { ready, email } = useDeepSession(pathname);
+  const { ready, email, sessionError, retrySession } = useDeepSession(pathname);
   const [projects, setProjects] = useState<DeepProject[]>([]);
   const [project, setProject] = useState<DeepProject | null>(null);
   const [readings, setReadings] = useState<ReadingWithCards[]>([]);
@@ -1150,8 +1158,7 @@ export function DeepProjectPageClient({ projectId }: { projectId: string }) {
         setLoadError("");
       } catch (error) {
         if (isAuthLoadError(error)) {
-          signOut();
-          router.replace(`/login?returnTo=${encodeURIComponent(pathname)}`);
+          router.replace(`/login?returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`);
           return;
         }
 
@@ -1208,8 +1215,7 @@ export function DeepProjectPageClient({ projectId }: { projectId: string }) {
         if (cancelled) return;
 
         if (isAuthLoadError(error)) {
-          signOut();
-          router.replace(`/login?returnTo=${encodeURIComponent(pathname)}`);
+          router.replace(`/login?returnTo=${encodeURIComponent(window.location.pathname + window.location.search)}`);
           return;
         }
 
@@ -1224,6 +1230,7 @@ export function DeepProjectPageClient({ projectId }: { projectId: string }) {
     };
   }, [pathname, projectId, ready, router]);
 
+  if (sessionError) return <DeepLoadState title="暂时无法恢复登录" message={sessionError} actionLabel="重试" onAction={retrySession} />;
   if (!ready) {
     return <main className="min-h-dvh bg-paper" />;
   }

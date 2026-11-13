@@ -72,11 +72,14 @@ export async function paidSiteRequest<T>(action = "", body?: Record<string, unkn
   if (paidLocalSiteEnabled && !["127.0.0.1", "localhost"].includes(window.location.hostname)) throw new Error("本地测试接口未开启。");
   let accessToken: string | undefined;
   let verifiedOwner = "";
+  let recoverSession: (() => Promise<AuthSession>) | undefined;
   if (paidOnlineSiteEnabled) {
-    const { getValidSession } = await import("../project-store");
-    try { const session = await getValidSession(); accessToken = session?.accessToken; verifiedOwner = session?.userId || ""; }
-    catch { throw new PaidSiteError("UNAUTHORIZED", "请先登录你的 Flora 账号。", 401); }
+    const { getValidSession, refreshSupabaseAuthSession } = await import("../project-store");
+    const session = await getValidSession();
+    accessToken = session?.accessToken;
+    verifiedOwner = session?.userId || "";
     if (!accessToken) throw new PaidSiteError("UNAUTHORIZED", "请先登录你的 Flora 账号。", 401);
+    recoverSession = () => refreshSupabaseAuthSession(session);
   }
   const cacheOwner = verifiedOwner || getPaidSiteSession()?.userId || "";
   if (activeOwner !== cacheOwner) { invalidate(); activeOwner = cacheOwner; }
@@ -95,15 +98,28 @@ export async function paidSiteRequest<T>(action = "", body?: Record<string, unkn
     }
   } else invalidate();
   const request = (async () => {
-  const response = await fetch(`${paidOnlineSiteEnabled ? "/api/flora" : "/api/local-paid"}${action ? `/${action}` : ""}`, {
+  const send = (token: string | undefined) => fetch(`${paidOnlineSiteEnabled ? "/api/flora" : "/api/local-paid"}${action ? `/${action}` : ""}`, {
     method: body ? "POST" : "GET", credentials: "same-origin", cache: "no-store",
-    headers: { "Content-Type": "application/json", ...(paidOnlineSiteEnabled ? { Authorization: `Bearer ${accessToken}` } : { "x-local-paid": "1" }) },
+    headers: { "Content-Type": "application/json", ...(paidOnlineSiteEnabled ? { Authorization: `Bearer ${token}` } : { "x-local-paid": "1" }) },
     ...(body ? { body: JSON.stringify(body) } : {})
   });
-  const payload = await response.json() as { code?: string; message?: string };
+  let response = await send(accessToken);
+  if (response.status === 401 && recoverSession) {
+    const recovered = await recoverSession();
+    if (body && !touch) throw new PaidSiteError("AUTH_RESTORED", "登录已恢复，请重新提交这次操作。", 409);
+    response = await send(recovered.accessToken);
+    if (response.status === 401) {
+      throw new PaidSiteError("AUTH_UNAVAILABLE", "暂时无法验证登录，请稍后重试。", 503);
+    }
+  }
   if (!response.ok) {
-    if (response.status === 401 && !action.startsWith("admin")){window.localStorage.removeItem(paidOnlineSiteEnabled ? "ai-lenormand:auth-session" : sessionKey);invalidate();}
+    const payload = await response.json().catch(() => ({})) as { code?: string; message?: string };
+    if (response.status === 401 && !paidOnlineSiteEnabled && !action.startsWith("admin")){window.localStorage.removeItem(sessionKey);invalidate();}
     throw new PaidSiteError(payload.code || "REQUEST_ERROR", response.status === 401 ? "登录状态已过期，请重新登录。" : payload.message || "请求失败，请重试。", response.status);
+  }
+  const payload = await response.json();
+  if (paidOnlineSiteEnabled && getPaidSiteSession()?.userId !== verifiedOwner) {
+    throw new PaidSiteError("ACCOUNT_CHANGED", "登录账号已变更，请重新打开当前页面。", 409);
   }
   // A mutation or account change must not let an older in-flight GET refill caches.
   if (getPaidSiteSession()?.userId === cacheOwner && (body || epoch === cacheEpoch)) {
@@ -140,7 +156,14 @@ export function getPaidSiteSession(): AuthSession | null {
   try { return JSON.parse(window.localStorage.getItem(paidOnlineSiteEnabled ? "ai-lenormand:auth-session" : sessionKey) || "null") as AuthSession | null; } catch { return null; }
 }
 export async function restorePaidSiteSession() {
-  if(paidOnlineSiteEnabled){try{const {getValidSession}=await import("../project-store");return await getValidSession();}catch{return null;}}
+  if (paidOnlineSiteEnabled) {
+    const { getValidSession } = await import("../project-store");
+    try { return await getValidSession(); }
+    catch (error) {
+      if (error instanceof PaidSiteError && error.status === 401) return null;
+      throw error;
+    }
+  }
   try { const overview = await paidSiteRequest<PaidOverview>(); return paidOnlineSiteEnabled ? getPaidSiteSession() : rememberSession(overview); } catch { return null; }
 }
 export async function loginPaidSite(account: string) { return rememberSession(await paidSiteRequest<PaidOverview>("session", { account })); }

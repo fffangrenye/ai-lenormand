@@ -6,7 +6,7 @@ import { InterpretationSource, getRuleEngineFeatureFlags, resolveInterpretationS
 import { getPasswordResetRedirectUrl, getPublicSiteUrl } from "./site-config";
 import { FREE_DEEP_READING_LIMIT } from "./reading-quota";
 import { projectMemoryLimit } from "./project-memory";
-import { paidLocalSiteEnabled, paidOnlineSiteEnabled, paidSiteEnabled, getPaidSiteSession, logoutPaidSite, paidSiteRequest, paidSiteQuota, paidReadingForSite, paidFollowUpsForSite, stablePaidRequestKey, completePaidRequestKey } from "./paid-local/site-bridge";
+import { paidLocalSiteEnabled, paidOnlineSiteEnabled, paidSiteEnabled, getPaidSiteSession, logoutPaidSite, PaidSiteError, paidSiteRequest, paidSiteQuota, paidReadingForSite, paidFollowUpsForSite, stablePaidRequestKey, completePaidRequestKey } from "./paid-local/site-bridge";
 import type { PaidReading } from "./paid-local/types";
 export { FREE_DEEP_READING_LIMIT } from "./reading-quota";
 
@@ -303,27 +303,70 @@ function isSessionExpiring(session: AuthSession) {
   return Boolean(session.expiresAt && Date.now() > session.expiresAt - 60_000);
 }
 
-async function refreshSupabaseAuthSession(session: AuthSession) {
-  if (!session.refreshToken) {
-    throw new Error("登录已过期，请重新登录。");
-  }
+class SupabaseAuthError extends Error {
+  constructor(message: string, readonly code: string, readonly status: number) { super(message); }
+}
 
-  try {
-    const payload = await requestSupabaseAuth("/auth/v1/token?grant_type=refresh_token", {
-      refresh_token: session.refreshToken
-    });
-    return saveSupabaseAuthSession(payload, session.email);
-  } catch {
-    signOut();
-    throw new Error("登录已过期，请重新登录。");
-  }
+const expiredSessionCodes = new Set([
+  "refresh_token_not_found", "refresh_token_already_used", "session_expired",
+  "session_not_found", "user_not_found", "user_banned"
+]);
+const refreshes = new Map<string, Promise<AuthSession>>();
+const signedOut = () => new PaidSiteError("UNAUTHORIZED", "请先登录你的 Flora 账号。", 401);
+const authUnavailable = () => new PaidSiteError("AUTH_UNAVAILABLE", "暂时无法恢复登录，请检查网络后重试。", 503);
+
+export function refreshSupabaseAuthSession(session: AuthSession): Promise<AuthSession> {
+  const key = session.userId || "";
+  const pending = refreshes.get(key);
+  const currentSession = () => {
+    const current = getSession();
+    if (!current?.accessToken) throw signedOut();
+    if (current.userId !== session.userId) throw new PaidSiteError("ACCOUNT_CHANGED", "登录账号已变更，请重新打开当前页面。", 409);
+    return current;
+  };
+  const sameCredentials = (current: AuthSession) =>
+    current.accessToken === session.accessToken && current.refreshToken === session.refreshToken;
+  const refresh = async () => {
+    const current = currentSession();
+    // Another tab may have rotated the credentials while this tab waited.
+    if (!sameCredentials(current)) return current;
+    if (!current.refreshToken) {
+      signOut();
+      throw signedOut();
+    }
+    try {
+      const payload = await requestSupabaseAuth("/auth/v1/token?grant_type=refresh_token", {
+        refresh_token: current.refreshToken
+      });
+      const latest = currentSession();
+      if (!sameCredentials(latest)) return latest;
+      const user = payload.user as { id?: unknown } | undefined;
+      if (user?.id !== current.userId || typeof payload.access_token !== "string" || !payload.access_token ||
+        typeof payload.refresh_token !== "string" || !payload.refresh_token) throw authUnavailable();
+      return saveSupabaseAuthSession(payload, current.email);
+    } catch (error) {
+      const latest = currentSession();
+      if (!sameCredentials(latest)) return latest;
+      if (error instanceof SupabaseAuthError && error.status < 500 && error.status !== 429 && expiredSessionCodes.has(error.code)) {
+        signOut();
+        throw signedOut();
+      }
+      throw authUnavailable();
+    }
+  };
+  if (pending) return pending.then(currentSession);
+  const locks = window.navigator?.locks;
+  const request = Promise.resolve(locks ? locks.request("flora:supabase-session:" + key, refresh) : refresh())
+    .finally(() => refreshes.delete(key));
+  refreshes.set(key, request);
+  return request;
 }
 
 export async function getValidSession() {
   const session = getSession();
 
   if (!session?.accessToken) {
-    throw new Error("Not signed in");
+    throw signedOut();
   }
 
   if (!isSessionExpiring(session)) {
@@ -359,15 +402,14 @@ async function supabaseRest<T>(path: string, init?: RequestInit): Promise<T> {
 
   let response = await requestWithSession(session);
 
-  if (response.status === 401 && session.refreshToken) {
+  if (response.status === 401) {
     session = await refreshSupabaseAuthSession(session);
     response = await requestWithSession(session);
   }
 
   if (!response.ok) {
     if (response.status === 401) {
-      signOut();
-      throw new Error("登录已过期，请重新登录。");
+      throw authUnavailable();
     }
 
     const message = await response.text().catch(() => "");
@@ -408,7 +450,8 @@ async function requestSupabaseAuth(path: string, body: Record<string, unknown>) 
           : typeof payload.error_description === "string"
             ? payload.error_description
             : "Supabase 登录失败。";
-    throw new Error(message);
+    const code = typeof payload.error_code === "string" ? payload.error_code : typeof payload.code === "string" ? payload.code : "";
+    throw new SupabaseAuthError(message, code, response.status);
   }
 
   return payload;
