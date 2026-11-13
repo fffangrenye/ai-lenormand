@@ -1,0 +1,100 @@
+{
+  "productVersion": "3.4.4",
+  "releaseName": "Flora V3.4.4 · 登录状态恢复",
+  "environment": "production",
+  "domain": "https://floralenormand.site",
+  "sourceCommit": "b11e814dba22528d1ed2282b3a9573e273fdc8aa",
+  "branch": "codex/v3.4.4-session-recovery-20261113",
+  "workers": [
+    {
+      "name": "flora-domain-info",
+      "deploymentId": "08105773-fae6-458b-89f7-78e450a48e7a",
+      "version": "9eaa1a8a-75cf-4f09-bfe3-f4aa406fb016",
+      "percentage": 100,
+      "sourceCommit": "b11e814dba22528d1ed2282b3a9573e273fdc8aa",
+      "config": "wrangler.flora-v3-site.jsonc",
+      "recordedAt": "2026-11-13T13:40:23.567Z",
+      "rollback": {
+        "deploymentId": "9b9b9d3f-93b9-4b72-a293-c14205f284c8",
+        "createdAt": "2026-11-13T04:40:11.017331Z",
+        "versions": [
+          {
+            "version": "8d8dfe1c-2aee-49b5-8d5a-ca2cb08f4bf3",
+            "percentage": 100
+          }
+        ]
+      },
+      "checks": [
+        {
+          "command": "node.exe scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 10280
+        },
+        {
+          "command": "node.exe scripts/secure-cloudflare-build.cjs --flora-v3",
+          "passed": true,
+          "durationMs": 115881
+        },
+        {
+          "command": "node.exe scripts/scan-cloudflare-artifacts.cjs",
+          "passed": true,
+          "durationMs": 4935
+        },
+        {
+          "command": "node.exe scripts/test-public-assets.cjs",
+          "passed": true,
+          "durationMs": 14846
+        },
+        {
+          "command": "node.exe scripts/test-site-runtime.cjs",
+          "passed": true,
+          "durationMs": 10406
+        },
+        {
+          "command": "node.exe scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 852
+        }
+      ]
+    },
+    {
+      "name": "flora-v3-api",
+      "deploymentId": "35d34080-9186-4a6c-b79a-48f59c5b6829",
+      "version": "fad27979-986e-44c7-8dc5-900ec9651c00",
+      "percentage": 100,
+      "sourceCommit": "88db1ba5488b4dfb05046ee72e5ca3a547aa9492",
+      "config": "wrangler.flora-v3-api.jsonc",
+      "unchanged": true
+    }
+  ],
+  "verification": {
+    "localTypecheck": true,
+    "localRegressionPassed": 18,
+    "production": {
+      "checkedAt": "2026-11-13T13:41:07.423Z",
+      "statuses": {
+        "/": 200,
+        "/login?returnTo=%2Fprofile": 200,
+        "/deep": 200,
+        "/profile": 200,
+        "/api/flora/summary": 401
+      },
+      "recoveryAssets": [
+        "/_next/static/chunks/4248-3e5e2bc5abc1518d.js",
+        "/_next/static/chunks/8827-6e98c2d8ab3b1ad0.js"
+      ],
+      "liveAssetHashesMatch": true,
+      "productionAccountUsed": false
+    }
+  },
+  "rollback": {
+    "databaseMigration": false,
+    "workers": [
+      {
+        "name": "flora-domain-info",
+        "version": "8d8dfe1c-2aee-49b5-8d5a-ca2cb08f4bf3",
+        "percentage": 100
+      }
+    ]
+  }
+}
