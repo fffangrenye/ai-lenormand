@@ -1,0 +1,87 @@
+{
+  "productVersion": "3.5.1",
+  "releaseName": "Flora V3.5.1 · 首页洋葱解牌入口",
+  "environment": "production",
+  "domain": "https://floralenormand.site",
+  "sourceTag": "flora-v3.5.1-20261114",
+  "sourceCommit": "6c7915e10c4885f0f1173d04ef00f569d2741589",
+  "branch": "codex/onion-home-release",
+  "workers": [
+    {
+      "name": "flora-domain-info",
+      "config": "wrangler.flora-v3-site.jsonc",
+      "sourceCommit": "6c7915e10c4885f0f1173d04ef00f569d2741589",
+      "version": "e5db3635-f2f3-4482-996c-23959472dba6",
+      "deploymentId": "3276a088-38cd-4687-8a6c-74bbe5bc7544",
+      "percentage": 100,
+      "rollback": {
+        "deploymentId": "18a262f2-2cd3-4190-8730-e2cb6601e5bc",
+        "createdAt": "2026-11-14T12:07:59.844627Z",
+        "versions": [
+          {
+            "version": "9cd0ec8e-6c3e-40ee-a456-2316510cdef9",
+            "percentage": 100
+          }
+        ]
+      },
+      "checks": [
+        {
+          "command": "node.exe scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 934
+        },
+        {
+          "command": "node.exe scripts/secure-cloudflare-build.cjs --flora-v3",
+          "passed": true,
+          "durationMs": 81064
+        },
+        {
+          "command": "node.exe scripts/scan-cloudflare-artifacts.cjs",
+          "passed": true,
+          "durationMs": 5491
+        },
+        {
+          "command": "node.exe scripts/test-public-assets.cjs",
+          "passed": true,
+          "durationMs": 6571
+        },
+        {
+          "command": "node.exe scripts/test-site-runtime.cjs",
+          "passed": true,
+          "durationMs": 10099
+        },
+        {
+          "command": "node.exe scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 1083
+        }
+      ]
+    },
+    {
+      "name": "flora-v3-api",
+      "config": "wrangler.flora-v3-api.jsonc",
+      "sourceCommit": "0c46fcad0bb501eca811e44abd255b729539ca55",
+      "version": "b059eb84-2a81-4742-91d2-0e6049cc92a1",
+      "deploymentId": "afa31f22-3bd8-4285-86cd-9116cda61471",
+      "percentage": 100,
+      "redeployed": false
+    }
+  ],
+  "verification": {
+    "checkedAt": "2026-11-14T13:46:22.823Z",
+    "homeStatus": 200,
+    "guidedStatus": 200,
+    "staticHome": true,
+    "onionBeforeDaily": true,
+    "petalBadgeVisibleInMarkup": true,
+    "frontendAssetMatchesBuild": true
+  },
+  "rollback": {
+    "workers": [
+      {
+        "name": "flora-domain-info",
+        "version": "9cd0ec8e-6c3e-40ee-a456-2316510cdef9"
+      }
+    ]
+  }
+}
