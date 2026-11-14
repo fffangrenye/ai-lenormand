@@ -15,7 +15,9 @@ const mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'security-test'
   return Response.json({id:ids[name],email:name+'@example.invalid',email_confirmed_at:auth.includes('unconfirmed')?null:'2026-10-01',user_metadata:{admin:true,role:'admin'}});
  }
  if(request.url==='https://api.deepseek.com/chat/completions'){
-  const body=await request.json(),follow=body.max_tokens<1000;
+  const body=await request.json();
+  if(body.max_tokens===96)return Response.json({model:'test',choices:[{finish_reason:'stop',message:{content:JSON.stringify({decision:'allow',category:'none'})}}]});
+  const follow=body.max_tokens<1000;
   if(follow){if(++followCalls===2)twoFollowsEntered.resolve();await followGate.promise;}else{mainCalls++;mainEntered.resolve();await mainGate.promise;}
   return Response.json({model:'test',choices:[{finish_reason:'stop',message:{content:JSON.stringify(follow?{answer:'仅测试的追问结果'}:{conclusion:'测试结论',interpretation:'测试正文',advice:'测试建议',uncertainty:'测试'})}}]});
  }
