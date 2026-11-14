@@ -56,7 +56,7 @@ const cards: HomeCard[] = [
 ];
 
 const guidedPreview = process.env.NEXT_PUBLIC_FLORA_GUIDED_PREVIEW === "1" || process.env.NEXT_PUBLIC_PAID_ONLINE_MODE === "1";
-const featureCards: HomeCard[] = guidedPreview ? [...cards, {
+const featureCards: HomeCard[] = guidedPreview ? [{
   titleEn: "Onion Reading",
   titleZh: guidedReadingTitle,
   href: "/guided",
@@ -67,7 +67,7 @@ const featureCards: HomeCard[] = guidedPreview ? [...cards, {
   idleX: 0,
   idleY: 0,
   idleRotate: 0,
-}] : cards;
+}, ...cards] : cards;
 
 function PaperTexture() {
   return (
@@ -108,6 +108,12 @@ function CardFront({ card, active }: { card: HomeCard; active: boolean }) {
       style={{ color: card.color }}
     >
       <span className="absolute left-4 top-3 font-serif text-[9px] tracking-[0.16em] opacity-45">{card.number}</span>
+      {card.kind === "guided" && (
+        <span className="absolute right-2.5 top-2.5 grid h-8 w-8 place-items-center">
+          <span aria-hidden="true" className="absolute inset-0 rounded-[70%_45%_68%_50%] bg-[#EDE3F1] ring-1 ring-inset ring-[#715A80]/20 [transform:rotate(-16deg)]" />
+          <span className="relative text-[11px] font-semibold leading-none text-[#654A73]">新</span>
+        </span>
+      )}
       <div className="mt-5 h-[110px] w-[110px] shrink-0"><HomeEntryArt kind={card.kind} /></div>
       <div className="w-full text-center"><h2 className="mt-2 font-serif text-xl leading-7 tracking-[0.12em]">{card.titleZh}</h2><p className="mt-1.5 font-serif text-[10px] leading-4 tracking-[0.04em] opacity-75">{card.titleEn}</p><div className="mx-auto my-3 h-px w-6 bg-current opacity-20" /><p className="text-[9px] leading-5 tracking-[0.02em] opacity-65">{card.description}</p></div>
     </Link>
@@ -176,7 +182,7 @@ export default function HomePage() {
               {featureCards.map((card, index) => (
                 <motion.div
                   key={card.titleEn}
-                  className={`${homeCardSizeClass} shrink-0 [perspective:1000px] ${card.kind === "guided" ? "sm:col-start-3" : ""}`}
+                  className={`${homeCardSizeClass} shrink-0 [perspective:1000px] ${card.kind === "guided" ? "sm:col-start-1 sm:row-start-1" : guidedPreview ? "sm:row-start-2" : ""}`}
                   initial={false}
                   animate={
                     drawn
