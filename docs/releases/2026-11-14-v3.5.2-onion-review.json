@@ -1,0 +1,145 @@
+{
+  "productVersion": "3.5.2",
+  "releaseName": "Flora V3.5.2 · 洋葱解牌逐张回看与推荐优化",
+  "environment": "production",
+  "domain": "https://floralenormand.site",
+  "sourceTag": "flora-v3.5.2-20261114",
+  "sourceCommit": "9011650dafd1b5f2fc7d47f900b4bedc37b8ecdd",
+  "branch": "codex/onion-home-release",
+  "workers": [
+    {
+      "name": "flora-domain-info",
+      "config": "wrangler.flora-v3-site.jsonc",
+      "sourceCommit": "9011650dafd1b5f2fc7d47f900b4bedc37b8ecdd",
+      "version": "a4cf7dd0-0619-40d7-954e-b05679856e5f",
+      "deploymentId": "8bb664ae-c74e-4e5b-bded-9e72b142362a",
+      "percentage": 100,
+      "rollback": {
+        "deploymentId": "3276a088-38cd-4687-8a6c-74bbe5bc7544",
+        "createdAt": "2026-11-14T13:45:54.712405Z",
+        "versions": [
+          {
+            "version": "e5db3635-f2f3-4482-996c-23959472dba6",
+            "percentage": 100
+          }
+        ]
+      },
+      "checks": [
+        {
+          "command": "node.exe scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 883
+        },
+        {
+          "command": "node.exe scripts/secure-cloudflare-build.cjs --flora-v3",
+          "passed": true,
+          "durationMs": 113979
+        },
+        {
+          "command": "node.exe scripts/scan-cloudflare-artifacts.cjs",
+          "passed": true,
+          "durationMs": 5884
+        },
+        {
+          "command": "node.exe scripts/test-public-assets.cjs",
+          "passed": true,
+          "durationMs": 1990
+        },
+        {
+          "command": "node.exe scripts/test-site-runtime.cjs",
+          "passed": true,
+          "durationMs": 8462
+        },
+        {
+          "command": "node.exe scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 1119
+        }
+      ]
+    },
+    {
+      "name": "flora-v3-api",
+      "config": "wrangler.flora-v3-api.jsonc",
+      "sourceCommit": "9011650dafd1b5f2fc7d47f900b4bedc37b8ecdd",
+      "version": "2f3f792c-5392-43c2-b875-f59d58879b6b",
+      "deploymentId": "9a462fdb-7a7a-4ae1-8beb-59e2a83f9e9e",
+      "percentage": 100,
+      "rollback": {
+        "deploymentId": "afa31f22-3bd8-4285-86cd-9116cda61471",
+        "createdAt": "2026-11-14T12:05:35.645891Z",
+        "versions": [
+          {
+            "version": "b059eb84-2a81-4742-91d2-0e6049cc92a1",
+            "percentage": 100
+          }
+        ]
+      },
+      "checks": [
+        {
+          "command": "node.exe scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 856
+        },
+        {
+          "command": "node.exe wrangler.js deploy --config wrangler.flora-v3-api.jsonc --dry-run --outdir .local-paid/cloud-api-build",
+          "passed": true,
+          "durationMs": 2640
+        },
+        {
+          "command": "node.exe scripts/test-cloud-ledger.cjs",
+          "passed": true,
+          "durationMs": 2060
+        },
+        {
+          "command": "node.exe scripts/test-cloud-security.cjs",
+          "passed": true,
+          "durationMs": 1482
+        },
+        {
+          "command": "node.exe scripts/test-cloud-legacy-restore.cjs",
+          "passed": true,
+          "durationMs": 1354
+        },
+        {
+          "command": "node.exe scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 1172
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "checkedAt": "2026-11-14T14:17:37.013Z",
+    "guidedStatus": 200,
+    "homeStatus": 200,
+    "homeIsStatic": true,
+    "homepageStillShowsOnion": true,
+    "anonymousGuidedApi": 401,
+    "publishedGuidedAssetMatchesBuild": true,
+    "completedReviewBrowser": {
+      "environment": "local",
+      "viewportWidth": 390,
+      "reviewEntries": 9,
+      "selectedRound": 2,
+      "sectionOrder": [
+        "第 N 张",
+        "回看九张解读",
+        "九张综合解读"
+      ],
+      "cardSwitchAdditionalApiRequests": 0,
+      "reopensAtRound": 9
+    }
+  },
+  "rollback": {
+    "workers": [
+      {
+        "name": "flora-domain-info",
+        "version": "e5db3635-f2f3-4482-996c-23959472dba6"
+      },
+      {
+        "name": "flora-v3-api",
+        "version": "b059eb84-2a81-4742-91d2-0e6049cc92a1"
+      }
+    ]
+  }
+}
