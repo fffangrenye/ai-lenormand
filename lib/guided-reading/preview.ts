@@ -14,7 +14,7 @@ export const guidedSchema = `
   CREATE INDEX IF NOT EXISTS guided_preview_history ON guided_preview_sessions(owner, updated_at DESC);
 `;
 
-type SavedSession = GuidedSession & { deck: number[]; initialFocus?: string };
+type SavedSession = GuidedSession & { deck: number[]; initialFocus?: string; previousSuggestions?: string[][] };
 const name = (card: number) => lenormandCards[card - 1].nameZh;
 
 function stageText(session: GuidedSession) {
@@ -53,7 +53,7 @@ export class GuidedPreviewStore {
   ) {}
 
   private publicSession(session: SavedSession): GuidedSession {
-    const { deck: _deck, initialFocus: _initialFocus, ...visible } = session;
+    const { deck: _deck, initialFocus: _initialFocus, previousSuggestions: _previousSuggestions, ...visible } = session;
     return visible;
   }
 
@@ -119,6 +119,7 @@ export class GuidedPreviewStore {
         if (expectedStep === 0 && session.petalPrice > 0) this.debitCredits(owner, id, session.petalPrice);
         session.cards.push(session.deck[expectedStep]);
         session.rounds.push({ question, interpretation: null });
+        session.previousSuggestions = [...(session.previousSuggestions ?? []), session.plan.groups.flat()].slice(-2);
         session.plan = null;
         this.write(owner, session);
       }
@@ -150,7 +151,7 @@ export class GuidedPreviewStore {
     if (session.cards.length === guidedCardCount) {
       session.final = this.request ? await summarizeGuidedReading(session, this.request) : mockSummary(session);
     } else {
-      session.plan = await planNextCard(session, this.request);
+      session.plan = await planNextCard(session, this.request, session.previousSuggestions?.flat());
     }
     this.write(owner, session);
     return this.publicSession(session);

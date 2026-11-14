@@ -100,11 +100,12 @@ test("focus and visibility share one refresh event and cross-tab mutations inval
  }finally{off();}
 });
 test("public export includes only allowlisted HTML and native public navigation rejects external redirects",async()=>{
- const root=path.resolve('.local-paid',`public-assets-test-${randomUUID()}`);mkdirSync(path.join(root,'.open-next/assets'),{recursive:true});mkdirSync(path.join(root,'.next/server/app'),{recursive:true});mkdirSync(path.join(root,'workers/domain-info'),{recursive:true});
+ const root=path.resolve('.local-paid',`public-assets-test-${randomUUID()}`);mkdirSync(path.join(root,'.open-next/assets'),{recursive:true});mkdirSync(path.join(root,'.next/server/app'),{recursive:true});mkdirSync(path.join(root,'workers/domain-info'),{recursive:true});mkdirSync(path.join(root,'lib'),{recursive:true});
  try{
   for(const route of staticApplicationPaths)writeFileSync(path.join(root,'.next/server/app',route==='/'?'index.html':route.slice(1)+'.html'),'<!DOCTYPE html><html><head><title>fixture</title></head><body>public shell</body></html>');
   copyFileSync('workers/domain-info/content.mjs',path.join(root,'workers/domain-info/content.mjs'));
   copyFileSync('workers/domain-info/live-pages.mjs',path.join(root,'workers/domain-info/live-pages.mjs'));
+  copyFileSync('lib/service-notices.json',path.join(root,'lib/service-notices.json'));
   const manifest=await require('../../scripts/prepare-public-assets.cjs').preparePublicAssets(root);assert.equal(manifest.length,staticApplicationPaths.length+staticLegalPaths.length);
   for(const route of ['/profile','/login','/deep','/recharge','/redeem','/admin/codes']){assert.equal(isStaticPublicHref(route),false);assert.equal(existsSync(path.join(root,'.open-next/assets',route.slice(1)+'.html')),false);}
   assert.equal(isStaticPublicHref('/daily?checkin=1#daily-calendar'),true);assert.equal(isStaticPublicHref('//example.invalid'),false);

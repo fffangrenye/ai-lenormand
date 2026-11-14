@@ -22,27 +22,47 @@ const rules = `你是 Flora 用于娱乐与自我探索的 AI 雷诺曼卡牌解
 const progression = `全程大致从看清现状，到找出卡点和影响条件，再到行动建议。中间没有按轮数固定的主题、阶段分界或必答清单。已经说清的部分可以跳过；尚未明朗的关键线索可以多看一轮；条件清楚时可以提前讨论可行的选择。接近尾声，收敛到一个现实可行的尝试、值得观察的信号，或在信息不足时值得先弄清的事。`;
 
 const openingQuestions = [
-  "这件事目前进展到了哪一步？", "现阶段有哪些情况已经明确？", "目前还有哪些事情在等确认？",
-  "最近一次具体发生了什么？", "哪些已发生的情况最能反映现状？", "事情到目前为止有哪些实际进展？",
-  "目前哪些安排已经确定？", "目前正在进行的是哪些部分？", "有哪些我能直接核对的信息？",
+  "现在这件事进展得怎么样了？", "眼下哪一点最值得先看？", "这件事还有往前走的机会吗？",
+  "最近有什么变化值得留意？", "目前顺利的地方在哪？", "现在哪一步还悬着？",
+  "接下来最可能先变的是什么？", "有什么迹象能看出事情在往前走？", "有什么可能拖慢进展？",
 ];
 const followOnQuestions = [
-  "刚才提到的线索里，哪个因素最可能影响事情的进展？", "有哪些现实细节能帮忙看清刚才提到的情况？", "前面的解读还有哪一处值得核对？",
-  "这个线索在什么情况下最值得留意？", "如果刚才提到的条件有变，事情会怎样发展？", "刚才提到的可能性还需要哪些信息才能分辨？",
-  "这个线索和之前看到的情况怎样联系起来？", "围绕刚才提到的情况，有哪些条件可以利用？", "沿着这条线索，接下来最值得看什么？",
+  "这事接下来还有机会往前走吗？", "现在卡住的地方有机会松动吗？", "有什么迹象说明情况开始变好了？",
+  "什么情况下会有转机？", "接下来可能会遇到什么阻碍？", "如果照现在这样下去，会怎么样？",
+  "还有没有别的路能走？", "这件事最先会在哪儿有变化？", "眼下有什么机会容易错过？",
 ];
 const nextStepQuestions = [
-  "根据前面已经看清的部分，有什么可以先尝试？", "这个选择需要哪些条件才能实行？", "什么样的变化值得留意？",
-  "有哪些细节能帮助判断下一步是否合适？", "沿着刚才的线索，哪一步最容易开始？", "还需要确认哪件事才能决定下一步？",
-  "什么信号说明有必要调整做法？", "怎样从最近的变化判断事情有没有往前走？", "哪些现实反馈能帮助决定要不要继续？",
+  "我现在能做点什么？", "什么情况下值得我再试一次？", "如果先等等，什么时候适合再看？",
+  "接下来出现什么变化，说明可以往前一步？", "我可以先从哪一步开始？", "有哪些事适合先放一放？",
+  "看到什么变化时，我该考虑换个办法？", "如果事情暂时没动静，还能怎么做？", "我怎么知道这一步有没有用？",
 ];
 
-function prepareQuestionGroups(raw: unknown, session: GuidedSession) {
+const punctuation = new RegExp("[\\p{P}\\p{Z}\\s]", "gu");
+const questionKey = (text: string) => text.normalize("NFKC").replace(punctuation, "");
+const feelingsQuestion = /我.{0,10}(?:害怕|担心|焦虑|感受|情绪|内心|在意|期待|不安|最想要)/;
+const outlineLanguage = /可观察(?:的)?(?:信号|回应)|判断依据|从哪(?:个|一)?维度|互动频率|现实环节|可核实信息/;
+const backgroundChecklist = /由谁发起|提前多久|具体.{0,4}(?:日期|几点|时间和地点)|时段.{0,10}(?:几点|重叠在哪)|有没有再发过|哪一句话|一周.{0,6}几次/;
+
+function isNearDuplicate(key: string, previous: string) {
+  if (key === previous) return true;
+  if (Math.min(key.length, previous.length) < 8) return false;
+  const shorter = key.length < previous.length ? key : previous;
+  const longer = key.length < previous.length ? previous : key;
+  if (longer.includes(shorter) && shorter.length / longer.length >= 0.72) return true;
+  const sharedEnding = shorter.slice(-Math.max(12, Math.ceil(shorter.length / 2)));
+  if (sharedEnding.length >= 12 && longer.endsWith(sharedEnding)) return true;
+  const pairs = (s: string) => new Set(Array.from({ length: s.length - 1 }, (_, i) => s.slice(i, i + 2)));
+  const a = pairs(key);
+  const b = pairs(previous);
+  let common = 0;
+  for (const pair of Array.from(a)) if (b.has(pair)) common++;
+  return common / (a.size + b.size - common) >= 0.68;
+}
+
+function prepareQuestionGroups(raw: unknown, session: GuidedSession, previousSuggestions: string[]) {
   const index = session.cards.length;
   const backup = index === 0 ? openingQuestions : index === guidedCardCount - 1 ? nextStepQuestions : followOnQuestions;
-  const punctuation = new RegExp("[\\p{P}\\p{Z}\\s]", "gu");
-  const keyOf = (text: string) => text.normalize("NFKC").replace(punctuation, "");
-  const used = new Set([session.question, ...session.rounds.map(round => round.question)].map(keyOf));
+  const used = new Set([session.question, ...session.rounds.map(round => round.question), ...previousSuggestions].map(questionKey));
   const rawGroups = Array.isArray(raw) ? raw : [];
   const groups: string[][] = Array.from({ length: 3 }, (_, groupIndex) => {
     const group = rawGroups[groupIndex];
@@ -51,8 +71,9 @@ function prepareQuestionGroups(raw: unknown, session: GuidedSession) {
     for (const item of group) {
       if (typeof item !== "string") continue;
       const text = item.trim().replace(/[。.!！]+$/, "");
-      const key = keyOf(text);
-      if (!key || /[你您]/.test(text) || text.length > 119 || used.has(key)
+      const key = questionKey(text);
+      if (!key || /[你您]/.test(text) || backgroundChecklist.test(text) || outlineLanguage.test(text) || text.length > 119 || Array.from(used).some(previous => isNearDuplicate(key, previous))
+        || (feelingsQuestion.test(text) && questions.some(question => feelingsQuestion.test(question)))
         || (index === 0 && /最想.{0,6}(?:搞清|说清|弄清|弄明白|了解|知道|看清|确认)|最在意什么/.test(text))) continue;
       used.add(key);
       questions.push(/[？?]$/.test(text) ? text : `${text}？`);
@@ -60,16 +81,30 @@ function prepareQuestionGroups(raw: unknown, session: GuidedSession) {
     }
     return questions;
   });
-  const backupPool = [...backup, ...backup.map(q => `结合目前的实际情况，${q}`), ...backup.map(q => `只看与主问题有关的部分，${q}`)]
-    .filter(question => !used.has(keyOf(question)));
-  let backupIndex = 0;
-  for (const group of groups) {
-    while (group.length < 3) {
-      group.push(backupPool[backupIndex]);
-      backupIndex += 1;
+  // Preserve the model's relative order, and prefer specific questions on the first screen.
+  const specific = groups.flat();
+  const grouped = Array.from({ length: 3 }, (_, index) => specific.slice(index * 3, index * 3 + 3));
+  const reserve = [
+    "有没有可能比现在顺一点？", "还有什么会影响接下来的结果？", "什么时候再往前一步比较合适？",
+    "有什么表现说明这件事还没定下来？", "接下来还有什么值得留意？", "事情要怎么变，才会有新的机会？",
+    "这件事会慢慢好起来，还是还要再等等？", "如果暂时没有变化，我可以先做什么？", "最可能先出现什么好转的迹象？",
+  ];
+  const candidates = [...backup, ...reserve];
+  const backupPool = [
+    ...candidates.filter(question => !Array.from(used).some(previous => isNearDuplicate(questionKey(question), previous))),
+    ...reserve,
+    ...candidates.map(question => `如果按现在的情况，${question}`),
+  ];
+  for (const question of backupPool) {
+    const group = grouped.find(items => items.length < 3);
+    if (!group) break;
+    const key = questionKey(question);
+    if (!used.has(key)) {
+      used.add(key);
+      group.push(question);
     }
   }
-  return groups;
+  return grouped;
 }
 
 function context(session: GuidedSession) {
@@ -85,22 +120,22 @@ function context(session: GuidedSession) {
   };
 }
 
-export async function planNextCard(session: GuidedSession, request?: GuidedJsonRequest): Promise<GuidedPlan> {
+export async function planNextCard(session: GuidedSession, request?: GuidedJsonRequest, previousSuggestions: string[] = []): Promise<GuidedPlan> {
   const step = session.cards.length + 1;
   const previous = session.rounds.at(-1);
   const value = !request ? {} : await request(
     rules + "\n" + progression + `
-第 1 轮直接问主问题的客观现状，聚焦能观察到的具体情况，不要求用户再明确想弄清什么。第 2 轮起，先从最近一轮的实际回答里找出一个具体且尚未解开的线索，必要时参考更早的问答，选择最能推进主问题的下一问。上轮换了小问题，或者回答给出了不同线索，下一轮推荐也要相应改变。不要固定按现状、变化、期待等九个名目轮流问，不要一直停在现状也不要急着给行动。剩余轮次少时，优先收拢主线，聚焦可执行的下一步或有用的核对。
-只推荐当前这一轮，一次给足三组，每组三个问题，共九个候选。三组都应围绕刚选定的同一个线索，各有侧重，例如辨清线索、追影响条件、看能否继续推进。各题必须能从当前线索具体延伸，不只把同一题换词或泛问整件事。不要在题目里提牌名或“上一轮”，让它像用户会自然问出口的问题。
-以主问题涉及的事情、关系或选择为中心，优先用它作为句子的主语。能直接问事情时就不用人称，例如“这段关系最近有哪些看得见的变化？”或“目前的沟通主要卡在哪一步？”只有明确在问提问者自己的感受、选择或行动时，才用“我”，例如“如果改变相处节奏，我最担心失去什么？”不使用“你”称呼提问者。主问题涉及多方时，可以自然地提到其他人、双方或团队。
-写成自然、具体的开放式问题，约 15–40 字，以问号结尾。用“什么、哪些、怎样、为什么”等开放问法，不给“是 A 还是 B”“要不要”“是不是”的预设选项。后续轮次接续相关的已选问题和解读，避免重复。不要把推测写成既定事实，也不要暗示未翻开的牌。
-topic 是这轮线索的简短标题（不超过 16 字），第一轮用“客观现状”。hint 是一句 25–55 字的灰字指引，让用户自己写时知道要问什么。后续轮次说清上一轮的具体回答里哪一点值得接着看，以及这轮想弄清什么；如果只是牌面推测，用“可能”等词。不要写通用的阶段介绍。
+把自己放在提问者的位置：刚看完这张牌，他们最想对着下一张牌问什么？写成可以直接发出口的一句口语，短一点，只问一件事。直接问在意的结果、可能性、卡点或下一步。自然的“还有机会吗”“如果继续等，会怎么样”都可以，不强制开放式长句。不使用“你”称呼提问者，需要提自己时用“我”。
+开局从主问题和背景找第一个还不知道的点；后续结合最新一张已翻牌、实际解读和更早的问答，顺着新线索再问一层。第一题就要体现这张牌带来的具体方向。保留原问题的对象和时间范围；背景事件没定时间时，不把它写成已安排在某一天或某个月。已知背景用来找切口，不拿它对用户做问卷。不问“之前到底发生过几次”“消息是什么时候发的”之类查记录题。牌意可以提示可能性，不能证明隐情、对方内心或确定结果。
+示例只学口气：异地伴侣主动约通话但没定时间，可以问“这次说好的电话，还能约上吗？”或“如果还是凑不到时间，我们还会聊得起来吗？”；面试后在等通知，可以问“这次面试，我还有机会进下一轮吗？”或“如果这周还是没消息，我该再问一次吗？”。推荐题不要带“可观察信号、现实条件、互动频率、判断依据、从哪个维度切入”等分析稿用语。不要总问“我害怕什么、我最在意什么”。
+只出本轮三组，每组三题，共九道。同一组的三题要回答三个不同的疑问，避开已选题与此前推荐。同一个疑问只问一次，换个开头或条件仍算重复。具体细节是提问的切口（例如一通还没约上的电话），第一题可以顺着细节问，其他题回到主问题，看同一线索还照出了什么，或问另一个有依据的方面。没有新线索时也不换几个说法绕回同一个疑问。最后几轮有必要时才收拢到可行下一步，不机械套顺序。题目里不提牌名或上一轮。
+topic 是简短的本轮主题，开局写“客观现状”。hint 用一句自然的话交代这轮接着哪条背景或牌面线索看，有不确定的地方用“可能”，不凭牌断定事实。
 返回 JSON：{"topic":"本轮线索","hint":"这轮建议关注的方向","groups":[["问题","问题","问题"],["问题","问题","问题"],["问题","问题","问题"]]}。`,
     JSON.stringify({
-      主问题: session.question,
-      用户补充背景: session.focus,
+      ...context(session),
       最近一轮问答: previous,
       更早的问答: session.rounds.slice(0, -1).map(({ question, interpretation }) => ({ question, interpretation: interpretation?.slice(0, 240) })),
+      之前推荐过而未必被选的问题: previousSuggestions,
       下一轮: step,
       剩余轮数含本轮: guidedCardCount - step + 1,
     }),
@@ -108,15 +143,16 @@ topic 是这轮线索的简短标题（不超过 16 字），第一轮用“客�
   );
   const topic = typeof value.topic === "string" ? value.topic.trim() : "";
   const hint = typeof value.hint === "string" ? value.hint.trim() : "";
+  const specificTopic = step > 1 && topic && topic.length <= 24 && !/[。！？?你您]/.test(topic) && !/^(客观现状|现状|本轮线索|继续探索)$/.test(topic) ? topic : "";
   const fallbackHint = previous?.question
     ? `接着刚才关于「${previous.question.slice(0, 40).replace(/[？?]$/, "")}」的解读，${step === guidedCardCount ? "想想哪一步可以尝试，或还有什么值得先弄清。" : "找出一个还没说清、又与主问题有关的线索。"}`
     : "从能观察到的事实开始，看看事情目前到了哪一步，哪些情况已经明确。";
   return {
     id: randomUUID(),
     version: guidedPlanVersion,
-    topic: step === 1 ? "客观现状" : topic && topic.length <= 24 ? topic : step === guidedCardCount ? "下一步" : "沿着刚才的线索",
+    topic: step === 1 ? "客观现状" : specificTopic || (step === guidedCardCount ? "下一步" : "沿着刚才的线索"),
     hint: hint && hint.length <= 140 ? hint : fallbackHint,
-    groups: prepareQuestionGroups(value.groups, session),
+    groups: prepareQuestionGroups(value.groups, session, previousSuggestions),
   };
 }
 

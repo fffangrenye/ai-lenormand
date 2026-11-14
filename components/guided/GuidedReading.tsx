@@ -33,6 +33,7 @@ export function GuidedReading() {
   const [question, setQuestion] = useState("");
   const [focus, setFocus] = useState("");
   const [selection, setSelection] = useState<string | null>(null);
+  const [reviewIndex, setReviewIndex] = useState<number | null>(null);
   const [useCustom, setUseCustom] = useState(false);
   const [groupIndex, setGroupIndex] = useState(0);
   const [customQuestion, setCustomQuestion] = useState("");
@@ -138,7 +139,10 @@ export function GuidedReading() {
   const cards = session?.cards.map(number => lenormandCards[number - 1]) ?? [];
   const step = cards.length;
   const current = session?.rounds.at(-1);
-  const previous = session?.rounds.slice(0, -1) ?? [];
+  const completed = Boolean(session?.final);
+  const displayedIndex = completed ? reviewIndex ?? step - 1 : step - 1;
+  const displayedRound = session?.rounds[displayedIndex];
+  const reviewRounds = completed ? session?.rounds ?? [] : session?.rounds.slice(0, -1) ?? [];
   const groups = session?.plan?.groups ?? [];
   const visibleGroup = groups[groupIndex] ?? [];
   const selectedQuestion = useCustom ? customQuestion.trim() : selection ?? "";
@@ -150,6 +154,11 @@ export function GuidedReading() {
   function draw(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (session?.plan && selectedQuestion) void submit("guided/draw", { id: session.id, step, planId: session.plan.id, question: selectedQuestion, custom: useCustom });
+  }
+
+  function reviewCard(index: number) {
+    setReviewIndex(index);
+    requestAnimationFrame(() => latestRound.current?.scrollIntoView({ block: "nearest" }));
   }
 
   return (
@@ -208,30 +217,35 @@ export function GuidedReading() {
 
         {session && <>
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-            <button type="button" disabled={busy} onClick={() => { setSession(null); setError(""); setNeedsCredits(false); setCreditsNotice(""); }} className="inline-flex min-h-11 items-center gap-2 text-sm text-[#6E2638] disabled:opacity-50"><ArrowLeft size={15} aria-hidden="true" />返回提问与记录</button>
+            <button type="button" disabled={busy} onClick={() => { setSession(null); setReviewIndex(null); setError(""); setNeedsCredits(false); setCreditsNotice(""); }} className="inline-flex min-h-11 items-center gap-2 text-sm text-[#6E2638] disabled:opacity-50"><ArrowLeft size={15} aria-hidden="true" />返回提问与记录</button>
             <p className="text-sm text-[#6E2638]" role="status">已抽 {step} / 9 张</p>
           </div>
           <div className="mx-auto max-w-2xl space-y-4">
             <section ref={table} className={panel + " scroll-mt-3"} aria-label="洋葱解牌牌桌">
               <p className="mb-1 text-center text-xs text-ink/60">主问题</p>
               <h2 className="mb-5 break-words text-center font-serif text-xl leading-8">{session.question}</h2>
-              <GuidedCardTable session={session} />
+              <GuidedCardTable session={session} selectedIndex={displayedIndex} onSelect={completed ? reviewCard : undefined} />
             </section>
-            {current && <section ref={latestRound} className={panel} aria-label="本张牌的解读">
-              <h2 className="font-serif text-xl">第 {step} 张 · {cards[step - 1].nameZh}</h2>
-              {current.question && <p className="mt-2 break-words text-sm leading-6 text-[#6E2638]">{current.question}</p>}
-              {current.interpretation && <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-8" aria-live="polite">{current.interpretation}</p>}
+            {displayedRound && <section id="guided-card-interpretation" ref={latestRound} className={panel} aria-labelledby="guided-card-heading" aria-live="polite">
+              <h2 id="guided-card-heading" className="font-serif text-xl">第 {displayedIndex + 1} 张 · {cards[displayedIndex].nameZh}</h2>
+              {displayedRound.question && <p className="mt-2 break-words text-sm leading-6 text-[#6E2638]">{displayedRound.question}</p>}
+              {displayedRound.interpretation && <p className="mt-3 whitespace-pre-wrap break-words text-sm leading-8">{displayedRound.interpretation}</p>}
             </section>}
-            {previous.length > 0 && <details className={panel}>
-              <summary className="cursor-pointer text-sm text-[#6E2638]">回看前 {previous.length} 张的解读</summary>
+            {reviewRounds.length > 0 && <details key={completed ? "all" : "earlier"} className={panel}>
+              <summary className="cursor-pointer text-sm text-[#6E2638]">{completed ? "回看九张解读" : `回看前 ${reviewRounds.length} 张的解读`}</summary>
               <ol className="mt-4 space-y-4">
-                {previous.map((item, index) => <li key={cards[index].number} className="break-words text-sm leading-7">
+                {reviewRounds.map((item, index) => <li key={cards[index].number} className="break-words text-sm leading-7">
                   <p className="font-medium">第 {index + 1} 张 · {cards[index].nameZh}</p>
                   {item.question && <p className="text-[#6E2638]">{item.question}</p>}
                   <p className="whitespace-pre-wrap">{item.interpretation}</p>
                 </li>)}
               </ol>
             </details>}
+            {session.final && <section className={panel}>
+              <h2 className="font-serif text-xl">九张综合解读</h2>
+              <p className="mt-4 whitespace-pre-wrap break-words text-sm leading-8" aria-live="polite">{session.final}</p>
+              <button type="button" onClick={() => { setSession(null); setReviewIndex(null); setQuestion(""); setFocus(""); }} className={primary + " mt-5"}><Plus size={16} aria-hidden="true" />再来一局</button>
+            </section>}
             {session.messages.length > 0 && <details className={panel}>
               <summary className="cursor-pointer text-sm text-[#6E2638]">回看之前的对话</summary>
               <ul className="mt-3 space-y-3">
@@ -282,11 +296,6 @@ export function GuidedReading() {
                 </div>
               </fieldset>
             </form>}
-            {session.final && <section className={panel}>
-              <h2 className="font-serif text-xl">九张牌的综合解读</h2>
-              <p className="mt-4 whitespace-pre-wrap break-words text-sm leading-8" aria-live="polite">{session.final}</p>
-              <button type="button" onClick={() => { setSession(null); setQuestion(""); setFocus(""); }} className={primary + " mt-5"}><Plus size={16} aria-hidden="true" />再来一局</button>
-            </section>}
           </div>
         </>}
         {safety && <ReadingSafetyDialog code={safety} followUp={Boolean(session)} onClose={() => setSafety(null)} />}
