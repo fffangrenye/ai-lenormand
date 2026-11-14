@@ -1,5 +1,5 @@
 import { randomBytes, createHash } from "node:crypto";
-import { mkdirSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { paidConfig } from "./config";
@@ -8,6 +8,7 @@ import { LocalPayments } from "./payment-store";
 import { LocalXianyuPayments } from "./xianyu-store";
 import { readingTrashMigration } from "./reading-trash-migration";
 import { readingReviewMigration } from "./reading-review-migration";
+import { requestGuidedPreviewJson } from "./provider";
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 
 import { PaidLedger } from "./ledger";
@@ -15,6 +16,7 @@ import { PaidLedger } from "./ledger";
 export class PaidLocalStore extends PaidLedger {
   readonly payments: LocalPayments;
   readonly xianyu: LocalXianyuPayments;
+  private importedGuidedHistory = false;
   constructor(filename = assertLocalEnvironment(), clock: () => number = Date.now) {
     if (path.resolve(filename) !== assertLocalEnvironment({ ...process.env, PAID_LOCAL_DB: filename })) throw new Error("Invalid database");
     mkdirSync(path.dirname(filename), { recursive: true });
@@ -59,12 +61,33 @@ export class PaidLocalStore extends PaidLedger {
     });
   }
   close() { this.db.close(); }
-  grantTestCredits(userId: string, requestKey: string) {
+
+  override guidedPreview() {
+    const guided = super.guidedPreview(process.env.PAID_LOCAL_MODEL === "mock" ? undefined : requestGuidedPreviewJson);
+    if (!this.importedGuidedHistory) {
+      const filename = path.resolve(".local-paid", "guided-preview.sqlite");
+      if (existsSync(filename) && !this.one("SELECT version FROM local_schema_versions WHERE version=13")) {
+        const legacy = new DatabaseSync(filename, { readOnly: true });
+        try {
+          const rows = legacy.prepare("SELECT id, owner, request_id, payload, updated_at FROM guided_preview_sessions").all();
+          this.tx(() => {
+            for (const row of rows) this.run("INSERT OR IGNORE INTO guided_preview_sessions VALUES (?, ?, ?, ?, ?)", row.id, row.owner, row.request_id, row.payload, row.updated_at);
+            this.run("INSERT OR IGNORE INTO local_schema_versions VALUES(13,?)", this.now());
+          });
+        } finally {
+          legacy.close();
+        }
+      }
+      this.importedGuidedHistory = true;
+    }
+    return guided;
+  }
+  grantTestCredits(userId: string, requestKey: string, minimum = 1) {
     assertLocalEnvironment(); this.validateKey(requestKey);
     this.tx(() => {
       if (!this.one("SELECT id FROM local_users WHERE id=?", userId)) throw new LocalPaidError("UNAUTHORIZED", "请先登录本地体验账号。", 401);
       const balance = this.one("SELECT coalesce(sum(quantity-consumed-revoked),0) AS remaining FROM credit_batches WHERE user_id=?", userId);
-      if (Number(balance?.remaining) === 0) this.grant(userId, 5, "local_test", `test:${userId}:${requestKey}`);
+      if (Number(balance?.remaining) < minimum) this.grant(userId, 5, "local_test", `test:${userId}:${requestKey}`);
     });
     return this.overview(userId);
   }

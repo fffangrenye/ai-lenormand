@@ -5,6 +5,7 @@ import { AccountMenu } from "@/components/AccountMenu";
 import { QuietCardBack } from "@/components/QuietCardBack";
 import { TodayCheckIn } from "@/components/TodayCheckIn";
 import { HomeEntryArt } from "@/components/HomeEntryArt";
+import { guidedHomeDescription, guidedReadingTitle } from "@/lib/guided-reading/details";
 import { useState } from "react";
 import { motion } from "framer-motion";
 
@@ -14,7 +15,7 @@ type HomeCard = {
   href: string;
   description: string;
   number: string;
-  kind: "daily" | "choice" | "deep";
+  kind: "daily" | "choice" | "deep" | "guided";
   color: string;
   idleX: number;
   idleY: number;
@@ -54,6 +55,20 @@ const cards: HomeCard[] = [
   }
 ];
 
+const guidedPreview = process.env.NEXT_PUBLIC_FLORA_GUIDED_PREVIEW === "1" || process.env.NEXT_PUBLIC_PAID_ONLINE_MODE === "1";
+const featureCards: HomeCard[] = guidedPreview ? [...cards, {
+  titleEn: "Onion Reading",
+  titleZh: guidedReadingTitle,
+  href: "/guided",
+  description: guidedHomeDescription,
+  number: "04",
+  kind: "guided",
+  color: "#715A80",
+  idleX: 0,
+  idleY: 0,
+  idleRotate: 0,
+}] : cards;
+
 function PaperTexture() {
   return (
     <>
@@ -89,7 +104,7 @@ function CardFront({ card, active }: { card: HomeCard; active: boolean }) {
       tabIndex={active ? 0 : -1}
       aria-hidden={!active}
       aria-label={card.titleZh}
-      className="group relative flex h-full w-full flex-col items-center overflow-hidden rounded-[4px] border border-ink/10 bg-[#FFFDF8] px-3 shadow-[0_5px_18px_rgba(33,31,27,0.035)] outline-none transition duration-300 hover:border-ink/25 hover:shadow-[0_8px_24px_rgba(33,31,27,0.06)] focus-visible:ring-2 focus-visible:ring-sage/50"
+      className={`group relative flex h-full w-full flex-col items-center overflow-hidden rounded-[4px] border bg-[#FFFDF8] px-3 shadow-[0_5px_18px_rgba(33,31,27,0.035)] outline-none transition duration-300 hover:shadow-[0_8px_24px_rgba(33,31,27,0.06)] focus-visible:ring-2 focus-visible:ring-sage/50 ${card.kind === "guided" ? "border-[#715A80]/25 hover:border-[#715A80]/50" : "border-ink/10 hover:border-ink/25"}`}
       style={{ color: card.color }}
     >
       <span className="absolute left-4 top-3 font-serif text-[9px] tracking-[0.16em] opacity-45">{card.number}</span>
@@ -157,11 +172,11 @@ export default function HomePage() {
               点击卡牌，开启今日雷诺曼之旅
             </motion.p>
 
-            <div className="absolute inset-x-0 top-5 mx-auto flex w-full max-w-[300px] flex-col items-center gap-4 pb-10 sm:top-[76px] sm:max-w-none sm:flex-row sm:justify-center sm:gap-6">
-              {cards.map((card, index) => (
+            <div className={`absolute inset-x-0 top-5 mx-auto w-full gap-4 pb-10 sm:top-[76px] sm:gap-6 ${guidedPreview ? "grid grid-cols-[168px] justify-center sm:grid-cols-[repeat(3,168px)]" : "flex max-w-[300px] flex-col items-center sm:max-w-none sm:flex-row sm:justify-center"}`}>
+              {featureCards.map((card, index) => (
                 <motion.div
                   key={card.titleEn}
-                  className={`${homeCardSizeClass} shrink-0 [perspective:1000px]`}
+                  className={`${homeCardSizeClass} shrink-0 [perspective:1000px] ${card.kind === "guided" ? "sm:col-start-3" : ""}`}
                   initial={false}
                   animate={
                     drawn

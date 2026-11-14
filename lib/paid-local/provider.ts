@@ -3,14 +3,14 @@ import { assertLocalEnvironment, LocalPaidError } from "./guard";
 import { buildPaidReadingPrompt, generateLocalFollowUp, generateLocalMain, paidMainSystemPrompt, paidModelSettings, paidPromptVersion } from "./model";
 import { coreCardMeaningsZh } from "./reading-guidance";
 import type { PaidProject, PaidReading, PaidResult } from "./types";
-import { recordLocalAiUsage } from "./ai-usage";
+import { recordLocalAiUsage, type LocalAiUsageContext } from "./ai-usage";
 import { precheckReading, type ReadingReviewInput } from "./reading-precheck";
 import { readingReviewPrompt } from "./reading-review-prompt";
 
 type ProjectContext = Pick<PaidProject, "background" | "memorySummary">;
 const endpoint = "https://api.deepseek.com/chat/completions";
 
-async function requestJson(system: string, user: string, maxTokens: number, timeoutMs: number, context: { readingId?: string; kind: "main" | "follow-up" | "review" }) {
+async function requestJson(system: string, user: string, maxTokens: number, timeoutMs: number, context: LocalAiUsageContext) {
   assertLocalEnvironment();
   const started = Date.now();
   const model = process.env.PAID_LOCAL_AI_MODEL?.trim() || "deepseek-flash";
@@ -42,6 +42,10 @@ async function requestJson(system: string, user: string, maxTokens: number, time
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid result");
     return { value: value as Record<string, unknown>, model: actualModel };
   } catch { throw new LocalPaidError("AI_INVALID_RESULT", "AI 返回格式异常，请沿用原牌重试；本次未扣花瓣。", 503); }
+}
+
+export async function requestGuidedPreviewJson(system: string, user: string, maxTokens: number, readingId: string, kind: "guided-plan" | "guided-step" | "guided-final") {
+  return (await requestJson(system, user, maxTokens, kind === "guided-final" ? 60_000 : 30_000, { kind, readingId })).value;
 }
 
 export function reviewPaidQuestion(reading: ReadingReviewInput, project?: ProjectContext, followUp?: string) {

@@ -3,11 +3,12 @@ const { spawn } = require("node:child_process");
 const path = require("node:path");
 const fs = require("node:fs");
 const root = path.resolve(__dirname, "..");
+const guidedPreview = process.argv.includes("--guided-preview");
 const safetyReviewPreview = process.argv.includes("--safety-review-preview");
-const conversationPreview = safetyReviewPreview || process.argv.includes("--conversation-preview");
+const conversationPreview = guidedPreview || safetyReviewPreview || process.argv.includes("--conversation-preview");
 const revealPreview = conversationPreview || process.argv.includes("--reveal-preview");
 const aiEnabled = process.argv.includes("--ai");
-if (revealPreview && aiEnabled && !safetyReviewPreview) throw new Error("此本地演示仅使用模拟解读。");
+if (revealPreview && aiEnabled && !safetyReviewPreview && !guidedPreview) throw new Error("此本地演示仅使用模拟解读。");
 if (aiEnabled && fs.existsSync(path.join(root, ".env.local"))) process.loadEnvFile(path.join(root, ".env.local"));
 const aiKey = aiEnabled ? (process.env.PAID_LOCAL_DEEPSEEK_API_KEY || process.env.DEEPSEEK_API_KEY || "").trim() : "";
 const aiModel = aiEnabled ? (process.env.PAID_LOCAL_DEEPSEEK_MODEL || process.env.DEEPSEEK_MODEL || "deepseek-flash").trim() : "";
@@ -23,6 +24,7 @@ Object.assign(env, {
   PAID_LOCAL_AI_KEY: aiKey, PAID_LOCAL_AI_MODEL: aiModel, NEXT_PUBLIC_PAID_LOCAL_AI: aiEnabled ? "1" : "0",
   PAID_LOCAL_DB: path.join(root, ".local-paid", safetyReviewPreview ? "safety-review-preview.sqlite" : conversationPreview ? "conversation-preview.sqlite" : revealPreview ? "reveal-preview.sqlite" : "v1.sqlite"),
   NEXT_PUBLIC_PAID_LOCAL_CONVERSATION_PREVIEW: conversationPreview ? "1" : "0",
+  NEXT_PUBLIC_FLORA_GUIDED_PREVIEW: guidedPreview ? "1" : "0",
   NEXT_PUBLIC_PAID_LOCAL_REVEAL_PREVIEW: revealPreview ? "1" : "0",
   NEXT_PUBLIC_PAID_ONLINE_MODE: "0",
   NEXT_PUBLIC_SUPABASE_URL: "http://127.0.0.1:9", NEXT_PUBLIC_SUPABASE_ANON_KEY: "",

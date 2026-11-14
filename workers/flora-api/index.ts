@@ -17,11 +17,12 @@ import {verifyRestoreJob} from "./legacy-maintenance";
 import { measuredSql } from "./sql-cost";
 import { SnapshotBackup, type BackupSql } from "./backup";
 import { verifyMaintenance } from "./maintenance";
+import { guidedAction } from "../../lib/guided-reading/actions";
 
 type Environment = {
   LEDGER: {idFromName(name:string):unknown;get(id:unknown):{fetch(request:Request):Promise<Response>}};
   SUPABASE_URL:string; SUPABASE_ANON_KEY:string; AI_KEY:string; AI_MODEL:string;
-  CODE_SIGNING_KEY:string; ADMIN_EMAILS:string; SALES_ENABLED?:string; TELEMETRY_ENABLED?:string; READING_MANAGEMENT_MUTATIONS?:string;
+  CODE_SIGNING_KEY:string; ADMIN_EMAILS:string; SALES_ENABLED?:string; TELEMETRY_ENABLED?:string; READING_MANAGEMENT_MUTATIONS?:string; GUIDED_ENABLED?:string;
 };
 type Storage = {sql:{exec(query:string,...args:unknown[]):{toArray():Record<string,unknown>[]}};transactionSync<T>(work:()=>T):T};
 const json=(value:unknown,status=200)=>Response.json(value,{status,headers:{"Cache-Control":"no-store","X-Content-Type-Options":"nosniff"}});
@@ -166,6 +167,10 @@ export class FloraLedger {
       }
       store.ensureUser(user,email);
       if(request.method==="GET"){
+        if(this.env.GUIDED_ENABLED==="1" && parts[0]==="guided" && parts.length<=2){
+          const guided=store.guidedPreview(createCloudProvider({key:this.env.AI_KEY,model:this.env.AI_MODEL}).requestGuidedJson);
+          return json(parts.length===2?guided.open(user,parts[1]):guided.history(user));
+        }
         if(!action)return json(store.profileOverview(user));
         if(action==="summary")return json(store.summary(user));
         if(action==="profile")return json(store.profileSection(user,url.searchParams.get("section")||"usage",url.searchParams.get("days")||"all"));
@@ -196,6 +201,10 @@ export class FloraLedger {
         let input:Record<string,unknown>;try{input=JSON.parse(raw);}catch{throw new LocalPaidError("INVALID_JSON","请求格式不正确。");}
         if(!input || typeof input!=="object" || Array.isArray(input))throw new LocalPaidError("INVALID_JSON","请求格式不正确。");
         const field=(key:string)=>typeof input[key]==="string" ? input[key] as string : "";
+        if(this.env.GUIDED_ENABLED==="1" && ["guided/start","guided/draw","guided/advance"].includes(action)){
+          const provider=createCloudProvider({key:this.env.AI_KEY,model:this.env.AI_MODEL});
+          return json(await guidedAction(store.guidedPreview(provider.requestGuidedJson),user,action,input,provider.reviewPaidQuestion,()=>store.limitNewDrawReview("guided:"+user),(key,task)=>store.shareReadingReview(key,task)));
+        }
         if(admin){
           if(action==="admin/codes/generate")return json(store.redemptions.createBatch(email,field("packageId"),Number(input.quantity),field("requestKey"),field("reason")));
           if(action==="admin/codes/export")return json(store.redemptions.exportBatch(email,field("batchId"),field("requestKey"),field("reason")));

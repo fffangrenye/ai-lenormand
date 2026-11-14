@@ -48,6 +48,7 @@ const requiredHostEnv = [
   "HTTPS_PROXY",
   "ALL_PROXY",
   "NO_PROXY",
+  "NEXT_FONT_GOOGLE_MOCKED_RESPONSES",
   "http_proxy",
   "https_proxy",
   "all_proxy",

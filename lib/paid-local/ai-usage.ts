@@ -10,7 +10,12 @@ export function summarizeAiUsage(raw: unknown) {
   return { promptTokens: data.prompt_tokens, cachedInputTokens: cached, uncachedInputTokens: data.prompt_tokens - cached, completionTokens: data.completion_tokens, totalTokens: data.prompt_tokens + data.completion_tokens };
 }
 
-export function recordLocalAiUsage(context: { readingId?: string; kind: "main" | "follow-up" | "review" }, model: string, raw: unknown, durationMs: number) {
+export type LocalAiUsageContext = {
+  readingId?: string;
+  kind: "main" | "follow-up" | "review" | "guided-plan" | "guided-step" | "guided-final";
+};
+
+export function recordLocalAiUsage(context: LocalAiUsageContext, model: string, raw: unknown, durationMs: number) {
   if (process.env.PAID_LOCAL_MODE !== "1" || process.env.NODE_ENV !== "development") return;
   const usage = summarizeAiUsage(raw); if (!usage) return;
   // Reference prices checked 2026-10-21. A range avoids guessing peak hours/holiday rules.

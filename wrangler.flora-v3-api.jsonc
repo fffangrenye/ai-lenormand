@@ -7,6 +7,6 @@
   "workers_dev": false,
   "durable_objects": {"bindings": [{"name":"LEDGER","class_name":"FloraLedger"}]},
   "migrations": [{"tag":"v1","new_sqlite_classes":["FloraLedger"]}],
-  "vars": {"AI_MODEL":"deepseek-v4-flash","SALES_ENABLED":"1","READING_MANAGEMENT_MUTATIONS":"1"},
+  "vars": {"AI_MODEL":"deepseek-v4-flash","SALES_ENABLED":"1","READING_MANAGEMENT_MUTATIONS":"1","GUIDED_ENABLED":"1"},
   "observability": {"enabled":true}
 }

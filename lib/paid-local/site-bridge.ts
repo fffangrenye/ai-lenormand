@@ -90,6 +90,7 @@ export async function paidSiteRequest<T>(action = "", body?: Record<string, unkn
   // Coalesce repeated mounts for this account and project; every real financial
   // or content mutation still invalidates before and after the server response.
   const touch = action === "project-touch" && typeof body?.projectId === "string";
+  const guidedProgress = action === "guided/start" || action === "guided/advance" || (action === "guided/draw" && body?.step !== 0);
   const key = `${cacheOwner}:${action}${day}${touch ? `:${body!.projectId}` : ""}`, epoch = cacheEpoch;
   if (!body || touch) {
     const saved = cache.get(key);
@@ -98,7 +99,7 @@ export async function paidSiteRequest<T>(action = "", body?: Record<string, unkn
     if(action==="daily-status"){
       try{const value=JSON.parse(window.localStorage.getItem(`flora:signed-day:v1:${cacheOwner}`)||"null");if(value?.signed===true&&value.today===day.slice(1))return value as T;}catch{/* Fall back to the server. */}
     }
-  } else if (!guestReview) invalidate();
+  } else if (!guestReview && !guidedProgress) invalidate();
   const request = (async () => {
   const send = (token: string | undefined) => fetch(`${paidOnlineSiteEnabled ? "/api/flora" : "/api/local-paid"}${action ? `/${action}` : ""}`, {
     method: body ? "POST" : "GET", credentials: "same-origin", cache: "no-store",
@@ -131,6 +132,10 @@ export async function paidSiteRequest<T>(action = "", body?: Record<string, unkn
     if (touch) {
       save(key, payload, 300_000);
       cache.delete(`${cacheOwner}:projects`);
+    } else if (body && guidedProgress) {
+      cache.delete(`${cacheOwner}:guided`);
+      const guidedResult = payload as { id?: string };
+      if (typeof guidedResult.id === "string") cache.delete(`${cacheOwner}:guided/${guidedResult.id}`);
     } else if (body) {
       invalidate();
       if(action==="daily-check-in"){

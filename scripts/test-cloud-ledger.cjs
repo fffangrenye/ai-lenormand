@@ -4,12 +4,24 @@ const assert=require('node:assert/strict');
 const path=require('node:path');
 const {randomUUID}=require('node:crypto');
 const {Miniflare,convertV4MiniflareOptions}=require(require.resolve('miniflare',{paths:[path.dirname(require.resolve('wrangler/package.json'))]}));
-const user=randomUUID(),other=randomUUID();let calls=0,failNext=false;
-const mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'flora-test',modules:true,scriptPath:'.local-paid/cloud-api-build/index.js',compatibilityDate:'2026-09-04',compatibilityFlags:['nodejs_compat'],durableObjects:{LEDGER:{className:'FloraLedger',useSQLite:true}},bindings:{SUPABASE_URL:'https://test-auth.invalid',SUPABASE_ANON_KEY:'fake-anon',AI_KEY:'fake-ai',AI_MODEL:'test-model',CODE_SIGNING_KEY:'test-only-'.repeat(8),ADMIN_EMAILS:'owner@example.invalid',SALES_ENABLED:'0'},outboundService:async request=>{
-  if(request.url.startsWith('https://test-auth.invalid/'))return Response.json({id:request.headers.get('authorization').includes('other')?other:user,email:request.headers.get('authorization').includes('other')?'other@example.invalid':'owner@example.invalid',email_confirmed_at:'2026-10-01'});
+const user=randomUUID(),other=randomUUID(),guidedUser=randomUUID();let calls=0,failNext=false;
+let guidedCalls=0, failGuidedStep=false;
+const mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'flora-test',modules:true,scriptPath:'.local-paid/cloud-api-build/index.js',compatibilityDate:'2026-09-04',compatibilityFlags:['nodejs_compat'],durableObjects:{LEDGER:{className:'FloraLedger',useSQLite:true}},bindings:{SUPABASE_URL:'https://test-auth.invalid',SUPABASE_ANON_KEY:'fake-anon',AI_KEY:'fake-ai',AI_MODEL:'test-model',CODE_SIGNING_KEY:'test-only-'.repeat(8),ADMIN_EMAILS:'owner@example.invalid',SALES_ENABLED:'0',GUIDED_ENABLED:'1'},outboundService:async request=>{
+  if(request.url.startsWith('https://test-auth.invalid/')){
+    const auth=request.headers.get('authorization');
+    const account=auth.includes('guided')?[guidedUser,'guided@example.invalid']:auth.includes('other')?[other,'other@example.invalid']:[user,'owner@example.invalid'];
+    return Response.json({id:account[0],email:account[1],email_confirmed_at:'2026-10-01'});
+  }
   if(request.url==='https://api.deepseek.com/chat/completions'){
     calls++;
     const body=await request.json();
+    if([1050,720,1900].includes(body.max_tokens)){
+      guidedCalls++;
+      if(body.max_tokens===720 && failGuidedStep){failGuidedStep=false;return Response.json({error:'fixture'},{status:503});}
+      const result=body.max_tokens===1050?{topic:'顺着刚才的线索',hint:'看看活动沟通哪里还没有说清。',groups:[]}
+        :body.max_tokens===720?{interpretation:'可以进一步观察现场情况。'}:{summary:'把已经出现的线索放回主问题。'};
+      return Response.json({model:'test-model',choices:[{finish_reason:'stop',message:{content:JSON.stringify(result)}}]});
+    }
     if(failNext && body.max_tokens!==96){failNext=false;return Response.json({error:'fixture'},{status:503});}
     const result=body.max_tokens===96
       ? (body.messages[1].content.includes('暂停用药')?{decision:'block',category:'medical'}:{decision:'allow',category:'none'})
@@ -86,6 +98,57 @@ async function req(action='',body,token='valid-owner-token-1234567890'){
   assert.equal((await req('redeem',{code:exported.codes[0],expectedUserId:user})).data.balance.available,5);
   assert.equal((await req('redeem',{code:'FLLOCAL-'+ 'A'.repeat(32),expectedUserId:user})).status,409);
   assert.equal((await req('admin/codes',undefined,'valid-other-token-1234567890')).status,403);
-  console.log('Cloudflare runtime verified: welcome 1, account isolation, daily persistence, H spread, hidden cards, explicit confirmation, failure releases petal, debit once, 2 follow-ups, formal vouchers, retry, no mock endpoints.');
+  const core='下个月怎样让社区读书活动更顺？', startInput={question:core,focus:'之前临时换过场地。',requestId:randomUUID()};
+  const onion=(action,body)=>req(action,body,'valid-guided-token-1234567890');
+  assert.equal((await onion('guided/start',startInput)).status,402);
+  const setupDraw=(await onion('draw',{question:core,spread:'three_card',requestKey:randomUUID()})).data;
+  assert.equal((await onion('unlock',{readingId:setupDraw.id,confirmReveal:true})).status,200);
+  const guidedBatch=(await req('admin/codes/generate',{packageId:'five',quantity:1,requestKey:randomUUID(),reason:'guided workerd test'})).data;
+  const guidedCodes=(await req('admin/codes/export',{batchId:guidedBatch.id,requestKey:randomUUID(),reason:'guided workerd test'})).data;
+  assert.equal((await onion('redeem',{code:guidedCodes.codes[0],expectedUserId:guidedUser})).data.balance.available,5);
+  assert.deepEqual((await onion('guided')).data,[]);
+  const blockedGuided=await onion('guided/start',{question:'该不该暂停用药？',requestId:randomUUID()});
+  assert.equal(blockedGuided.status,422);
+  assert.deepEqual((await onion('guided')).data,[]);
+  const newGuided=await onion('guided/start',startInput);assert.equal(newGuided.status,200,JSON.stringify(newGuided.data));
+  const guided=newGuided.data;
+  assert.equal(guided.petalPrice,3);assert(!Object.hasOwn(guided,'deck'));
+  assert.equal((await req('guided/'+guided.id,undefined,otherToken)).status,404);
+  const waitingGuided=(await onion('guided/start',{...startInput,requestId:randomUUID()})).data;
+  const waitPlan=(await onion('guided/advance',{id:waitingGuided.id})).data.plan;
+  const initialPlans=await Promise.all([onion('guided/advance',{id:guided.id}),onion('guided/advance',{id:guided.id})]);
+  assert.equal(initialPlans[0].status,200,JSON.stringify(initialPlans[0].data));
+  assert.equal(guidedCalls,2);
+  assert.deepEqual(initialPlans[0].data.plan,initialPlans[1].data.plan);
+  assert.equal((await onion('summary')).data.balance.available,5);
+  let next=initialPlans[0].data;
+  for(let step=0;step<9;step++){
+    assert.deepEqual(next.plan.groups.map(group=>group.length),[3,3,3]);
+    const drawInput={id:guided.id,step,planId:next.plan.id,question:next.plan.groups[0][0],custom:false};
+    const drawn=await onion('guided/draw',drawInput);
+    assert.equal(drawn.status,200,JSON.stringify(drawn.data));assert.equal(drawn.data.cards.length,step+1);
+    if(step===0){
+      const duplicate=await onion('guided/draw',drawInput);
+      assert.deepEqual(duplicate.data.cards,drawn.data.cards);
+      const insufficient=await onion('guided/draw',{id:waitingGuided.id,step:0,planId:waitPlan.id,question:waitPlan.groups[0][0],custom:false});
+      assert.equal(insufficient.status,402);assert.deepEqual((await onion('guided/'+waitingGuided.id)).data.cards,[]);
+      assert.equal((await onion('summary')).data.balance.available,2);
+      failGuidedStep=true;
+      const failedStep=await onion('guided/advance',{id:guided.id});assert.equal(failedStep.status,503);assert.match(failedStep.data.message,/重试不会再扣/);
+      assert.deepEqual((await onion('guided/'+guided.id)).data.cards,drawn.data.cards);
+    }
+    const reading=await onion('guided/advance',{id:guided.id});
+    assert.equal(reading.status,200);assert.ok(reading.data.rounds.at(-1).interpretation);
+    const progressed=await onion('guided/advance',{id:guided.id});
+    assert.equal(progressed.status,200,JSON.stringify(progressed.data));
+    next=progressed.data;
+  }
+  assert.equal(guidedCalls,21);
+  assert.equal(new Set(next.cards).size,9);assert.ok(next.final);
+  assert.equal((await onion('guided/'+guided.id)).data.final,next.final);
+  assert.equal((await onion('summary')).data.balance.available,2);
+  assert.equal((await onion('ledger')).data.items.filter(entry=>entry.reason==='洋葱解牌').reduce((n,entry)=>n+entry.consumedDelta,0),3);
+  assert.equal((await onion('guided/test-credits',{requestId:randomUUID()})).status,404);
+  console.log('Cloudflare runtime verified: normal readings, daily, vouchers, and nine guided rounds with one three-petal debit, blocked review, account isolation, no duplicate generation, retry and resume.');
 }finally{await mf.dispose();}})().catch(error=>{console.error(error);process.exitCode=1;});
 

@@ -12,6 +12,8 @@ import { LocalPaidError } from "./guard";
 import { LocalRedemptions } from "./redemption-store";
 import {restoreLegacyHistory,type LegacySnapshot} from "./legacy-restore";
 import type { PaidCard, PaidDrawSession, PaidOverview, PaidProject, PaidReading, PaidResult, PaidSpread, PaidLedgerPage, ReadingTrashPage } from "./types";
+import { GuidedPreviewStore, guidedSchema } from "../guided-reading/preview";
+import type { GuidedJsonRequest } from "../guided-reading/model";
 
 const readingTrashDurationMs = 30 * 24 * 60 * 60 * 1000;
 
@@ -19,6 +21,7 @@ type Row = Record<string, string | number | null>;
 type ReadingRelations = { follows: Row[]; projectId?: string; completedAt?: string };
 
 export class PaidLedger {
+  private guidedStore?: GuidedPreviewStore;
   private initializedUsers = new Map<string, string>();
   private checkedProjectLinks = new Set<string>();
   private readingReviews = new Map<string, Promise<unknown>>();
@@ -48,6 +51,42 @@ export class PaidLedger {
   protected one(sql: string, ...params: SQLInputValue[]) { return this.db.prepare(sql).get(...params) as Row | undefined; }
   protected run(sql: string, ...params: SQLInputValue[]) { return this.db.prepare(sql).run(...params); }
   protected tx<T>(work: () => T): T { return this.transaction(work); }
+
+  guidedPreview(request?: GuidedJsonRequest) {
+    return this.getGuidedStore(request);
+  }
+  protected getGuidedStore(request?: GuidedJsonRequest) {
+    if (this.guidedStore) return this.guidedStore;
+    this.tx(() => {
+      if (!this.one("SELECT version FROM local_schema_versions WHERE version=14")) {
+        this.db.exec(guidedSchema);
+        this.run("INSERT INTO local_schema_versions VALUES(14,?)", this.now());
+      }
+    });
+    return this.guidedStore = new GuidedPreviewStore(
+      this.db,
+      work => this.tx(work),
+      (owner, price) => {
+        this.recoverExpired(owner);
+        if (this.summary(owner).balance.available < price) throw guidedCreditsError(price);
+      },
+      (owner, id, price) => {
+        const batches = this.all(`SELECT id,quantity-reserved-consumed-revoked AS available
+          FROM credit_batches WHERE user_id=? AND quantity>reserved+consumed+revoked
+          ORDER BY CASE WHEN source='purchase' THEN 1 ELSE 0 END,created_at,rowid LIMIT ?`, owner, price);
+        let remaining = price;
+        for (const batch of batches) {
+          const used = Math.min(remaining, Number(batch.available));
+          this.run("UPDATE credit_batches SET consumed=consumed+? WHERE id=?", used, batch.id);
+          this.ledger(owner, String(batch.id), `guided:${id}:${batch.id}`, "guided_consume", -used, 0, used, "洋葱解牌");
+          remaining -= used;
+          if (remaining === 0) return;
+        }
+        throw guidedCreditsError(price);
+      },
+      request,
+    );
+  }
   protected ledger(userId: string, batchId: string, event: string, kind: string, available: number, reserved: number, consumed: number, reason: string) {
     this.run("INSERT INTO credit_ledger VALUES (?,?,?,?,?,?,?,?,?,?)", randomUUID(), userId, batchId, event, kind, available, reserved, consumed, reason, this.now());
   }
@@ -693,4 +732,8 @@ export class PaidLedger {
     this.owned(userId, readingId);
     this.run("UPDATE paid_follow_ups SET state='released' WHERE id=? AND reading_id=? AND attempt=? AND state='reserved'", followId, readingId, attempt);
   }
+}
+
+function guidedCreditsError(price: number) {
+  return new LocalPaidError("NO_CREDITS", `本局需要 ${price} 花瓣，余额不足。补充后可以继续。`, 402);
 }

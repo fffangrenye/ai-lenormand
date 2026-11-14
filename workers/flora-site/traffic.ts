@@ -16,10 +16,10 @@ export async function guardApi(request:Request,env:TrafficEnvironment) {
   if(limiter && ip && !(await limiter.limit({key:`flora-v3:${ip}`})).success)return error("RATE_LIMIT","请求过于频繁，请稍后再试。",429,{"Retry-After":"60"});
   return null;
 }
-const pages=new Set(["/","/daily","/yes-no","/deep","/login","/forgot-password","/reset-password","/profile","/recharge","/redeem","/knowledge","/oracle","/space","/admin/codes"]);
+const pages=new Set(["/","/daily","/yes-no","/deep","/guided","/login","/forgot-password","/reset-password","/profile","/recharge","/redeem","/knowledge","/oracle","/space","/admin/codes"]);
 export function isApplicationPage(path:string) {
   return pages.has(path.replace(/\/$/,"")||"/") || /^\/deep\/project\/[a-f0-9-]{36}\/?$/i.test(path);
 }
 export function isPrivatePage(path:string) {
-  return /^\/(?:api|admin|profile|login|forgot-password|reset-password|recharge|redeem|deep\/project)(?:\/|$)/.test(path);
+  return /^\/(?:api|admin|profile|login|forgot-password|reset-password|recharge|redeem|guided|deep\/project)(?:\/|$)/.test(path);
 }

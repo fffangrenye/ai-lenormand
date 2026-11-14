@@ -5,13 +5,14 @@ import { coreCardMeaningsZh } from "./reading-guidance";
 import type { PaidProject, PaidReading, PaidResult } from "./types";
 import { precheckReading, type ReadingReviewInput } from "./reading-precheck";
 import { readingReviewPrompt } from "./reading-review-prompt";
+import type { GuidedJsonRequest } from "../guided-reading/model";
 
 
 type ProjectContext = Pick<PaidProject, "background" | "memorySummary">;
 export function createCloudProvider(config: {key: string; model: string}) {
 const endpoint = "https://api.deepseek.com/chat/completions";
 
-async function requestJson(system: string, user: string, maxTokens: number, timeoutMs: number, context: { readingId?: string; kind: "main" | "follow-up" | "review" }) {
+async function requestJson(system: string, user: string, maxTokens: number, timeoutMs: number, context: { readingId?: string; kind: "main" | "follow-up" | "review" | "guided-plan" | "guided-step" | "guided-final" }) {
   const started = Date.now();
   const model = config.model?.trim() || "deepseek-flash";
   let response: Response;
@@ -73,5 +74,8 @@ function reviewPaidQuestion(reading: ReadingReviewInput, project?: ProjectContex
     (await requestJson(readingReviewPrompt, input, 96, 15_000, { kind: "review" })).value);
 }
 
-return {generatePaidMain,generatePaidFollowUp,reviewPaidQuestion};
+const requestGuidedJson: GuidedJsonRequest = async (system, user, maxTokens, readingId, kind) =>
+  (await requestJson(system, user, maxTokens, kind === "guided-final" ? 60_000 : 30_000, { readingId, kind })).value;
+
+return {generatePaidMain,generatePaidFollowUp,reviewPaidQuestion,requestGuidedJson};
 }

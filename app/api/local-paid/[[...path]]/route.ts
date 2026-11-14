@@ -12,6 +12,8 @@ import type { PaidDrawSession, PaidOverview, PaidReading, PaidSpread } from "@/l
 import { xianyuConfig, reconcileXianyu } from "@/lib/paid-local/xianyu-config";
 import { GoofishError } from "@/lib/payments/goofish";
 import { cardCatalog } from "@/lib/paid-local/card-catalog";
+import { guidedPetalPrice } from "@/lib/guided-reading/details";
+import { guidedAction } from "@/lib/guided-reading/actions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -43,6 +45,10 @@ export async function GET(request: NextRequest, { params }: Context) {
       return json({...store.payments.adminOverview(),xianyuOrders:store.xianyu.adminOrders()});
     }
     const userId = store.authenticate(request.cookies.get(cookieName)?.value);
+    if (segments[0] === "guided" && segments.length <= 2 && process.env.NEXT_PUBLIC_FLORA_GUIDED_PREVIEW === "1") {
+      const guided = store.guidedPreview();
+      return json(segments.length === 2 ? guided.open(userId, segments[1]) : guided.history(userId));
+    }
     if (segments.length===1 && segments[0]==="card-catalog") return json(cardCatalog());
     if (segments.length===1 && segments[0]==="redemptions") return json(store.redemptions.history(userId));
     if (segments[0] === "xianyu") {
@@ -134,6 +140,13 @@ export async function POST(request: NextRequest, { params }: Context) {
       return json(await issueGuestReview(drawQuestion, guestReviewKey, reviewPaidQuestion));
     }
     const userId = store.authenticate(previousToken);
+    if (action.startsWith("guided/") && process.env.NEXT_PUBLIC_FLORA_GUIDED_PREVIEW === "1") {
+      if (action === "guided/test-credits") {
+        store.grantTestCredits(userId, field("requestId"), guidedPetalPrice.test);
+        return json({ ok: true });
+      }
+      return json(await guidedAction(store.guidedPreview(), userId, action, input, reviewPaidQuestion, () => store.limitNewDrawReview(userId), (key, task) => store.shareReadingReview(key, task)));
+    }
     if (action === "redeem") {
       if (field("expectedUserId") && field("expectedUserId")!==userId) throw new LocalPaidError("ACCOUNT_CHANGED","登录账号已变更，请刷新并确认接收花瓣的账号。",409);
       return json(store.redemptions.redeem(userId,field("code"),field("readingId")||undefined));

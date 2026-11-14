@@ -35,7 +35,9 @@
     ".next/types/**/*.ts",
     ".next-paid-local/types/**/*.ts",
     ".next/dev/types/**/*.ts",
-    ".next-paid-local/dev/types/**/*.ts"
+    ".next-paid-local/dev/types/**/*.ts",
+    ".next-paid-local/guided/types/**/*.ts",
+    ".next-paid-local/guided/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",
