@@ -2,6 +2,7 @@
 
 import type { AuthSession, DeepQuota, FollowUpMessage, ReadingWithCards } from "../project-store";
 import type { PaidOverview, PaidReading, PaidSummary } from "./types";
+import { isReadingSafetyCode } from "./reading-safety";
 
 export const paidLocalSiteEnabled = process.env.NEXT_PUBLIC_PAID_LOCAL_MODE === "1";
 export const paidOnlineSiteEnabled = process.env.NEXT_PUBLIC_PAID_ONLINE_MODE === "1";
@@ -68,12 +69,13 @@ export class PaidSiteError extends Error {
   constructor(public code: string, message: string, public status: number) { super(message); }
 }
 export async function paidSiteRequest<T>(action = "", body?: Record<string, unknown>): Promise<T> {
+  const guestReview = action === "guest-review";
   if (!paidSiteEnabled || typeof window === "undefined") throw new Error("花瓣服务暂未开启。");
   if (paidLocalSiteEnabled && !["127.0.0.1", "localhost"].includes(window.location.hostname)) throw new Error("本地测试接口未开启。");
   let accessToken: string | undefined;
   let verifiedOwner = "";
   let recoverSession: (() => Promise<AuthSession>) | undefined;
-  if (paidOnlineSiteEnabled) {
+  if (paidOnlineSiteEnabled && !guestReview) {
     const { getValidSession, refreshSupabaseAuthSession } = await import("../project-store");
     const session = await getValidSession();
     accessToken = session?.accessToken;
@@ -96,11 +98,11 @@ export async function paidSiteRequest<T>(action = "", body?: Record<string, unkn
     if(action==="daily-status"){
       try{const value=JSON.parse(window.localStorage.getItem(`flora:signed-day:v1:${cacheOwner}`)||"null");if(value?.signed===true&&value.today===day.slice(1))return value as T;}catch{/* Fall back to the server. */}
     }
-  } else invalidate();
+  } else if (!guestReview) invalidate();
   const request = (async () => {
   const send = (token: string | undefined) => fetch(`${paidOnlineSiteEnabled ? "/api/flora" : "/api/local-paid"}${action ? `/${action}` : ""}`, {
     method: body ? "POST" : "GET", credentials: "same-origin", cache: "no-store",
-    headers: { "Content-Type": "application/json", ...(paidOnlineSiteEnabled ? { Authorization: `Bearer ${token}` } : { "x-local-paid": "1" }) },
+    headers: { "Content-Type": "application/json", ...(paidOnlineSiteEnabled ? (token ? { Authorization: `Bearer ${token}` } : {}) : { "x-local-paid": "1" }) },
     ...(body ? { body: JSON.stringify(body) } : {})
   });
   let response = await send(accessToken);
@@ -115,9 +117,12 @@ export async function paidSiteRequest<T>(action = "", body?: Record<string, unkn
   if (!response.ok) {
     const payload = await response.json().catch(() => ({})) as { code?: string; message?: string };
     if (response.status === 401 && !paidOnlineSiteEnabled && !action.startsWith("admin")){window.localStorage.removeItem(sessionKey);invalidate();}
+    // A rejected unlock deletes the draft on the server, including for other tabs.
+    if (action === "unlock" && isReadingSafetyCode(payload.code) && getPaidSiteSession()?.userId === cacheOwner) publishMutation(cacheOwner);
     throw new PaidSiteError(payload.code || "REQUEST_ERROR", response.status === 401 ? "登录状态已过期，请重新登录。" : payload.message || "请求失败，请重试。", response.status);
   }
   const payload = await response.json();
+  if (guestReview) return payload as T;
   if (paidOnlineSiteEnabled && getPaidSiteSession()?.userId !== verifiedOwner) {
     throw new PaidSiteError("ACCOUNT_CHANGED", "登录账号已变更，请重新打开当前页面。", 409);
   }
@@ -132,8 +137,7 @@ export async function paidSiteRequest<T>(action = "", body?: Record<string, unkn
         const result=payload as unknown as {today:string};
         rememberSignedStatus(cacheOwner,{today:result.today,signed:true});
       }
-      try{window.localStorage.setItem(revisionKey,JSON.stringify({owner:cacheOwner,at:Date.now(),nonce:Math.random()}));}catch{/* Same-tab invalidation still applies. */}
-      notifyRefresh("mutation");
+      publishMutation(cacheOwner);
     }
     else save(key, payload, cacheTtl(action));
     if(action==="daily-status")rememberSignedStatus(cacheOwner,payload);
@@ -145,6 +149,12 @@ export async function paidSiteRequest<T>(action = "", body?: Record<string, unkn
   })();
   if (!body || touch) pending.set(key, request);
   try { return await request; } finally { if (pending.get(key) === request) pending.delete(key); }
+}
+
+function publishMutation(owner: string) {
+  invalidate();
+  try { window.localStorage.setItem(revisionKey, JSON.stringify({ owner, at: Date.now(), nonce: Math.random() })); } catch { /* Same-tab invalidation still applies. */ }
+  notifyRefresh("mutation");
 }
 function rememberSession(overview: PaidOverview): AuthSession {
   const session = { email: `${overview.user.id}@local.invalid`, userId: overview.user.id, accessToken: "local-cookie-session" };

@@ -4,14 +4,16 @@ import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, ArrowRight, Check, RotateCcw, Sparkles } from "lucide-react";
 import { deepSpreads, getDeepSpread, type DeepSpreadId } from "@/lib/deep-spreads";
-import { completePaidRequestKey, getPaidSiteSession, paidRevealConfirmationEnabled, paidSiteEnabled, paidSiteRequest, stablePaidRequestKey } from "@/lib/paid-local/site-bridge";
+import { completePaidRequestKey, getPaidSiteSession, PaidSiteError, paidRevealConfirmationEnabled, paidSiteEnabled, paidSiteRequest, stablePaidRequestKey } from "@/lib/paid-local/site-bridge";
 import { clearDrawDraft, readDrawDraft, recoverDrawTokens, saveDrawDraft } from "@/lib/paid-local/draw-draft";
 import { guestDeckSize, saveGuestDraw } from "@/lib/paid-local/guest-draw";
+import { isReadingSafetyCode, type ReadingSafetyCode } from "@/lib/paid-local/reading-safety";
 import type { PaidDrawSession } from "@/lib/paid-local/types";
 import { generateDeepReading, saveReading } from "@/lib/project-store";
 import { SpreadLayout } from "./SpreadLayout";
 import { ShuffleRitual } from "./ShuffleRitual";
 import { ReadingMemoryPrompt } from "./ReadingMemoryPrompt";
+import { ReadingSafetyDialog } from "./ReadingSafetyDialog";
 import { QuietCardBack } from "@/components/QuietCardBack";
 import { ServiceNotice } from "@/components/ServiceNotice";
 
@@ -70,9 +72,13 @@ export function DivinationExperience({ projectId = "", historyCount = 0, ruleEng
   const [phase, setPhase] = useState<"setup" | "shuffle" | "shuffling" | "picking" | "interpreting">("setup");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [safetyCode, setSafetyCode] = useState<ReadingSafetyCode | null>(null);
   const [showMemoryPrompt, setShowMemoryPrompt] = useState(false);
   const [useRuleEngineTrial, setUseRuleEngineTrial] = useState(false);
   const picking = useRef(false);
+  const checking = useRef(false);
+  const guestApproval = useRef("");
+  const startedDraw = useRef(false);
   const spread = getDeepSpread(session && (phase === "picking" || phase === "interpreting") ? session.spread : spreadId);
   const selectedCount = (session ? savedPickCount(session) : 0) + queued.length;
   const visibleCards = paidRevealConfirmationEnabled ? [] : session?.selected ?? [];
@@ -86,7 +92,7 @@ export function DivinationExperience({ projectId = "", historyCount = 0, ruleEng
       let value=await paidSiteRequest<PaidDrawSession|null>(`projects/${projectId}/draw-session`);
       const draft=readDrawDraft(owner,projectId);
       if(!value&&draft)value=await paidSiteRequest<PaidDrawSession>(`draw-sessions/${draft.sessionId}`).catch(()=>null);
-      if(active&&getPaidSiteSession()?.userId===owner){setPending(value);setPendingQueuedCount(value?recoverDrawTokens(value,draft).length:0);}
+      if(active&&!startedDraw.current&&getPaidSiteSession()?.userId===owner){setPending(value);setPendingQueuedCount(value?recoverDrawTokens(value,draft).length:0);}
     })().catch(() => undefined);
     return () => { active = false; };
   }, [guest, projectId]);
@@ -103,12 +109,55 @@ export function DivinationExperience({ projectId = "", historyCount = 0, ruleEng
       setShowMemoryPrompt(true);
       return;
     }
-    setPhase("shuffle");
+    void continueToShuffle();
   }
 
-  function continueToShuffle() {
+  async function continueToShuffle() {
+    if (checking.current) return;
     setShowMemoryPrompt(false);
-    setPhase("shuffle");
+    if (!paidSiteEnabled) { setPhase("shuffle"); return; }
+    checking.current = true;
+    setBusy(true);
+    setError("");
+    try {
+      const values = choices.slice(0, getDeepSpread(spreadId).choiceCount || 0).map(value => value.trim());
+      const fields = { question: question.trim(), spread: spreadId, choices: values };
+      if (guest) {
+        const { approval } = await paidSiteRequest<{ approval: string }>("guest-review", fields);
+        guestApproval.current = approval;
+      } else {
+        const owner = getPaidSiteSession()?.userId || "";
+        const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(JSON.stringify(fields))));
+        const scope = `manual:${projectId}:${Array.from(digest, byte => byte.toString(16).padStart(2, "0")).join("")}`;
+        let value;
+        try {
+          value = await paidSiteRequest<PaidDrawSession>("draw-session", { ...fields, projectId, requestKey: stablePaidRequestKey(scope) });
+        } catch (cause) {
+          if (cause instanceof PaidSiteError && isReadingSafetyCode(cause.code)) completePaidRequestKey(scope);
+          throw cause;
+        }
+        if (!owner || getPaidSiteSession()?.userId !== owner) throw new Error("登录账号已变化，请重新进入这次抽牌。");
+        completePaidRequestKey(scope);
+        startedDraw.current = true;
+        draftOwner.current = owner;
+        updateQueued([]);
+        setPendingQueuedCount(0);
+        saveDrawDraft(owner, value, []);
+        setSession(value);
+        setPending(value);
+      }
+      setPhase("shuffle");
+    } catch (cause) {
+      if (cause instanceof PaidSiteError && isReadingSafetyCode(cause.code)) {
+        setQuestion("");
+        setChoices(["", "", ""]);
+        guestApproval.current = "";
+        setSafetyCode(cause.code);
+      } else setError(cause instanceof Error ? cause.message : "暂时无法完成问题审查，请稍后重试。");
+    } finally {
+      checking.current = false;
+      setBusy(false);
+    }
   }
   async function start() {
     if (busy || !question.trim()) { if (!question.trim()) setError("先写下这次想问的具体问题。"); return; }
@@ -133,16 +182,9 @@ export function DivinationExperience({ projectId = "", historyCount = 0, ruleEng
         setPhase("picking");
         return;
       }
-      const owner=getPaidSiteSession()?.userId||"";
-      const scope = `manual:${projectId}:${spreadId}:${question.trim()}:${JSON.stringify(values)}`;
-      const [value] = await Promise.all([
-        paidSiteRequest<PaidDrawSession>("draw-session", { projectId, question, spread: spreadId, choices: values, requestKey: stablePaidRequestKey(scope) }), pause(1300)
-      ]);
-      if(!owner||getPaidSiteSession()?.userId!==owner)throw new Error("登录账号已变化，请重新进入这次抽牌。");
-      completePaidRequestKey(scope);
-      draftOwner.current=owner;
-      updateQueued([]);setPendingQueuedCount(0);saveDrawDraft(draftOwner.current,value,[]);
-      setSession(value); setPending(value); setPhase("picking");
+      await pause(1300);
+      if (!session || getPaidSiteSession()?.userId !== draftOwner.current) throw new Error("登录账号已变化，请重新进入这次抽牌。");
+      setPhase("picking");
     } catch (cause) { setError(cause instanceof Error ? cause.message : "暂时没有洗牌成功，请重试。"); setPhase("setup"); }
     finally { setBusy(false); }
   }
@@ -157,7 +199,16 @@ export function DivinationExperience({ projectId = "", historyCount = 0, ruleEng
     try {
       await Promise.all([paidSiteRequest("unlock", { readingId: value.readingId }), pause(1500)]);
       onComplete?.(value.readingId);
-    } catch (cause) { onComplete?.(value.readingId, cause instanceof Error ? cause.message : "解读暂未完成，原牌已经保存，可以重试。"); }
+    } catch (cause) {
+      if (cause instanceof PaidSiteError && isReadingSafetyCode(cause.code)) {
+        setSafetyCode(cause.code);
+        setQuestion("");
+        setChoices(["", "", ""]);
+        setPending(null);
+        setSession(null);
+        setPhase("setup");
+      } else onComplete?.(value.readingId, cause instanceof Error ? cause.message : "解读暂未完成，原牌已经保存，可以重试。");
+    }
   }
   async function syncPicks(value:PaidDrawSession,tokens:string[],back=false) {
     if(picking.current)return;
@@ -235,7 +286,7 @@ export function DivinationExperience({ projectId = "", historyCount = 0, ruleEng
   function continueToLogin() {
     if (!session || queuedRef.current.length !== spread.positions.length || picking.current) return;
     try {
-      saveGuestDraw({ id: session.id, question: session.question, spread: session.spread, choices: session.choices, slots: queuedRef.current.map(Number) });
+      saveGuestDraw({ id: session.id, question: session.question, spread: session.spread, choices: session.choices, slots: queuedRef.current.map(Number), approval: guestApproval.current || undefined });
       picking.current = true;
       setBusy(true);
       router.push(`/login?returnTo=${encodeURIComponent(`/deep?resumeDraw=${session.id}`)}`);
@@ -244,6 +295,7 @@ export function DivinationExperience({ projectId = "", historyCount = 0, ruleEng
     }
   }
   async function resume(value:PaidDrawSession){
+    if (checking.current) return;
     draftOwner.current=getPaidSiteSession()?.userId||"";
     setSession(value);setQuestion(value.question);setSpreadId(value.spread);setChoices([...value.choices,"","",""] .slice(0,3));
     updateQueued(recoverDrawTokens(value,readDrawDraft(draftOwner.current,projectId)));setPhase("picking");
@@ -277,7 +329,8 @@ export function DivinationExperience({ projectId = "", historyCount = 0, ruleEng
     {error && <p role="alert" className="mt-5 rounded-lg border border-[#6E2638]/15 p-3 text-sm leading-6 text-[#8E4D4A]">{error}</p>}
   </section>;
 
-  return <><form onSubmit={beginShuffle} className="py-6 sm:py-10">
+  return <>{safetyCode && <ReadingSafetyDialog code={safetyCode} onClose={() => setSafetyCode(null)} />}<form onSubmit={beginShuffle} className="py-6 sm:py-10">
+    <fieldset disabled={busy} className="m-0 min-w-0 border-0 p-0">
     <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs uppercase tracking-[0.2em] text-clay/65">A question, a little clarity</p>{historyCount > 0 && <button type="button" onClick={onHistory} className="min-h-10 text-xs text-[#6E2638]">查看历史解读（{historyCount}）<ArrowRight size={13} className="ml-1 inline" /></button>}</div>
     <h1 className="mt-4 font-serif text-3xl sm:text-4xl">这一次，你想问什么？</h1><p className="mt-3 text-sm leading-7 text-ink/50">先放下一个具体的问题，再选择适合它的牌阵。</p>
     {pending && <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#6E2638]/15 bg-[#FFFDF8] p-4"><div className="min-w-0"><p className="text-sm">有一次尚未完成的抽牌 · {savedPickCount(pending)+pendingQueuedCount}/{getDeepSpread(pending.spread).positions.length} 张</p><p className="mt-1 max-w-xs truncate text-xs text-ink/45">{pending.question}</p></div><button type="button" onClick={() => void resume(pending)} className="min-h-10 text-sm text-[#6E2638]">继续抽牌</button></div>}
@@ -293,7 +346,8 @@ export function DivinationExperience({ projectId = "", historyCount = 0, ruleEng
     {ruleEngineTrialAllowed && !paidSiteEnabled && <label className="mt-5 flex items-center gap-2 text-xs text-ink/50"><input type="checkbox" checked={useRuleEngineTrial} onChange={(event) => setUseRuleEngineTrial(event.target.checked)} />试用 V2 规则解读</label>}
     {error && <p role="alert" className="mt-4 text-sm text-[#8E4D4A]">{error}</p>}
     <ServiceNotice kind="deep" />
-    <div className="mt-6 flex flex-wrap items-center gap-4"><button type="submit" disabled={busy} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[#6E2638] px-8 text-sm text-[#FFF9F2] disabled:opacity-50"><Sparkles size={16} />洗牌，开始这次解读</button><p className="text-xs leading-6 text-ink/45">{paidRevealConfirmationEnabled ? "选牌免费，确认后使用 1 花瓣翻牌并解读，含 2 次追问。" : paidSiteEnabled ? "自己选满牌位后使用 1 花瓣，含 2 次追问。" : "选择问题与牌阵后开始解读。"}</p></div>
+    <div className="mt-6 flex flex-wrap items-center gap-4"><button type="submit" disabled={busy} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[#6E2638] px-8 text-sm text-[#FFF9F2] disabled:opacity-50"><Sparkles size={16} />{busy ? "正在审查…" : "洗牌，开始这次解读"}</button><p className="text-xs leading-6 text-ink/45" aria-live="polite">{busy ? "审查通过后即可洗牌。" : paidRevealConfirmationEnabled ? "选牌免费，确认后使用 1 花瓣翻牌并解读，含 2 次追问。" : paidSiteEnabled ? "自己选满牌位后使用 1 花瓣，含 2 次追问。" : "选择问题与牌阵后开始解读。"}</p></div>
+    </fieldset>
   </form>
     {showMemoryPrompt && memoryPrompt && (
       <ReadingMemoryPrompt

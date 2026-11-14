@@ -13,6 +13,7 @@ type GuestDraw = {
   slots: number[];
   expiresAt: number;
   owner?: string;
+  approval?: string;
 };
 
 export function validGuestSlots(slots: unknown, spread: DeepSpreadId): slots is number[] {
@@ -37,7 +38,8 @@ export function readGuestDraw(id: string): GuestDraw | null {
     if (draft.id !== id || typeof draft.question !== "string" || !draft.question.trim() || draft.question.length > 300
       || !isDeepSpread(draft.spread) || !Array.isArray(draft.choices) || draft.choices.length > 3
       || draft.choices.some(choice => typeof choice !== "string" || choice.length > 80)
-      || !validGuestSlots(draft.slots, draft.spread)) return null;
+      || !validGuestSlots(draft.slots, draft.spread)
+      || (draft.approval !== undefined && (typeof draft.approval !== "string" || !/^\d{13}\.[a-f0-9]{64}$/.test(draft.approval)))) return null;
     return draft;
   } catch {
     return null;

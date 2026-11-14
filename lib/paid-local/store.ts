@@ -7,6 +7,7 @@ import { assertLocalEnvironment, LocalPaidError } from "./guard";
 import { LocalPayments } from "./payment-store";
 import { LocalXianyuPayments } from "./xianyu-store";
 import { readingTrashMigration } from "./reading-trash-migration";
+import { readingReviewMigration } from "./reading-review-migration";
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 
 import { PaidLedger } from "./ledger";
@@ -52,7 +53,10 @@ export class PaidLocalStore extends PaidLedger {
       });
       this.readingManagementEnabled = true;
     }
-    this.tx(() => { for (const user of this.all("SELECT id FROM local_users")) this.adjustTrialCredits(String(user.id)); });
+    this.tx(() => {
+      if (!this.one("SELECT version FROM local_schema_versions WHERE version=12")) this.db.exec(readingReviewMigration);
+      for (const user of this.all("SELECT id FROM local_users")) this.adjustTrialCredits(String(user.id));
+    });
   }
   close() { this.db.close(); }
   grantTestCredits(userId: string, requestKey: string) {

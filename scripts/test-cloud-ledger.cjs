@@ -7,7 +7,15 @@ const {Miniflare,convertV4MiniflareOptions}=require(require.resolve('miniflare',
 const user=randomUUID(),other=randomUUID();let calls=0,failNext=false;
 const mf=new Miniflare(convertV4MiniflareOptions({workers:[{name:'flora-test',modules:true,scriptPath:'.local-paid/cloud-api-build/index.js',compatibilityDate:'2026-09-04',compatibilityFlags:['nodejs_compat'],durableObjects:{LEDGER:{className:'FloraLedger',useSQLite:true}},bindings:{SUPABASE_URL:'https://test-auth.invalid',SUPABASE_ANON_KEY:'fake-anon',AI_KEY:'fake-ai',AI_MODEL:'test-model',CODE_SIGNING_KEY:'test-only-'.repeat(8),ADMIN_EMAILS:'owner@example.invalid',SALES_ENABLED:'0'},outboundService:async request=>{
   if(request.url.startsWith('https://test-auth.invalid/'))return Response.json({id:request.headers.get('authorization').includes('other')?other:user,email:request.headers.get('authorization').includes('other')?'other@example.invalid':'owner@example.invalid',email_confirmed_at:'2026-10-01'});
-  if(request.url==='https://api.deepseek.com/chat/completions'){calls++;if(failNext){failNext=false;return Response.json({error:'fixture'},{status:503});}const body=await request.json();return Response.json({model:'test-model',choices:[{finish_reason:'stop',message:{content:JSON.stringify(body.max_tokens<1000?{answer:'原牌追问答复'}:{conclusion:'完整结论',interpretation:'完整解读',advice:'自然建议',uncertainty:'仅供参考'})}}]});}
+  if(request.url==='https://api.deepseek.com/chat/completions'){
+    calls++;
+    const body=await request.json();
+    if(failNext && body.max_tokens!==96){failNext=false;return Response.json({error:'fixture'},{status:503});}
+    const result=body.max_tokens===96
+      ? (body.messages[1].content.includes('暂停用药')?{decision:'block',category:'medical'}:{decision:'allow',category:'none'})
+      : body.max_tokens<1000?{answer:'原牌追问答复'}:{conclusion:'完整结论',interpretation:'完整解读',advice:'自然建议',uncertainty:'仅供参考'};
+    return Response.json({model:'test-model',choices:[{finish_reason:'stop',message:{content:JSON.stringify(result)}}]});
+  }
   throw new Error('Unexpected upstream');
 }}]}));
 async function req(action='',body,token='valid-owner-token-1234567890'){
@@ -24,6 +32,20 @@ async function req(action='',body,token='valid-owner-token-1234567890'){
   assert.equal((await req('payment-simulate',{mode:'success'})).status,404);
   const day=(await req('daily-check-in',{})).data;assert.equal(day.totalDays,1);assert.deepEqual((await req('daily-check-in',{})).data.entry,day.entry);
   const project=(await req('projects',{title:'云端测试'})).data;
+  const blockedBefore=await req('draw-session',{projectId:project.id,question:'该不该暂停用药？',spread:'three_card',requestKey:randomUUID()});
+  assert.equal(blockedBefore.status,422);
+  assert.equal((await req('projects/'+project.id+'/draw-session')).data,null);
+  assert.deepEqual((await req('projects/'+project.id+'/readings')).data,[]);
+  const guestQuestion={question:'怎么和朋友恢复联系？',spread:'three_card'};
+  const guest=await req('guest-review',guestQuestion);
+  assert.equal(guest.status,200);
+  const guestClaim={...guestQuestion,approval:guest.data.approval,expectedUserId:other,requestKey:randomUUID(),slots:[0,1,2]};
+  const otherToken='valid-other-token-1234567890';
+  assert.equal((await req('claim-guest-draw',{...guestClaim,question:'不同问题'},otherToken)).data.code,'GUEST_REVIEW_EXPIRED');
+  const claimed=await req('claim-guest-draw',guestClaim,otherToken);
+  assert.equal(claimed.status,200);
+  assert.equal((await req('unlock',{readingId:claimed.data.id,confirmReveal:true},otherToken)).status,200);
+  assert.equal(calls,3);
   const draw=(await req('draw-session',{projectId:project.id,question:'未来发展如何？',spread:'h_seven',requestKey:randomUUID()})).data;
   assert.ok(draw.id);assert.equal(draw.selected.length,0);assert.equal(JSON.stringify(draw.deck).includes('nameZh'),false);
   const firstPick=await req('draw-pick',{sessionId:draw.id,token:draw.deck[0].token,expectedCount:0});
@@ -38,14 +60,22 @@ async function req(action='',body,token='valid-owner-token-1234567890'){
   assert.deepEqual((await req('projects/'+project.id+'/readings')).data[0].cards,[]);
   const unlock={readingId:selected.readingId,confirmReveal:true};
   assert.equal((await req('unlock',{readingId:selected.readingId})).data.code,'CONFIRM_REVEAL');
-  assert.equal(calls,0);assert.deepEqual((await req('summary')).data.balance,{available:1,reserved:0,consumed:0});
+  assert.equal(calls,4);assert.deepEqual((await req('summary')).data.balance,{available:1,reserved:0,consumed:0});
   failNext=true;assert.equal((await req('unlock',unlock)).status,503);
   const failed=(await req('readings/'+selected.readingId)).data;
   assert.equal(failed.state,'failed');assert.deepEqual(failed.cards,[]);
   assert.deepEqual((await req('summary')).data.balance,{available:1,reserved:0,consumed:0});
   assert.equal((await req('readings/'+selected.readingId,undefined,'valid-other-token-1234567890')).status,404);
   const read=await req('unlock',unlock);assert.equal(read.status,200,JSON.stringify(read.data));assert.equal(read.data.state,'completed');assert.equal(read.data.cards.length,7);
-  assert.deepEqual((await req('unlock',unlock)).data.cards,read.data.cards);assert.equal(calls,2);assert.equal((await req()).data.balance.available,0);
+  assert.deepEqual((await req('unlock',unlock)).data.cards,read.data.cards);assert.equal(calls,6);assert.equal((await req()).data.balance.available,0);
+  const blocked=(await req('draw',{projectId:project.id,question:'该不该暂停用药？',spread:'three_card',requestKey:randomUUID()})).data;
+  const beforeBlocked=(await req('summary')).data.balance;
+  const blockedReply=await req('unlock',{readingId:blocked.id,confirmReveal:true});
+  assert.equal(blockedReply.status,422);
+  assert.equal(blockedReply.data.code,'READING_TOPIC_UNSUPPORTED');
+  assert.equal((await req('readings/'+blocked.id)).status,404);
+  assert.deepEqual((await req('summary')).data.balance,beforeBlocked);
+  assert.equal(calls,7);
   const profile=(await req('profile?section=usage&days=all')).data;assert.equal(profile.readings.length,1);assert.equal(profile.ledger.length,0);
   const ledgerPage=(await req('ledger')).data;assert.ok(ledgerPage.items.length>0);assert.ok(ledgerPage.items.length<=20);
   for(let i=0;i<2;i++)assert.equal((await req('follow-up',{readingId:selected.readingId,question:'下一步呢？',requestKey:randomUUID()})).status,200);

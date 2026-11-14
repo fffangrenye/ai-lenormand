@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { assertLocalRequest, isLocalPaidError, LocalPaidError } from "@/lib/paid-local/guard";
 import { getPaidLocalStore } from "@/lib/paid-local/store";
-import { generatePaidMain, generatePaidFollowUp } from "@/lib/paid-local/provider";
+import { generatePaidMain, generatePaidFollowUp, reviewPaidQuestion } from "@/lib/paid-local/provider";
+import { reserveReviewedReading, reserveReviewedFollowUp, startReviewedDraw } from "@/lib/paid-local/reviewed-reading";
+import { getGuestReview, issueGuestReview } from "@/lib/paid-local/reviewed-draw";
+import { randomBytes } from "node:crypto";
 import QRCode from "qrcode";
 import type { SimulationMode } from "@/lib/paid-local/payment-store";
 import { hideLockedReadingCards, hideSelectedCards, requireRevealConfirmation } from "@/lib/paid-local/reveal";
@@ -14,6 +17,8 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 const cookieName = "flora_paid_local_session";
 const adminCookie = "flora_paid_local_admin";
+const localRuntime = globalThis as typeof globalThis & { floraGuestReviewKey?: Buffer };
+const guestReviewKey = localRuntime.floraGuestReviewKey ??= randomBytes(32);
 type Context = { params: Promise<{ path?: string[] }> };
 const json = (value: unknown, status = 200) => NextResponse.json(value, { status, headers: { "Cache-Control": "no-store" } });
 // Keep unrevealed cards on the server even when a browser inspects responses.
@@ -122,6 +127,12 @@ export async function POST(request: NextRequest, { params }: Context) {
       response.cookies.set(cookieName, session.token, { httpOnly: true, sameSite: "strict", path: "/api/local-paid", maxAge: 7 * 86400 });
       return response;
     }
+    const choices = Array.isArray(input.choices) ? input.choices.filter((value): value is string => typeof value === "string") : undefined;
+    const drawQuestion = { question: field("question"), spread: field("spread") as PaidSpread, choices };
+    if (action === "guest-review") {
+      store.limitNewDrawReview("local-guest");
+      return json(await issueGuestReview(drawQuestion, guestReviewKey, reviewPaidQuestion));
+    }
     const userId = store.authenticate(previousToken);
     if (action === "redeem") {
       if (field("expectedUserId") && field("expectedUserId")!==userId) throw new LocalPaidError("ACCOUNT_CHANGED","登录账号已变更，请刷新并确认接收花瓣的账号。",409);
@@ -158,24 +169,24 @@ export async function POST(request: NextRequest, { params }: Context) {
     if (action === "reading-restore") return json(store.restoreReading(userId, field("readingId"), field("targetProjectId") || undefined));
     if (action === "reading-move") return json(store.moveReading(userId, field("readingId"), field("projectId"), field("targetProjectId")));
     if (action === "project-remove") { store.archiveProject(userId, field("projectId")); return json({ ok: true }); }
-    const choices = Array.isArray(input.choices) ? input.choices.filter((value): value is string => typeof value === "string") : undefined;
     if (action === "draw") return json(visibleReading(store.draw(userId, { question: field("question"), spread: field("spread") as PaidSpread, requestKey: field("requestKey"), projectId: field("projectId") || undefined, choices })));
     if (action === "claim-guest-draw") {
       if (field("expectedUserId") !== userId) throw new LocalPaidError("ACCOUNT_CHANGED", "登录账号已变更，请重新登录后继续。", 409);
-      return json(hideLockedReadingCards(store.claimGuestDraw(userId, { question: field("question"), spread: field("spread") as PaidSpread, requestKey: field("requestKey"), choices, slots: input.slots })));
+      const approval = field("approval");
+      const reviewedContext = approval ? getGuestReview(drawQuestion, approval, guestReviewKey) : undefined;
+      return json(hideLockedReadingCards(store.claimGuestDraw(userId, { ...drawQuestion, requestKey: field("requestKey"), slots: input.slots }, reviewedContext)));
     }
-    if (action === "draw-session") return json(visibleDraw(store.startDrawSession(userId, { projectId: field("projectId"), question: field("question"), spread: field("spread") as PaidSpread, requestKey: field("requestKey"), choices })));
+    if (action === "draw-session") return json(visibleDraw(await startReviewedDraw(store, userId, { ...drawQuestion, projectId: field("projectId"), requestKey: field("requestKey") }, reviewPaidQuestion)));
     if (action === "draw-pick") return json(visibleDraw(store.pickDrawCard(userId, field("sessionId"), field("token"), Number(input.expectedCount))));
     if (action === "draw-picks") return json(visibleDraw(store.pickDrawCards(userId, field("sessionId"), input.tokens, Number(input.expectedCount))));
     if (action === "draw-abandon") { store.abandonDrawSession(userId, field("sessionId")); return json({ ok: true }); }
     if (action === "unlock") {
       if (revealPreview) requireRevealConfirmation(input.confirmReveal);
       const readingId = field("readingId");
-      const reserved = store.reserveReading(userId, readingId);
+      const { reserved, project } = await reserveReviewedReading(store, userId, readingId, reviewPaidQuestion);
       if (!reserved.runId) return json(visibleReading(reserved.reading), reserved.reading.state === "generating" ? 202 : 200);
       let completed;
       try {
-        const project = reserved.reading.projectId ? store.project(userId, reserved.reading.projectId) : undefined;
         const result = await generatePaidMain(reserved.reading, input.simulateFailure === true, project);
         completed = store.completeReading(userId, readingId, reserved.runId, result);
       } catch (error) { store.releaseReading(userId, readingId, reserved.runId); throw error; }
@@ -186,11 +197,11 @@ export async function POST(request: NextRequest, { params }: Context) {
     }
     if (action === "follow-up") {
       const readingId = field("readingId");
-      const reserved = store.reserveFollowUp(userId, readingId, field("question"), field("requestKey"));
+      const question = field("question");
+      const { reserved, project } = await reserveReviewedFollowUp(store, userId, readingId, question, field("requestKey"), reviewPaidQuestion);
       if (!reserved.attempt) return json(reserved.reading);
       try {
-        const project = reserved.reading.projectId ? store.project(userId, reserved.reading.projectId) : undefined;
-        const answer = await generatePaidFollowUp(reserved.reading, field("question"), input.simulateFailure === true, project);
+        const answer = await generatePaidFollowUp(reserved.reading, question.trim(), input.simulateFailure === true, project);
         return json(store.completeFollowUp(userId, readingId, reserved.id, reserved.attempt, answer));
       } catch (error) { store.releaseFollowUp(userId, readingId, reserved.id, reserved.attempt); throw error; }
     }

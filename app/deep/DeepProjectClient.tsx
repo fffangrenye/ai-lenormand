@@ -18,6 +18,8 @@ import { AIGeneratedLabel, ServiceNotice } from "@/components/ServiceNotice";
 import serviceNotices from "@/lib/service-notices.json";
 import { DivinationExperience } from "@/components/deep/DivinationExperience";
 import { ConversationButtons, ConversationDialog, type ConversationAction } from "@/components/deep/ConversationManagement";
+import { ReadingSafetyDialog } from "@/components/deep/ReadingSafetyDialog";
+import { isReadingSafetyCode, type ReadingSafetyCode } from "@/lib/paid-local/reading-safety";
 import { AccountMenu, PetalTopUp } from "@/components/AccountMenu";
 import {
   DeepProject,
@@ -750,6 +752,7 @@ function ReadingFollowUps({ reading }: { reading: ReadingWithCards }) {
   const [draft, setDraft] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [safetyCode, setSafetyCode] = useState<ReadingSafetyCode | null>(null);
   const refresh = useCallback(async () => { setMessages(await loadFollowUpMessages(reading.id)); }, [reading.id]);
   useEffect(() => { let active = true; void loadFollowUpMessages(reading.id).then((value) => { if (active) setMessages(value); }).catch(() => { if (active) setError("追问记录暂时未读取成功，请稍后重试。"); }); return () => { active = false; }; }, [reading.id]);
   const used = messages.filter((message) => message.role === "assistant" && !message.content.startsWith("这次追问暂时没有生成成功")).length;
@@ -758,10 +761,16 @@ function ReadingFollowUps({ reading }: { reading: ReadingWithCards }) {
     event.preventDefault(); if (busy || !draft.trim() || remaining <= 0) return;
     setBusy(true); setError("");
     try { await sendFollowUpMessage({ readingId: reading.id, content: draft.trim() }); setDraft(""); await refresh(); }
-    catch (cause) { setError(cause instanceof Error ? cause.message : "追问未完成，请稍后重试。"); }
+    catch (cause) {
+      if (cause instanceof PaidSiteError && isReadingSafetyCode(cause.code)) {
+        setDraft("");
+        setSafetyCode(cause.code);
+      } else setError(cause instanceof Error ? cause.message : "追问未完成，请稍后重试。");
+    }
     finally { setBusy(false); }
   }
   return <section className="border-t border-ink/10 pb-6 pt-4" aria-label="这次解读的附属追问">
+    {safetyCode && <ReadingSafetyDialog code={safetyCode} followUp onClose={() => setSafetyCode(null)} />}
     <details open={messages.length > 0 || undefined}>
       <summary className="cursor-pointer py-2 text-sm text-[#6E2638]">{reading.legacyRestored ? "旧站追问记录 · 仅供回看" : `围绕这次解读追问 · 剩余 ${remaining} 次`}</summary>
       <div className="mt-3 space-y-4">{messages.map((message, index) => <div key={message.id} className={message.role === "user" ? "border-l-2 border-[#6E2638]/30 pl-3" : "pl-3"}>
@@ -795,6 +804,7 @@ function ReadingWorkspace({ project, projects, readings, onProjectSaved, onReadi
   const [quota, setQuota] = useState<DeepQuota | null>(null);
   const [notice, setNotice] = useState("");
   const [generatingId, setGeneratingId] = useState<string | null>(null);
+  const [safetyCode, setSafetyCode] = useState<ReadingSafetyCode | null>(null);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [ruleEngineTrialAllowed, setRuleEngineTrialAllowed] = useState(false);
   const scroll = useRef<HTMLDivElement>(null);
@@ -824,6 +834,12 @@ function ReadingWorkspace({ project, projects, readings, onProjectSaved, onReadi
     setNotice("");
     setGeneratingId(id);
     try { await generateDeepReading(id, { confirmReveal: true }); }
+    catch (cause) {
+      if (!(cause instanceof PaidSiteError) || !isReadingSafetyCode(cause.code)) throw cause;
+      setSafetyCode(cause.code);
+      setActiveId(current => current === id ? null : current);
+      onReadingRemoved(id);
+    }
     finally { setGeneratingId(null); onReadingsChange(); }
   }
   async function saveMemoryBeforeDraw(memory: string) {
@@ -832,6 +848,10 @@ function ReadingWorkspace({ project, projects, readings, onProjectSaved, onReadi
     onProjectSaved(updated);
   }
   return <div className="flex min-h-0 flex-1 flex-col">
+    {safetyCode && <ReadingSafetyDialog code={safetyCode} onClose={() => {
+      setSafetyCode(null);
+      setView("compose");
+    }} />}
     <div className="relative z-20 shrink-0">
       <QuotaNotice quota={quota} message={notice} readingId={activeId || latestId} />
       {managementNotice && <p role="status" className="py-2 text-xs leading-5 text-ink/65">
@@ -1056,7 +1076,7 @@ export function DeepLandingClient() {
           }
           const result = await paidSiteRequest<{ id: string; projectId: string }>("claim-guest-draw", {
             question: draft.question, spread: draft.spread, choices: draft.choices, slots: draft.slots,
-            requestKey: draft.id, expectedUserId: owner
+            requestKey: draft.id, expectedUserId: owner, approval: draft.approval
           });
           if (cancelled) return;
           if (getPaidSiteSession()?.userId !== owner) throw new PaidSiteError("ACCOUNT_CHANGED", "登录账号已变更，请重新登录后继续。", 401);
@@ -1079,6 +1099,12 @@ export function DeepLandingClient() {
       } catch (error) {
         if (cancelled) return;
 
+        if (resumeId && error instanceof PaidSiteError && error.code === "GUEST_REVIEW_EXPIRED") {
+          clearGuestDraw(resumeId);
+          setExpiredDraft(true);
+          setLoadError(error.message);
+          return;
+        }
         if (isAuthLoadError(error)) {
           router.replace(`/login?returnTo=${encodeURIComponent(returnTo)}`);
           return;

@@ -4,11 +4,13 @@ import { buildPaidReadingPrompt, generateLocalFollowUp, generateLocalMain, paidM
 import { coreCardMeaningsZh } from "./reading-guidance";
 import type { PaidProject, PaidReading, PaidResult } from "./types";
 import { recordLocalAiUsage } from "./ai-usage";
+import { precheckReading, type ReadingReviewInput } from "./reading-precheck";
+import { readingReviewPrompt } from "./reading-review-prompt";
 
 type ProjectContext = Pick<PaidProject, "background" | "memorySummary">;
 const endpoint = "https://api.deepseek.com/chat/completions";
 
-async function requestJson(system: string, user: string, maxTokens: number, timeoutMs: number, context: { readingId: string; kind: "main" | "follow-up" }) {
+async function requestJson(system: string, user: string, maxTokens: number, timeoutMs: number, context: { readingId?: string; kind: "main" | "follow-up" | "review" }) {
   assertLocalEnvironment();
   const started = Date.now();
   const model = process.env.PAID_LOCAL_AI_MODEL?.trim() || "deepseek-flash";
@@ -17,7 +19,7 @@ async function requestJson(system: string, user: string, maxTokens: number, time
     response = await fetch(endpoint, {
       method: "POST", cache: "no-store", redirect: "error", signal: AbortSignal.timeout(timeoutMs),
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${process.env.PAID_LOCAL_AI_KEY}` },
-      body: JSON.stringify({ model, thinking: { type: "disabled" }, response_format: { type: "json_object" }, temperature: 0.45, max_tokens: maxTokens, messages: [{ role: "system", content: system }, { role: "user", content: user }] })
+      body: JSON.stringify({ model, thinking: { type: "disabled" }, response_format: { type: "json_object" }, temperature: context.kind === "review" ? 0 : 0.45, max_tokens: maxTokens, messages: [{ role: "system", content: system }, { role: "user", content: user }] })
     });
   } catch (error) {
     const timeout = error instanceof Error && ["TimeoutError", "AbortError"].includes(error.name);
@@ -33,12 +35,20 @@ async function requestJson(system: string, user: string, maxTokens: number, time
   const actualModel = typeof payload?.model === "string" ? payload.model : model;
   recordLocalAiUsage(context, actualModel, payload?.usage, Date.now() - started);
   const choice = payload?.choices?.[0];
+  if (context.kind === "review" && choice?.finish_reason === "content_filter") return { value: { decision: "block", category: "wrongdoing" } as Record<string, unknown>, model: actualModel };
   if (choice?.finish_reason !== "stop" || typeof choice.message?.content !== "string") throw new LocalPaidError("AI_INCOMPLETE", "AI 返回内容不完整，请沿用原牌重试；本次未扣花瓣。", 503);
   try {
     const value: unknown = parseAiJsonObject(choice.message.content);
     if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Invalid result");
     return { value: value as Record<string, unknown>, model: actualModel };
   } catch { throw new LocalPaidError("AI_INVALID_RESULT", "AI 返回格式异常，请沿用原牌重试；本次未扣花瓣。", 503); }
+}
+
+export function reviewPaidQuestion(reading: ReadingReviewInput, project?: ProjectContext, followUp?: string) {
+  assertLocalEnvironment();
+  const review = process.env.PAID_LOCAL_MODEL === "mock" ? undefined : async (input: string) =>
+    (await requestJson(readingReviewPrompt, input, 96, 15_000, { kind: "review" })).value;
+  return precheckReading(reading, project, followUp, review);
 }
 
 function requiredText(value: Record<string, unknown>, key: string, max: number) {

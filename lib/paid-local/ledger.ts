@@ -21,6 +21,8 @@ type ReadingRelations = { follows: Row[]; projectId?: string; completedAt?: stri
 export class PaidLedger {
   private initializedUsers = new Map<string, string>();
   private checkedProjectLinks = new Set<string>();
+  private readingReviews = new Map<string, Promise<unknown>>();
+  private drawReviewRates = new Map<string, { count: number; expires: number }>();
   protected readingManagementEnabled = false;
   readonly redemptions: LocalRedemptions;
   constructor(protected db: DatabaseSync, private transaction: <T>(work: () => T) => T, protected clock: () => number = Date.now, codeConfig?: { key: () => string; prefix: string }, readingManagementEnabled = false) {
@@ -349,6 +351,52 @@ export class PaidLedger {
     };
   }
   reading(userId: string, readingId: string) { return this.serialize(this.owned(userId, readingId)); }
+  matchesReadingReview(userId: string, readingId: string, fingerprint: string) {
+    return this.owned(userId, readingId).reviewed_context === fingerprint;
+  }
+  limitNewDrawReview(key: string) {
+    const now = this.clock();
+    if (!this.drawReviewRates.has(key) && this.drawReviewRates.size >= 2000) {
+      this.drawReviewRates.forEach((rate, id) => { if (rate.expires <= now) this.drawReviewRates.delete(id); });
+      if (this.drawReviewRates.size >= 2000) throw new LocalPaidError("DRAW_RATE_LIMIT", "提问审查暂时繁忙，请稍后再试。", 429);
+    }
+    let rate = this.drawReviewRates.get(key);
+    if (!rate || rate.expires <= now) {
+      rate = { count: 0, expires: now + paidConfig.drawWindowMs };
+      this.drawReviewRates.set(key, rate);
+    }
+    if (rate.count >= paidConfig.maxDrawsPerWindow) throw new LocalPaidError("DRAW_RATE_LIMIT", "提问过于频繁，请稍后再试。", 429);
+    rate.count++;
+  }
+  checkReadingReviewProject(userId: string, readingId: string, reviewed: PaidProject | undefined) {
+    this.owned(userId, readingId);
+    const id = this.readingProjectId(readingId);
+    const current = id ? this.project(userId, id) : undefined;
+    if (current?.id !== reviewed?.id || current?.background !== reviewed?.background || current?.memorySummary !== reviewed?.memorySummary) {
+      throw new LocalPaidError("READING_CONTEXT_CHANGED", "项目背景刚有更新。原牌已保留，请重新提交这次问题。", 409);
+    }
+  }
+  shareReadingReview<T>(key: string, review: () => Promise<T>): Promise<T> {
+    const active = this.readingReviews.get(key) as Promise<T> | undefined;
+    if (active) return active;
+    const pending = Promise.resolve().then(review).finally(() => this.readingReviews.delete(key));
+    this.readingReviews.set(key, pending);
+    return pending;
+  }
+  discardBlockedReading(userId: string, readingId: string) {
+    this.tx(() => {
+      const reading = this.owned(userId, readingId, true);
+      if (reading.state !== "locked" && reading.state !== "failed") throw new LocalPaidError("READING_BUSY", "这次解读的状态刚更新，请重新打开项目。", 409);
+      // Keep unrelated financial records and make their return link usable.
+      for (const table of ["local_orders", "local_recharge_codes", "local_xianyu_intents"]) {
+        this.run(`UPDATE ${table} SET reading_id=NULL,return_path='/profile' WHERE reading_id=?`, readingId);
+      }
+      this.run("DELETE FROM paid_draw_sessions WHERE reading_id=? AND user_id=?", readingId, userId);
+      this.run("DELETE FROM reading_runs WHERE reading_id=? AND state='released'", readingId);
+      this.run("DELETE FROM local_reading_projects WHERE reading_id=?", readingId);
+      this.run("DELETE FROM paid_readings WHERE id=? AND user_id=?", readingId, userId);
+    });
+  }
   overview(userId: string): PaidOverview {
     this.recoverExpired(userId);
     const user = this.one("SELECT * FROM local_users WHERE id=?", userId);
@@ -366,7 +414,7 @@ export class PaidLedger {
   draw(userId: string, input: { question: string; spread: PaidSpread; requestKey: string; projectId?: string; choices?: string[] }) {
     return this.tx(() => this.drawInTransaction(userId, input));
   }
-  protected drawInTransaction(userId: string, input: { question: string; spread: PaidSpread; requestKey: string; projectId?: string; choices?: string[] }, selected?: PaidCard[]) {
+  protected drawInTransaction(userId: string, input: { question: string; spread: PaidSpread; requestKey: string; projectId?: string; choices?: string[] }, selected?: PaidCard[], reviewedContext?: string) {
     const question = input.question?.trim();
     if (!question || question.length > 300 || !isDeepSpread(input.spread)) throw new LocalPaidError("INVALID_QUESTION", "请填写 1–300 字的问题并选择牌阵。");
     this.validateKey(input.requestKey);
@@ -388,6 +436,7 @@ export class PaidLedger {
       for (let i = 0; i < positions.length; i++) cards.push(selected?.[i] || { ...pool.splice(randomInt(pool.length), 1)[0], position: positions[i] });
       const id = randomUUID();
       this.run("INSERT INTO paid_readings(id,user_id,request_key,question,spread,cards_json,created_at,choices_json) VALUES (?,?,?,?,?,?,?,?)", id, userId, input.requestKey, question, input.spread, JSON.stringify(cards), this.now(), JSON.stringify(choices));
+      if (reviewedContext) this.run("UPDATE paid_readings SET reviewed_context=? WHERE id=?", reviewedContext, id);
       if (input.projectId) {
         this.run("INSERT INTO local_reading_projects VALUES (?,?)", id, input.projectId);
         this.run("UPDATE local_projects SET last_opened_at=? WHERE id=?", this.now(), input.projectId);
@@ -400,7 +449,7 @@ export class PaidLedger {
     if (size && (values.length !== size || values.some((value) => !value || value.length > 80) || new Set(values.map((value) => value.toLowerCase())).size !== size)) throw new LocalPaidError("INVALID_CHOICES", `请填写 ${size} 个不同的具体选项，每项不超过 80 字。`);
     return size ? values : [];
   }
-  claimGuestDraw(userId: string, input: { question: string; spread: PaidSpread; choices?: string[]; requestKey: string; slots: unknown }) {
+  claimGuestDraw(userId: string, input: { question: string; spread: PaidSpread; choices?: string[]; requestKey: string; slots: unknown }, reviewedContext?: string) {
     if (!isDeepSpread(input.spread) || !validGuestSlots(input.slots, input.spread)) {
       throw new LocalPaidError("INVALID_CARDS", "选好的牌与牌阵不匹配，请重新选牌。");
     }
@@ -421,7 +470,7 @@ export class PaidLedger {
         [deck[index], deck[swap]] = [deck[swap], deck[index]];
       }
       const cards = slots.map((slot, index) => ({ ...deck[slot], position: positions[index] }));
-      return this.drawInTransaction(userId, readingInput, cards);
+      return this.drawInTransaction(userId, readingInput, cards, reviewedContext);
     });
   }
   protected drawSessionRow(userId: string, id: string) {
@@ -450,19 +499,30 @@ export class PaidLedger {
     const row = this.one("SELECT * FROM paid_draw_sessions WHERE user_id=? AND project_id=? AND state='picking' ORDER BY created_at DESC,rowid DESC LIMIT 1", userId, projectId);
     return row ? this.serializeDraw(row) : null;
   }
-  startDrawSession(userId: string, input: { projectId: string; question: string; spread: PaidSpread; choices?: string[]; requestKey: string }) {
+  private existingDraw(userId: string, input: { projectId: string; question: string; spread: PaidSpread; choices: string[]; requestKey: string }) {
+    this.validateKey(input.requestKey);
+    const project = this.ownedProject(userId, input.projectId);
+    const previous = this.one("SELECT * FROM paid_draw_sessions WHERE user_id=? AND request_key=?", userId, input.requestKey);
+    if (previous) {
+      if (this.readingManagementEnabled && previous.reading_id) this.owned(userId, String(previous.reading_id));
+      if (previous.question !== input.question || previous.spread !== input.spread || previous.project_id !== input.projectId || previous.choices_json !== JSON.stringify(input.choices)) {
+        throw new LocalPaidError("REQUEST_CONFLICT", "请勿改变同一次洗牌的问题或牌阵。", 409);
+      }
+    }
+    return { project, previous };
+  }
+  drawForReview(userId: string, input: { projectId: string; question: string; spread: PaidSpread; choices: string[]; requestKey: string }) {
+    const { project, previous } = this.existingDraw(userId, input);
+    return { project: this.serializeProject(project), previous: previous ? this.serializeDraw(previous) : undefined };
+  }
+  startDrawSession(userId: string, input: { projectId: string; question: string; spread: PaidSpread; choices?: string[]; requestKey: string }, reviewedContext?: string) {
     const question = input.question?.trim();
     if (!question || question.length > 300 || !isDeepSpread(input.spread)) throw new LocalPaidError("INVALID_QUESTION", "请填写 1–300 字的问题并选择牌阵。");
     this.validateKey(input.requestKey);
     const choices = this.validateChoices(input.spread, input.choices);
     return this.tx(() => {
-      this.ownedProject(userId, input.projectId);
-      const previous = this.one("SELECT * FROM paid_draw_sessions WHERE user_id=? AND request_key=?", userId, input.requestKey);
-      if (previous) {
-        if (this.readingManagementEnabled && previous.reading_id) this.owned(userId, String(previous.reading_id));
-        if (previous.question !== question || previous.spread !== input.spread || previous.project_id !== input.projectId || previous.choices_json !== JSON.stringify(choices)) throw new LocalPaidError("REQUEST_CONFLICT", "请勿改变同一次洗牌的问题或牌阵。", 409);
-        return this.serializeDraw(previous);
-      }
+      const { previous } = this.existingDraw(userId, { ...input, question, choices });
+      if (previous) return this.serializeDraw(previous);
       const count = this.one("SELECT count(*) AS n FROM paid_draw_sessions WHERE user_id=? AND created_at>=?", userId, new Date(this.clock() - paidConfig.drawWindowMs).toISOString());
       if (Number(count?.n) >= paidConfig.maxDrawsPerWindow) throw new LocalPaidError("DRAW_RATE_LIMIT", "洗牌过于频繁，请稍后再试。", 429);
       const pool = [...lenormandCards];
@@ -472,6 +532,7 @@ export class PaidLedger {
       this.run("UPDATE paid_draw_sessions SET state='abandoned' WHERE user_id=? AND project_id=? AND state='picking'", userId, input.projectId);
       const id = randomUUID();
       this.run("INSERT INTO paid_draw_sessions(id,user_id,project_id,request_key,question,spread,choices_json,deck_json,created_at) VALUES (?,?,?,?,?,?,?,?,?)", id, userId, input.projectId, input.requestKey, question, input.spread, JSON.stringify(choices), JSON.stringify(deck), this.now());
+      if (reviewedContext) this.run("UPDATE paid_draw_sessions SET reviewed_context=? WHERE id=?", reviewedContext, id);
       return this.serializeDraw(this.drawSessionRow(userId, id));
     });
   }
@@ -488,7 +549,7 @@ export class PaidLedger {
       this.run("UPDATE paid_draw_sessions SET selected_json=? WHERE id=?", JSON.stringify(picked), id);
       const updated = this.serializeDraw(this.drawSessionRow(userId, id));
       if (updated.selected.length === getDeepSpread(updated.spread).positions.length) {
-        const reading = this.drawInTransaction(userId, { ...updated, requestKey: `manual_${id}` }, updated.selected);
+        const reading = this.drawInTransaction(userId, { ...updated, requestKey: `manual_${id}` }, updated.selected, typeof row.reviewed_context === "string" ? row.reviewed_context : undefined);
         this.run("UPDATE paid_draw_sessions SET state='completed',reading_id=? WHERE id=?", reading.id, id);
       }
       return this.serializeDraw(this.drawSessionRow(userId, id));
@@ -514,7 +575,7 @@ export class PaidLedger {
       this.run("UPDATE paid_draw_sessions SET selected_json=? WHERE id=?", JSON.stringify(selected), id);
       const updated = this.serializeDraw({...row,selected_json:JSON.stringify(selected)});
       if (selected.length === count) {
-        const reading = this.drawInTransaction(userId, {...updated,requestKey:`manual_${id}`}, updated.selected);
+        const reading = this.drawInTransaction(userId, {...updated,requestKey:`manual_${id}`}, updated.selected, typeof row.reviewed_context === "string" ? row.reviewed_context : undefined);
         this.run("UPDATE paid_draw_sessions SET state='completed',reading_id=? WHERE id=?", reading.id, id);
         return {...updated,state:"completed" as const,readingId:reading.id};
       }
@@ -579,20 +640,35 @@ export class PaidLedger {
       this.adjustTrialCredits(userId);
     });
   }
-  reserveFollowUp(userId: string, readingId: string, question: string, requestKey: string) {
+  private followUpCandidate(userId: string, readingId: string, question: string, requestKey: string) {
     this.validateKey(requestKey);
     if (!question?.trim() || question.trim().length > 300) throw new LocalPaidError("INVALID_QUESTION", "追问需要 1–300 字。");
     question = question.trim();
+    const reading = this.owned(userId, readingId);
+    if (reading.state !== "completed") throw new LocalPaidError("READING_LOCKED", "请先解锁并完成主解读。", 403);
+    if (JSON.parse(String(reading.result_json)).legacy) throw new LocalPaidError("LEGACY_READ_ONLY", "旧站历史仅供回看，请开启新的解读继续。", 409);
+    const previous = this.one("SELECT * FROM paid_follow_ups WHERE reading_id=? AND request_key=?", readingId, requestKey);
+    if (previous && previous.question !== question) throw new LocalPaidError("REQUEST_CONFLICT", "同一请求不能更换追问内容。", 409);
+    if (previous && previous.state !== "released") return { reading, previous, active: true };
+    const count = this.one("SELECT count(*) as n FROM paid_follow_ups WHERE reading_id=? AND state IN ('reserved','completed')", readingId);
+    if (Number(count?.n) >= paidConfig.followUpsPerReading) throw new LocalPaidError("FOLLOW_UP_LIMIT", "这份解读包含的 2 次追问已用完或正在生成。", 429);
+    return { reading, previous, active: false };
+  }
+  followUpForReview(userId: string, readingId: string, question: string, requestKey: string) {
+    this.recoverExpired(userId);
+    const candidate = this.followUpCandidate(userId, readingId, question, requestKey);
+    return { reading: this.serialize(candidate.reading), active: candidate.active };
+  }
+  discardRejectedFollowUp(userId: string, readingId: string, requestKey: string, question: string) {
+    this.owned(userId, readingId);
+    this.run("DELETE FROM paid_follow_ups WHERE reading_id=? AND request_key=? AND question=? AND state='released'", readingId, requestKey, question);
+  }
+  reserveFollowUp(userId: string, readingId: string, question: string, requestKey: string) {
     this.recoverExpired(userId);
     return this.tx(() => {
-      const reading = this.owned(userId, readingId);
-      if (reading.state !== "completed") throw new LocalPaidError("READING_LOCKED", "请先解锁并完成主解读。", 403);
-      if(JSON.parse(String(reading.result_json)).legacy)throw new LocalPaidError("LEGACY_READ_ONLY","旧站历史仅供回看，请开启新的解读继续。",409);
-      const previous = this.one("SELECT * FROM paid_follow_ups WHERE reading_id=? AND request_key=?", readingId, requestKey);
-      if (previous && previous.question !== question) throw new LocalPaidError("REQUEST_CONFLICT", "同一请求不能更换追问内容。", 409);
-      if (previous && previous.state !== "released") return { id: String(previous.id), attempt: null, reading: this.serialize(reading) };
-      const count = this.one("SELECT count(*) as n FROM paid_follow_ups WHERE reading_id=? AND state IN ('reserved','completed')", readingId);
-      if (Number(count?.n) >= paidConfig.followUpsPerReading) throw new LocalPaidError("FOLLOW_UP_LIMIT", "这份解读包含的 2 次追问已用完或正在生成。", 429);
+      const { reading, previous, active } = this.followUpCandidate(userId, readingId, question, requestKey);
+      if (active) return { id: String(previous!.id), attempt: null, reading: this.serialize(reading) };
+      question = question.trim();
       // Each retry gets a new lease token; late results from an old attempt cannot commit.
       const attempt = randomUUID();
       const id = previous ? String(previous.id) : randomUUID();

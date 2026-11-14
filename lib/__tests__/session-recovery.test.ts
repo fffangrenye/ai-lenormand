@@ -61,6 +61,7 @@ function fixture(start = account) {
       load(module, module.exports, (specifier: string) => {
         if (specifier === "../project-store") return modules["project-store"].exports;
         if (specifier === "./paid-local/site-bridge") return modules["paid-local/site-bridge"].exports;
+        if (specifier === "./reading-safety") return require("../paid-local/reading-safety");
         return require(name === "project-store" ? "." + specifier : specifier);
       });
     }

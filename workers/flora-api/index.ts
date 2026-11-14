@@ -1,6 +1,9 @@
 import type { DatabaseSync } from "node:sqlite";
 import { PaidLedger } from "../../lib/paid-local/ledger";
 import { createCloudProvider } from "../../lib/paid-local/cloud-provider";
+import { reserveReviewedReading, reserveReviewedFollowUp, startReviewedDraw } from "../../lib/paid-local/reviewed-reading";
+import { getGuestReview, issueGuestReview } from "../../lib/paid-local/reviewed-draw";
+import { readingReviewMigration } from "../../lib/paid-local/reading-review-migration";
 import { LocalPaidError, isLocalPaidError } from "../../lib/paid-local/guard";
 import { cardCatalog } from "../../lib/paid-local/card-catalog";
 import { hideLockedReadingCards, hideSelectedCards, requireRevealConfirmation } from "../../lib/paid-local/reveal";
@@ -47,6 +50,9 @@ export default {
         return recoverPassword(request,env);
       }
       if(path!=="/api/flora" && !path.startsWith("/api/flora/"))return json({code:"NOT_FOUND"},404);
+      if (path === "/api/flora/guest-review" && request.method === "POST") {
+        return env.LEDGER.get(env.LEDGER.idFromName("flora-v3-ledger-v1")).fetch(request);
+      }
       // Prices and public purchase links contain no account data. Also support
       // cached older clients so their menu does not repeat failed DO requests.
       if(request.method==="GET" && ["/api/flora/card-catalog","/api/flora/catalog"].includes(path))return json(cardCatalog(false,env.SALES_ENABLED==="1"));
@@ -95,6 +101,7 @@ export class FloraLedger {
     if(!sql.exec("SELECT name FROM sqlite_master WHERE type='table' AND name='local_schema_versions'").toArray().length)ctx.storage.transactionSync(()=>sql.exec(schema));
     if(!sql.exec("SELECT version FROM local_schema_versions WHERE version=10").toArray().length)ctx.storage.transactionSync(()=>sql.exec(costIndexes));
     if(!sql.exec("SELECT version FROM local_schema_versions WHERE version=11").toArray().length)ctx.storage.transactionSync(()=>sql.exec(readingTrashMigration));
+    if(!sql.exec("SELECT version FROM local_schema_versions WHERE version=12").toArray().length)ctx.storage.transactionSync(()=>sql.exec(readingReviewMigration));
     ensureTelemetrySchema(sql);
     const execute=measuredSql(sql);
     const db={prepare:(query:string)=>({all:(...args:unknown[])=>execute(query,...args),get:(...args:unknown[])=>execute(query,...args)[0],run:(...args:unknown[])=>{execute(query,...args);return{};}}),exec:(query:string)=>execute(query),close:()=>{}};
@@ -104,6 +111,17 @@ export class FloraLedger {
   }
   async fetch(request:Request){
     try{
+      if (new URL(request.url).pathname === "/api/flora/guest-review" && request.method === "POST") {
+        const raw = await request.text();
+        if (raw.length > 8000) throw new LocalPaidError("TOO_LARGE", "请求内容过长。", 413);
+        let input;
+        try { input = JSON.parse(raw); } catch { throw new LocalPaidError("INVALID_JSON", "请求格式不正确。"); }
+        if (!input || typeof input.question !== "string") throw new LocalPaidError("INVALID_QUESTION", "请填写要解读的问题。");
+        const choices = Array.isArray(input.choices) ? input.choices.filter((x: unknown): x is string => typeof x === "string") : undefined;
+        const provider = createCloudProvider({ key: this.env.AI_KEY, model: this.env.AI_MODEL });
+        this.store.limitNewDrawReview("guest:" + (request.headers.get("cf-connecting-ip") || "unknown"));
+        return json(await issueGuestReview({ question: input.question, spread: input.spread, choices }, this.env.CODE_SIGNING_KEY, provider.reviewPaidQuestion));
+      }
       if(new URL(request.url).pathname==="/internal/maintenance" || request.headers.get("x-flora-private-maintenance")==="1"){
         const job=await verifyMaintenance(request,this.env.CODE_SIGNING_KEY,this.env.ADMIN_EMAILS);
         if(job.action==="inspect")return json(this.backup.inspect());
@@ -201,27 +219,31 @@ export class FloraLedger {
         }
         const choices=Array.isArray(input.choices) ? input.choices.filter((x):x is string=>typeof x==="string") : undefined;
         const drawInput={projectId:field("projectId"),question:field("question"),spread:field("spread") as PaidSpread,requestKey:field("requestKey"),choices};
+        const provider=createCloudProvider({key:this.env.AI_KEY,model:this.env.AI_MODEL});
         if(action==="claim-guest-draw"){
           if(field("expectedUserId")!==user)throw new LocalPaidError("ACCOUNT_CHANGED","登录账号已变更，请重新登录后继续。",409);
-          return json(hideLockedReadingCards(store.claimGuestDraw(user,{...drawInput,slots:input.slots})));
+          const approval=field("approval");
+          const reviewedContext=approval ? getGuestReview(drawInput,approval,this.env.CODE_SIGNING_KEY) : undefined;
+          return json(hideLockedReadingCards(store.claimGuestDraw(user,{...drawInput,slots:input.slots},reviewedContext)));
         }
-        if(action==="draw-session")return json(hideSelectedCards(store.startDrawSession(user,drawInput)));
+        if(action==="draw-session")return json(hideSelectedCards(await startReviewedDraw(store,user,drawInput,provider.reviewPaidQuestion)));
         if(action==="draw")return json(hideLockedReadingCards(store.draw(user,drawInput)));
         if(action==="draw-pick")return json(hideSelectedCards(store.pickDrawCard(user,field("sessionId"),field("token"),Number(input.expectedCount))));
         if(action==="draw-picks")return json(hideSelectedCards(store.pickDrawCards(user,field("sessionId"),input.tokens,Number(input.expectedCount))));
         if(action==="draw-abandon"){store.abandonDrawSession(user,field("sessionId"));return json({ok:true});}
-        const provider=createCloudProvider({key:this.env.AI_KEY,model:this.env.AI_MODEL});
         if(action==="unlock"){
           requireRevealConfirmation(input.confirmReveal);
-          const id=field("readingId"),reserved=store.reserveReading(user,id);
+          const id=field("readingId");
+          const {reserved,project}=await reserveReviewedReading(store,user,id,provider.reviewPaidQuestion);
           if(!reserved.runId)return json(hideLockedReadingCards(reserved.reading),reserved.reading.state==="generating"?202:200);
-          try{const project=reserved.reading.projectId ? store.project(user,reserved.reading.projectId) : undefined;return json(store.completeReading(user,id,reserved.runId,await provider.generatePaidMain(reserved.reading,false,project)));}
+          try{return json(store.completeReading(user,id,reserved.runId,await provider.generatePaidMain(reserved.reading,false,project)));}
           catch(error){store.releaseReading(user,id,reserved.runId);throw error;}
         }
         if(action==="follow-up"){
-          const id=field("readingId"),reserved=store.reserveFollowUp(user,id,field("question"),field("requestKey"));
+          const id=field("readingId"),question=field("question");
+          const {reserved,project}=await reserveReviewedFollowUp(store,user,id,question,field("requestKey"),provider.reviewPaidQuestion);
           if(!reserved.attempt)return json(reserved.reading);
-          try{const project=reserved.reading.projectId ? store.project(user,reserved.reading.projectId) : undefined;return json(store.completeFollowUp(user,id,reserved.id,reserved.attempt,await provider.generatePaidFollowUp(reserved.reading,field("question"),false,project)));}
+          try{return json(store.completeFollowUp(user,id,reserved.id,reserved.attempt,await provider.generatePaidFollowUp(reserved.reading,question.trim(),false,project)));}
           catch(error){store.releaseFollowUp(user,id,reserved.id,reserved.attempt);throw error;}
         }
       }

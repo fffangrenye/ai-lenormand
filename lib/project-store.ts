@@ -7,6 +7,7 @@ import { getPasswordResetRedirectUrl, getPublicSiteUrl } from "./site-config";
 import { FREE_DEEP_READING_LIMIT } from "./reading-quota";
 import { projectMemoryLimit } from "./project-memory";
 import { paidLocalSiteEnabled, paidOnlineSiteEnabled, paidSiteEnabled, getPaidSiteSession, logoutPaidSite, PaidSiteError, paidSiteRequest, paidSiteQuota, paidReadingForSite, paidFollowUpsForSite, stablePaidRequestKey, completePaidRequestKey } from "./paid-local/site-bridge";
+import { isReadingSafetyCode } from "./paid-local/reading-safety";
 import type { PaidReading } from "./paid-local/types";
 export { FREE_DEEP_READING_LIMIT } from "./reading-quota";
 
@@ -1813,8 +1814,17 @@ async function buildFollowUpPayload(readingId: string) {
 
 export async function sendFollowUpMessage(input: { readingId: string; content: string }) {
   if (paidSiteEnabled) {
-    const reading = await paidSiteRequest<PaidReading>("follow-up", { readingId: input.readingId, question: input.content, requestKey: stablePaidRequestKey(`follow:${input.readingId}:${input.content.trim()}`) });
-    return paidFollowUpsForSite(reading).filter((item) => item.role === "assistant").slice(-1)[0];
+    // Preserve per-tab retry keys without writing the question into browser storage.
+    const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(input.content.trim()));
+    const key = Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
+    const scope = `follow:${input.readingId}:${key}`;
+    try {
+      const reading = await paidSiteRequest<PaidReading>("follow-up", { readingId: input.readingId, question: input.content, requestKey: stablePaidRequestKey(scope) });
+      return paidFollowUpsForSite(reading).filter((item) => item.role === "assistant").slice(-1)[0];
+    } catch (error) {
+      if (error instanceof PaidSiteError && isReadingSafetyCode(error.code)) completePaidRequestKey(scope);
+      throw error;
+    }
   }
   const session = getSession();
   if (!session) throw new Error("Not signed in");
