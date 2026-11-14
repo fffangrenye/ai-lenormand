@@ -1,0 +1,147 @@
+{
+  "productVersion": "3.4.5",
+  "releaseName": "Flora V3.4.5 · 洗牌前 AI 提问预审",
+  "environment": "production",
+  "domain": "https://floralenormand.site",
+  "sourceTag": "flora-v3.4.5-20261114",
+  "sourceCommit": "052d03eda57334ff27e39a0ff51dc07f9640d829",
+  "branch": "codex/reading-precheck-preview",
+  "workers": [
+    {
+      "name": "flora-domain-info",
+      "config": "wrangler.flora-v3-site.jsonc",
+      "sourceCommit": "052d03eda57334ff27e39a0ff51dc07f9640d829",
+      "version": "68153ad2-abbc-4824-a72a-02c9bd7e88c2",
+      "deploymentId": "b8dfe3dc-f05d-4638-8e49-a40bf372dafc",
+      "percentage": 100,
+      "rollback": {
+        "deploymentId": "08105773-fae6-458b-89f7-78e450a48e7a",
+        "createdAt": "2026-11-13T13:40:08.110138Z",
+        "versions": [
+          {
+            "version": "9eaa1a8a-75cf-4f09-bfe3-f4aa406fb016",
+            "percentage": 100
+          }
+        ]
+      },
+      "checks": [
+        {
+          "command": "node.exe scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 848
+        },
+        {
+          "command": "node.exe scripts/secure-cloudflare-build.cjs --flora-v3",
+          "passed": true,
+          "durationMs": 82010
+        },
+        {
+          "command": "node.exe scripts/scan-cloudflare-artifacts.cjs",
+          "passed": true,
+          "durationMs": 4506
+        },
+        {
+          "command": "node.exe scripts/test-public-assets.cjs",
+          "passed": true,
+          "durationMs": 1418
+        },
+        {
+          "command": "node.exe scripts/test-site-runtime.cjs",
+          "passed": true,
+          "durationMs": 6726
+        },
+        {
+          "command": "node.exe scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 865
+        }
+      ]
+    },
+    {
+      "name": "flora-v3-api",
+      "config": "wrangler.flora-v3-api.jsonc",
+      "sourceCommit": "052d03eda57334ff27e39a0ff51dc07f9640d829",
+      "version": "2b48d04b-7823-4ffe-9fc5-a60e6aa7b376",
+      "deploymentId": "8c5ae5af-deda-4d23-8c78-9d9b08b73652",
+      "percentage": 100,
+      "rollback": {
+        "deploymentId": "35d34080-9186-4a6c-b79a-48f59c5b6829",
+        "createdAt": "2026-11-13T04:36:29.045645Z",
+        "versions": [
+          {
+            "version": "fad27979-986e-44c7-8dc5-900ec9651c00",
+            "percentage": 100
+          }
+        ]
+      },
+      "checks": [
+        {
+          "command": "node.exe scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 808
+        },
+        {
+          "command": "node.exe node_modules/wrangler\\bin\\wrangler.js deploy --config wrangler.flora-v3-api.jsonc --dry-run --outdir .local-paid/cloud-api-build",
+          "passed": true,
+          "durationMs": 4237
+        },
+        {
+          "command": "node.exe scripts/test-cloud-ledger.cjs",
+          "passed": true,
+          "durationMs": 1380
+        },
+        {
+          "command": "node.exe scripts/test-cloud-security.cjs",
+          "passed": true,
+          "durationMs": 1349
+        },
+        {
+          "command": "node.exe scripts/test-cloud-legacy-restore.cjs",
+          "passed": true,
+          "durationMs": 1068
+        },
+        {
+          "command": "node.exe scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 866
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "localRegressionPassed": 34,
+    "production": {
+      "checkedAt": "2026-11-14T03:48:20.237Z",
+      "statuses": {
+        "/": 200,
+        "/login?returnTo=%2Fdeep": 200,
+        "/deep": 200,
+        "/profile": 200,
+        "/api/flora/summary": 401
+      },
+      "reviewAssets": [
+        "/_next/static/chunks/3727-134c2a972cc76a60.js"
+      ],
+      "liveAssetHashesMatch": true,
+      "syntheticGuestReview": {
+        "relationshipAccusation": 422,
+        "chinaPolitics": 422,
+        "ordinaryTeamCommunication": 200
+      },
+      "productionAccountUsed": false
+    }
+  },
+  "rollback": {
+    "note": "Roll back the site before the API. Schema v12 added nullable review fingerprints. Leave these columns in place when rolling back Worker code.",
+    "workers": [
+      {
+        "name": "flora-domain-info",
+        "version": "9eaa1a8a-75cf-4f09-bfe3-f4aa406fb016"
+      },
+      {
+        "name": "flora-v3-api",
+        "version": "fad27979-986e-44c7-8dc5-900ec9651c00"
+      }
+    ]
+  }
+}
