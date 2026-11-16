@@ -195,7 +195,7 @@ export default function YesNoPage() {
           quotaExhausted ? (
             <div className="flex flex-1 flex-col items-center justify-center py-12 text-center">
               <p className="text-[12px] uppercase tracking-[0.28em] text-sage">Yes or No</p>
-              <h1 className="mt-5 font-serif text-[30px] leading-10 text-ink">今日 3 次免费体验已用完</h1>
+              <h1 className="mt-5 font-serif text-[30px] leading-10 text-ink">今日 {YES_NO_DAILY_LIMIT} 次免费体验已用完</h1>
               <p className="mt-4 max-w-sm text-[14px] leading-7 text-ink/60">明天北京时间 00:00 恢复次数。想继续梳理这个问题的原因、阻碍和下一步，可以使用深度解读。</p>
               <YesNoQuotaNotice used={used} />
               <Link href="/deep" className="mt-7 inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[#6F2638] px-8 py-3 text-[14px] text-[#FDF8EF]">
@@ -290,7 +290,7 @@ export default function YesNoPage() {
 
                 <div className="mt-6 grid gap-3">
                   {quotaExhausted ? (
-                    <p role="status" className="text-center text-[13px] leading-7 text-ink/60">今日 3 次免费体验已用完。明天再来，或点击上方按钮，继续深度解读。</p>
+                    <p role="status" className="text-center text-[13px] leading-7 text-ink/60">今日 {YES_NO_DAILY_LIMIT} 次免费体验已用完。明天再来，或点击上方按钮，继续深度解读。</p>
                   ) : (
                     <button
                       type="button"
