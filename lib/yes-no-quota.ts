@@ -1,4 +1,4 @@
-export const YES_NO_DAILY_LIMIT = 3;
+export const YES_NO_DAILY_LIMIT = 5;
 export const YES_NO_QUOTA_KEY = "flora:yes-no:daily-quota:v1";
 export const YES_NO_QUOTA_CHANGED = "flora:yes-no:quota-changed";
 type QuotaStorage = Pick<Storage, "getItem" | "setItem">;

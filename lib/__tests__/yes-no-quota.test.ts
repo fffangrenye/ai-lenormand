@@ -8,15 +8,17 @@ function memoryStorage() {
 }
 const morning = Date.parse("2026-10-30T01:00:00Z");
 
-test("three successful draws persist across reloads and the fourth is refused", () => {
+test("five successful draws persist across reloads and the sixth is refused", () => {
   const storage = memoryStorage();
   for (let used = 1; used <= 3; used++) {
     assert.deepEqual(consumeYesNoQuota(storage, morning), { ok: true, used });
     assert.equal(readYesNoQuota(storage, morning).used, used);
   }
   const reloadedStorage = { ...storage };
+  assert.deepEqual(consumeYesNoQuota(reloadedStorage, morning), { ok: true, used: 4 });
+  assert.deepEqual(consumeYesNoQuota(reloadedStorage, morning), { ok: true, used: 5 });
   assert.deepEqual(consumeYesNoQuota(reloadedStorage, morning), { ok: false, reason: "limit" });
-  assert.equal(readYesNoQuota(reloadedStorage, morning).used, 3);
+  assert.equal(readYesNoQuota(reloadedStorage, morning).used, 5);
 });
 
 test("Beijing midnight resets quota independently of the device timezone", () => {
@@ -25,7 +27,7 @@ test("Beijing midnight resets quota independently of the device timezone", () =>
   const after = Date.parse("2026-10-30T16:00:00.000Z");
   assert.equal(yesNoBeijingDay(before), "2026-10-30");
   assert.equal(yesNoBeijingDay(after), "2026-10-31");
-  for (let i = 0; i < 3; i++) consumeYesNoQuota(storage, before);
+  for (let i = 0; i < 5; i++) consumeYesNoQuota(storage, before);
   assert.equal(readYesNoQuota(storage, after).used, 0);
   assert.deepEqual(consumeYesNoQuota(storage, after), { ok: true, used: 1 });
 });
@@ -37,7 +39,9 @@ test("reading remaining quota does not spend uses; two views share one record", 
   consumeYesNoQuota(storage, morning);
   consumeYesNoQuota(otherTab, morning);
   consumeYesNoQuota(storage, morning);
-  assert.equal(readYesNoQuota(otherTab, morning).used, 3);
+  consumeYesNoQuota(otherTab, morning);
+  consumeYesNoQuota(storage, morning);
+  assert.equal(readYesNoQuota(otherTab, morning).used, 5);
   assert.deepEqual(consumeYesNoQuota(otherTab, morning), { ok: false, reason: "limit" });
 });
 
