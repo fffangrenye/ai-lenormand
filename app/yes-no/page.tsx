@@ -13,20 +13,20 @@ import { useCardSpreadLongPressSave } from "@/lib/use-card-spread-save";
 
 import { yesNoDeck, getYesNoResult, ResultKind, LenormandCard } from "@/lib/yes-no";
 
-import { consumeYesNoQuota, getYesNoQuotaSnapshot, getYesNoServerSnapshot, subscribeYesNoQuota, YES_NO_DAILY_LIMIT, YES_NO_QUOTA_CHANGED, YES_NO_QUOTA_KEY } from "@/lib/yes-no-quota";
+import { consumeYesNoQuota, getYesNoQuotaSnapshot, getYesNoServerSnapshot, subscribeYesNoQuota, YES_NO_QUOTA_CHANGED, YES_NO_QUOTA_KEY } from "@/lib/yes-no-quota";
 
 type Stage = "input" | "drawing" | "result";
 
-function YesNoQuotaNotice({ used }: { used: number }) {
+function YesNoQuotaNotice({ used, dailyLimit }: { used: number; dailyLimit: number }) {
   const loaded = used >= 0;
-  const remainingUses = loaded ? Math.max(0, YES_NO_DAILY_LIMIT - used) : 0;
+  const remainingUses = loaded ? Math.max(0, dailyLimit - used) : 0;
   return (
     <section aria-label="YES OR NO 今日次数" className="mt-6 w-full rounded-2xl border border-[#6E2638]/15 bg-[#FFFDF8]/75 p-4 text-left sm:p-5">
       <p aria-live="polite" className="text-[13px] leading-7 text-ink/65">
         {loaded ? <>今日 YES OR NO 剩余 <span className="font-serif text-lg text-[#6E2638]">{remainingUses}</span> 次<span className="text-ink/45"> · 北京时间每日零点更新</span></> : used === -2 ? "正在读取今日 YES OR NO 次数…" : "暂时无法读取今日次数，请允许浏览器本地存储。"}
       </p>
-      <div role="progressbar" aria-label="今日 YES OR NO 剩余次数" aria-valuemin={0} aria-valuemax={YES_NO_DAILY_LIMIT} aria-valuenow={loaded ? remainingUses : undefined} aria-valuetext={loaded ? `今日剩余 ${remainingUses} 次，共 ${YES_NO_DAILY_LIMIT} 次` : undefined} aria-busy={used === -2} className="mt-3 flex gap-2">
-        {Array.from({ length: YES_NO_DAILY_LIMIT }, (_, index) => (
+      <div role="progressbar" aria-label="今日 YES OR NO 剩余次数" aria-valuemin={0} aria-valuemax={dailyLimit} aria-valuenow={loaded ? remainingUses : undefined} aria-valuetext={loaded ? `今日剩余 ${remainingUses} 次，共 ${dailyLimit} 次` : undefined} aria-busy={used === -2} className="mt-3 flex gap-2">
+        {Array.from({ length: dailyLimit }, (_, index) => (
           <div key={index} aria-hidden="true" className={`h-1.5 flex-1 rounded-full transition-colors ${index < remainingUses ? "bg-[#6E2638]/55" : "bg-[#6E2638]/10"}`} />
         ))}
       </div>
@@ -93,8 +93,11 @@ export default function YesNoPage() {
   const [unsuitable, setUnsuitable] = useState(false);
   const [starting, setStarting] = useState(false);
   const startingRef = useRef(false);
-  const used = useSyncExternalStore(subscribeYesNoQuota, getYesNoQuotaSnapshot, getYesNoServerSnapshot);
-  const quotaExhausted = used >= YES_NO_DAILY_LIMIT;
+  const quotaSnapshot = useSyncExternalStore(subscribeYesNoQuota, getYesNoQuotaSnapshot, getYesNoServerSnapshot);
+  const [, limitValue, usedValue] = quotaSnapshot.split("|");
+  const dailyLimit = Number(limitValue);
+  const used = Number(usedValue);
+  const quotaExhausted = used >= dailyLimit;
 
   useEffect(() => {
     preloadLenormandCardImages();
@@ -195,9 +198,9 @@ export default function YesNoPage() {
           quotaExhausted ? (
             <div className="flex flex-1 flex-col items-center justify-center py-12 text-center">
               <p className="text-[12px] uppercase tracking-[0.28em] text-sage">Yes or No</p>
-              <h1 className="mt-5 font-serif text-[30px] leading-10 text-ink">今日 {YES_NO_DAILY_LIMIT} 次免费体验已用完</h1>
+              <h1 className="mt-5 font-serif text-[30px] leading-10 text-ink">今日 {dailyLimit} 次免费体验已用完</h1>
               <p className="mt-4 max-w-sm text-[14px] leading-7 text-ink/60">明天北京时间 00:00 恢复次数。想继续梳理这个问题的原因、阻碍和下一步，可以使用深度解读。</p>
-              <YesNoQuotaNotice used={used} />
+              <YesNoQuotaNotice used={used} dailyLimit={dailyLimit} />
               <Link href="/deep" className="mt-7 inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[#6F2638] px-8 py-3 text-[14px] text-[#FDF8EF]">
                 前往深度解读<ArrowUpRight size={16} aria-hidden="true" />
               </Link>
@@ -209,7 +212,7 @@ export default function YesNoPage() {
             <p className="text-center text-[12px] uppercase tracking-[0.28em] text-sage">Quick Answer</p>
             <h1 className="mt-5 text-center font-serif text-[42px] leading-none text-ink">Yes or No</h1>
             <p className="mt-3 text-center text-[15px] leading-6 text-ink/58">写下一个可以用“是 / 否”倾向回答的问题。</p>
-            <YesNoQuotaNotice used={used} />
+            <YesNoQuotaNotice used={used} dailyLimit={dailyLimit} />
 
             <label htmlFor="question" className="mt-6 text-[12px] uppercase tracking-[0.18em] text-ink/48">
               Your Question
@@ -252,7 +255,7 @@ export default function YesNoPage() {
           <div className="flex flex-1 flex-col py-8">
             <p className="text-center text-[12px] uppercase tracking-[0.28em] text-sage">Yes or No</p>
             <p className="mx-auto mt-5 max-w-[320px] text-center font-serif text-[22px] leading-7 text-ink">{question}</p>
-            <YesNoQuotaNotice used={used} />
+            <YesNoQuotaNotice used={used} dailyLimit={dailyLimit} />
 
             <div {...(cards.length ? cardSaveHandlers : {})} className="mx-auto mt-8 flex w-full max-w-[400px] justify-center gap-2 sm:gap-4">
               {cards.map((card, index) => (
@@ -290,7 +293,7 @@ export default function YesNoPage() {
 
                 <div className="mt-6 grid gap-3">
                   {quotaExhausted ? (
-                    <p role="status" className="text-center text-[13px] leading-7 text-ink/60">今日 {YES_NO_DAILY_LIMIT} 次免费体验已用完。明天再来，或点击上方按钮，继续深度解读。</p>
+                    <p role="status" className="text-center text-[13px] leading-7 text-ink/60">今日 {dailyLimit} 次免费体验已用完。明天再来，或点击上方按钮，继续深度解读。</p>
                   ) : (
                     <button
                       type="button"
