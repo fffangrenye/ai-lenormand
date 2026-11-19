@@ -1,0 +1,129 @@
+{
+  "productVersion": "3.5.5",
+  "releaseName": "Flora V3.5.5 · Yes or No 零点恢复每日三次",
+  "environment": "production",
+  "domain": "https://floralenormand.site",
+  "sourceTag": "flora-v3.5.5-20261119",
+  "sourceCommit": "fd6df477a8ddfdd13cf497ec96b8cbdf4e2003a2",
+  "branch": "codex/onion-home-release",
+  "changes": [
+    "北京时间2026年11月20日00:00之前每天5次，之后每天3次。",
+    "保留现有当天使用记录；跨北京时间日期按原规则更新次数。",
+    "日期与限额纳入订阅快照，即使新旧两天均未使用也能更新界面。",
+    "沿用浏览器本地次数记录和跨标签页互斥，不增加额度查询API。"
+  ],
+  "schedule": {
+    "timezone": "Asia/Shanghai",
+    "effectiveAt": "2026-11-20T00:00:00+08:00",
+    "effectiveAtUtc": "2026-11-19T16:00:00Z",
+    "beforeDailyLimit": 5,
+    "afterDailyLimit": 3,
+    "implementation": "已部署客户端按当前时间切换，不依赖本机在线或定时发布",
+    "existingOldTabRequirement": "发布前已经打开的旧页面需要刷新一次才能加载新规则",
+    "quotaStorage": "原有浏览器localStorage；本次未改为服务端账号额度"
+  },
+  "workers": [
+    {
+      "commit": "fd6df477a8ddfdd13cf497ec96b8cbdf4e2003a2",
+      "branch": "codex/onion-home-release",
+      "worker": "flora-domain-info",
+      "config": "wrangler.flora-v3-site.jsonc",
+      "version": "65d034d9-91dd-490f-a7a4-5650aabc370b",
+      "createdAt": "2026-11-19T06:58:56.478Z",
+      "rollback": {
+        "deploymentId": "b8194d52-dd03-48eb-81a1-a1a5a53ed0a2",
+        "createdAt": "2026-11-19T05:38:02.891763Z",
+        "versions": [
+          {
+            "version": "21c206a2-0ff0-4416-964d-4e2cd6084078",
+            "percentage": 100
+          }
+        ]
+      },
+      "checks": [
+        {
+          "command": "node.exe scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 791
+        },
+        {
+          "command": "node.exe scripts/secure-cloudflare-build.cjs --flora-v3",
+          "passed": true,
+          "durationMs": 117083
+        },
+        {
+          "command": "node.exe scripts/scan-cloudflare-artifacts.cjs",
+          "passed": true,
+          "durationMs": 5866
+        },
+        {
+          "command": "node.exe scripts/test-public-assets.cjs",
+          "passed": true,
+          "durationMs": 1549
+        },
+        {
+          "command": "node.exe scripts/test-site-runtime.cjs",
+          "passed": true,
+          "durationMs": 9988
+        },
+        {
+          "command": "node.exe scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 871
+        }
+      ],
+      "deploymentId": "9949ca2b-3be9-4247-8d40-386042abb878",
+      "percentage": 100
+    },
+    {
+      "name": "flora-v3-api",
+      "config": "wrangler.flora-v3-api.jsonc",
+      "sourceCommit": "e8c4d74cca5bb113d2925e1ea18e4aceaecdcbb3",
+      "version": "c644022d-ddf1-42d7-ba31-de6c0a5cdf5d",
+      "deploymentId": "ecb41c6e-93b5-42a1-ad71-6ab29a5adada",
+      "percentage": 100,
+      "redeployed": false
+    }
+  ],
+  "verification": {
+    "checkedAt": "2026-11-19T06:59:19.029Z",
+    "productionAsset": {
+      "checkedAt": "2026-11-19T06:59:19.029Z",
+      "status": 200,
+      "static": true,
+      "asset": "/_next/static/chunks/app/yes-no/page-fd3b30ee75874c36.js",
+      "assetStatus": 200,
+      "matchesBuild": true,
+      "containsScheduledChange": true,
+      "sha256": "e3ec9ece304812e64541b05367c4290fba3a3c64c3e4c3923a0c870cac6cd304"
+    },
+    "localBrowser": {
+      "passed": true,
+      "cutoffBeijing": "2026-11-20T00:00:00+08:00",
+      "beforeLimit": 5,
+      "afterLimit": 3,
+      "midnightWithoutReload": true,
+      "exhaustionPreservedAfterReload": true,
+      "quotaApiRequests": 0,
+      "mobileWidth": 390,
+      "pageErrors": []
+    },
+    "unitTests": {
+      "passed": 11,
+      "command": "node scripts/test.cjs lib/__tests__/yes-no-quota.test.ts lib/__tests__/yes-no.test.ts"
+    },
+    "typecheckPassed": true,
+    "scopedLint": "passed; existing img optimization warning",
+    "liveBrowser": {
+      "completed": false,
+      "reason": "本机隔离浏览器访问生产域名被运行环境阻止，ERR_NETWORK_ACCESS_DENIED；线上HTML及脚本已通过代理获取并与构建产物哈希一致。"
+    },
+    "productionAuthenticatedUserDataModified": false
+  },
+  "rollback": {
+    "siteVersion": "21c206a2-0ff0-4416-964d-4e2cd6084078",
+    "siteDeploymentId": "b8194d52-dd03-48eb-81a1-a1a5a53ed0a2",
+    "apiChangeRequired": false,
+    "schemaMigrationRequired": false
+  }
+}
