@@ -1,0 +1,177 @@
+{
+  "productVersion": "3.5.4",
+  "releaseName": "Flora V3.5.4 · 洋葱双模式与提问建议",
+  "environment": "production",
+  "domain": "https://floralenormand.site",
+  "sourceTag": "flora-v3.5.4-20261119-r1",
+  "sourceCommit": "e8c4d74cca5bb113d2925e1ea18e4aceaecdcbb3",
+  "branch": "codex/onion-home-release",
+  "changes": [
+    "首次推荐同时判断层层分析或主题探索，首张牌前可手动切换。",
+    "按感情、工作、学习、创作、人际合作和生活话题组织推荐。",
+    "逐张回答先回应当前问题，两种模式分别组织最终总结。",
+    "主问题和自填问题提供17类本地提示及相近问法。",
+    "切换问题组、输入提示和点击改问建议不新增AI请求。",
+    "模式切换纳入现有请求频率保护。"
+  ],
+  "workers": [
+    {
+      "name": "flora-domain-info",
+      "config": "wrangler.flora-v3-site.jsonc",
+      "sourceCommit": "e8c4d74cca5bb113d2925e1ea18e4aceaecdcbb3",
+      "version": "21c206a2-0ff0-4416-964d-4e2cd6084078",
+      "deploymentId": "b8194d52-dd03-48eb-81a1-a1a5a53ed0a2",
+      "percentage": 100,
+      "rollback": {
+        "deploymentId": "ccdf18aa-b3dc-439c-a805-da441dd379de",
+        "createdAt": "2026-11-16T01:49:11.257136Z",
+        "versions": [
+          {
+            "version": "78c2873f-43f4-4f9e-924f-09d82d6b1cc2",
+            "percentage": 100
+          }
+        ]
+      },
+      "checks": [
+        {
+          "command": "node.exe scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 963
+        },
+        {
+          "command": "node.exe scripts/secure-cloudflare-build.cjs --flora-v3",
+          "passed": true,
+          "durationMs": 110960
+        },
+        {
+          "command": "node.exe scripts/scan-cloudflare-artifacts.cjs",
+          "passed": true,
+          "durationMs": 6369
+        },
+        {
+          "command": "node.exe scripts/test-public-assets.cjs",
+          "passed": true,
+          "durationMs": 1821
+        },
+        {
+          "command": "node.exe scripts/test-site-runtime.cjs",
+          "passed": true,
+          "durationMs": 9167
+        },
+        {
+          "command": "node.exe scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 873
+        }
+      ]
+    },
+    {
+      "name": "flora-v3-api",
+      "config": "wrangler.flora-v3-api.jsonc",
+      "sourceCommit": "e8c4d74cca5bb113d2925e1ea18e4aceaecdcbb3",
+      "version": "c644022d-ddf1-42d7-ba31-de6c0a5cdf5d",
+      "deploymentId": "ecb41c6e-93b5-42a1-ad71-6ab29a5adada",
+      "percentage": 100,
+      "rollback": {
+        "deploymentId": "b553229c-ede0-4306-a5d5-02b187d0883a",
+        "createdAt": "2026-11-19T05:29:47.776442Z",
+        "versions": [
+          {
+            "version": "2299e020-8c69-46f0-a3af-3a0ee4c95e90",
+            "percentage": 100
+          }
+        ]
+      },
+      "checks": [
+        {
+          "command": "node.exe scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 991
+        },
+        {
+          "command": "node.exe wrangler.js deploy --config wrangler.flora-v3-api.jsonc --dry-run --outdir .local-paid/cloud-api-build",
+          "passed": true,
+          "durationMs": 5661
+        },
+        {
+          "command": "node.exe scripts/test-cloud-ledger.cjs",
+          "passed": true,
+          "durationMs": 1849
+        },
+        {
+          "command": "node.exe scripts/test-cloud-security.cjs",
+          "passed": true,
+          "durationMs": 1230
+        },
+        {
+          "command": "node.exe scripts/test-cloud-legacy-restore.cjs",
+          "passed": true,
+          "durationMs": 1059
+        },
+        {
+          "command": "node.exe scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 860
+        }
+      ]
+    }
+  ],
+  "verification": {
+    "checkedAt": "2026-11-19T05:39:06.076Z",
+    "home": {
+      "status": 200,
+      "static": true,
+      "hasFlora": true
+    },
+    "guided": {
+      "status": 200,
+      "static": false,
+      "hasFlora": true
+    },
+    "guidedAsset": {
+      "url": "/_next/static/chunks/app/guided/page-7ef98e7cf7c4f79d.js",
+      "status": 200,
+      "sha256": "8b1ebdb6e0d896735954cd0f60dc944387d4c51e4a9d5b9ea62dec90a90005a6",
+      "matchesBuild": true
+    },
+    "login": {
+      "status": 200,
+      "static": false,
+      "hasFlora": true
+    },
+    "anonymousModeApi": {
+      "status": 401
+    },
+    "localRuntime": {
+      "guidedRegressionTests": 8,
+      "nineRoundResumeAndSingleDebit": true,
+      "modeEndpointAndOwnerIsolation": true,
+      "rateLimitRejectionPreservesProgress": true,
+      "mobileViewportWidth": 390,
+      "questionHelpBrowserCases": 9,
+      "typingAndRephraseAdditionalRequests": 0,
+      "groupChangeAdditionalRequests": 0,
+      "liveAuthenticatedChargeTestPerformed": false
+    }
+  },
+  "exclusions": [
+    "本地DeepSeek密钥和启动配置",
+    "本地测试账号、100花瓣及数据库",
+    "本机AI用量日志与测试记录"
+  ],
+  "rollback": {
+    "workers": [
+      {
+        "name": "flora-domain-info",
+        "version": "78c2873f-43f4-4f9e-924f-09d82d6b1cc2",
+        "deploymentId": "ccdf18aa-b3dc-439c-a805-da441dd379de"
+      },
+      {
+        "name": "flora-v3-api",
+        "version": "2f3f792c-5392-43c2-b875-f59d58879b6b",
+        "deploymentId": "9a462fdb-7a7a-4ae1-8beb-59e2a83f9e9e"
+      }
+    ],
+    "schemaMigrationRequired": false
+  }
+}
