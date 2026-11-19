@@ -8,7 +8,9 @@ import { GuidedCardTable } from "@/components/guided/GuidedCardTable";
 import { GuidedTutorial } from "@/components/guided/GuidedTutorial";
 import { ReadingSafetyDialog } from "@/components/deep/ReadingSafetyDialog";
 import { lenormandCards } from "@/lib/lenormand-cards";
-import { guidedCardCount, guidedPetalPrice, guidedReadingDescription, guidedReadingTitle, type GuidedSession } from "@/lib/guided-reading/details";
+import { guidedCardCount, guidedModeLabels, guidedPetalPrice, guidedReadingDescription, guidedReadingTitle, type GuidedMode, type GuidedSession } from "@/lib/guided-reading/details";
+import { guidedSessionMode } from "@/lib/guided-reading/questions";
+import { guidedQuestionHelp } from "@/lib/guided-reading/question-help";
 import { isReadingSafetyCode, type ReadingSafetyCode } from "@/lib/paid-local/reading-safety";
 import { paidLocalAIEnabled, paidLocalSiteEnabled, paidOnlineSiteEnabled, paidSiteRequest, PaidSiteError, restorePaidSiteSession } from "@/lib/paid-local/site-bridge";
 
@@ -24,6 +26,17 @@ function GetPetals({ busy, onTestCredits }: { busy: boolean; onTestCredits: () =
   return paidLocalSiteEnabled
     ? <button type="button" disabled={busy} onClick={onTestCredits} className={textAction}>补充本地测试花瓣</button>
     : <Link href="/recharge" prefetch={false} className={textAction}>补充花瓣</Link>;
+}
+
+function QuestionHelp({ question, mainQuestion, id, onChoose }: { question: string; mainQuestion?: string; id: string; onChoose: (text: string) => void }) {
+  const help = guidedQuestionHelp(question, mainQuestion);
+  if (!help) return null;
+  return <div id={id} className="mb-3 mt-1 space-y-2" aria-live="polite">
+    <p className="text-xs leading-5 text-ink/60">{help.message}</p>
+    {help.suggestions.length > 0 && <div className="flex flex-wrap gap-2" aria-label="可以试试这样问">
+      {help.suggestions.map(text => <button key={text} type="button" onClick={() => onChoose(text)} className="rounded-lg border border-[#715A80]/20 bg-[#715A80]/5 px-2.5 py-2 text-left text-xs leading-5 text-[#715A80] transition hover:bg-[#715A80]/10 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#715A80]">{text}</button>)}
+    </div>}
+  </div>;
 }
 
 export function GuidedReading() {
@@ -146,6 +159,7 @@ export function GuidedReading() {
   const groups = session?.plan?.groups ?? [];
   const visibleGroup = groups[groupIndex] ?? [];
   const selectedQuestion = useCustom ? customQuestion.trim() : selection ?? "";
+  const mode = session ? guidedSessionMode(session) : null;
   const status = current && !current.interpretation
     ? `正在解读第 ${step} 张牌…`
     : step === guidedCardCount
@@ -191,7 +205,8 @@ export function GuidedReading() {
           <form className={panel} onSubmit={event => { event.preventDefault(); if (question.trim()) void submit("guided/start", { question: question.trim(), focus: focus.trim() }); }}>
             <fieldset disabled={busy} className="min-w-0">
               <label htmlFor="guided-question" className="font-serif text-2xl">这一次，你想问什么？</label>
-              <textarea id="guided-question" required maxLength={300} rows={3} value={question} onChange={event => setQuestion(event.target.value)} placeholder="例如：未来三个月，我和他的关系会怎样发展？" className="mt-3 w-full rounded-xl border border-ink/15 bg-white/65 p-3 text-base focus-visible:outline-[#6E2638]" />
+              <textarea id="guided-question" required maxLength={300} rows={3} value={question} onChange={event => setQuestion(event.target.value)} aria-describedby={guidedQuestionHelp(question) ? "guided-question-help" : undefined} placeholder="例如：想了解下一段感情，或怎样推进一个创作项目。" className="mt-3 w-full rounded-xl border border-ink/15 bg-white/65 p-3 text-base focus-visible:outline-[#6E2638]" />
+              <QuestionHelp id="guided-question-help" question={question} onChoose={setQuestion} />
               <label htmlFor="guided-focus" className="mt-4 block text-sm text-ink/75">想补充的背景 <span className="text-ink/50">· 可选</span></label>
               <textarea id="guided-focus" rows={2} maxLength={200} value={focus} onChange={event => setFocus(event.target.value)} placeholder="例如：最近联系少了，我想看看以后怎样沟通。" className="mb-4 mt-2 w-full rounded-xl border border-ink/15 bg-white/65 p-3 text-base focus-visible:outline-[#6E2638]" />
               <button type="submit" className={primary} disabled={busy || !question.trim()} aria-describedby="guided-price"><Sparkles size={16} aria-hidden="true" />{busy ? "正在准备牌桌…" : "开始洋葱解牌"}</button>
@@ -224,6 +239,12 @@ export function GuidedReading() {
             <section ref={table} className={panel + " scroll-mt-3"} aria-label="洋葱解牌牌桌">
               <p className="mb-1 text-center text-xs text-ink/60">主问题</p>
               <h2 className="mb-5 break-words text-center font-serif text-xl leading-8">{session.question}</h2>
+              {session.mode && <div className="mb-5 space-y-2 text-center">
+                {step === 0 && session.plan ? <div className="flex justify-center gap-2" role="group" aria-label="本次展开方式">
+                  {(["analysis", "exploration"] as GuidedMode[]).map(item => <button type="button" key={item} disabled={busy} aria-pressed={mode === item} onClick={() => { if (mode !== item) void submit("guided/mode", { id: session.id, mode: item, planId: session.plan!.id }); }} className="min-h-11 rounded-full border border-ink/15 px-4 text-sm text-ink/65 aria-pressed:border-[#715A80]/45 aria-pressed:bg-[#715A80]/10 aria-pressed:text-[#715A80] disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#715A80]">{guidedModeLabels[item]}</button>)}
+                </div> : <p className="text-sm text-[#715A80]">{guidedModeLabels[session.mode]}</p>}
+                <p className="text-xs leading-5 text-ink/60">{mode === "analysis" ? "顺着回答，看看现状、影响和下一步。" : "围绕主题，从不同角度了解特点、场景和可能性。"}</p>
+              </div>}
               <GuidedCardTable session={session} selectedIndex={displayedIndex} onSelect={completed ? reviewCard : undefined} />
             </section>
             {displayedRound && <section id="guided-card-interpretation" ref={latestRound} className={panel} aria-labelledby="guided-card-heading" aria-live="polite">
@@ -264,7 +285,8 @@ export function GuidedReading() {
               <fieldset disabled={busy} className="min-w-0">
                 <legend className="font-serif text-xl">第 {step + 1} 轮 · {session.plan.topic}</legend>
                 <p id="guided-round-hint" className="mb-4 mt-2 text-sm leading-6 text-ink/65">{session.plan.hint}</p>
-                {useCustom && <textarea id="guided-custom-question" ref={customInput} aria-label="围绕主问题填写想看的角度" aria-describedby="guided-round-hint" rows={2} maxLength={200} value={customQuestion} onChange={event => setCustomQuestion(event.target.value)} placeholder="用自己的话写下这一轮想问的问题。" className="mb-3 w-full rounded-xl border border-ink/15 bg-white/65 p-3 text-base focus-visible:outline-[#6E2638]" />}
+                {useCustom && <textarea id="guided-custom-question" ref={customInput} aria-label="围绕主问题填写想看的角度" aria-describedby={`guided-round-hint${guidedQuestionHelp(selectedQuestion) ? " guided-custom-help" : ""}`} rows={2} maxLength={200} value={customQuestion} onChange={event => setCustomQuestion(event.target.value)} placeholder="用自己的话写下这一轮想问的问题。" className="mb-3 w-full rounded-xl border border-ink/15 bg-white/65 p-3 text-base focus-visible:outline-[#6E2638]" />}
+                <QuestionHelp id="guided-custom-help" question={selectedQuestion} mainQuestion={session.question} onChoose={text => { setUseCustom(true); setSelection(null); setCustomQuestion(text); requestAnimationFrame(() => customInput.current?.focus()); }} />
                 <div role="group" aria-label="推荐问题" className="grid grid-cols-1 gap-2 sm:grid-cols-3">
                   {visibleGroup.map(item => <button type="button" key={item} aria-pressed={!useCustom && selection === item} onClick={() => { setUseCustom(false); setSelection(item); }} className={focusOption}>
                     <span className="break-words">{item}</span>

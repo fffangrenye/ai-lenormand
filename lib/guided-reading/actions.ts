@@ -12,6 +12,12 @@ export async function guidedAction(
 ) {
   const field = (key: string) => typeof input[key] === "string" ? input[key].trim() : "";
   const id = field("id");
+  if (action === "guided/mode") {
+    const mode = input.mode;
+    const planId = field("planId");
+    if ((mode !== "analysis" && mode !== "exploration") || !requestKey.test(planId)) throw new LocalPaidError("INVALID_GUIDED_MODE", "请选择有效的展开方式。");
+    return guided.setMode(owner, id, mode, planId);
+  }
   if (action === "guided/advance") {
     try {
       return await guided.advance(owner, id);

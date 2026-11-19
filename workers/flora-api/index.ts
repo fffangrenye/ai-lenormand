@@ -201,7 +201,7 @@ export class FloraLedger {
         let input:Record<string,unknown>;try{input=JSON.parse(raw);}catch{throw new LocalPaidError("INVALID_JSON","请求格式不正确。");}
         if(!input || typeof input!=="object" || Array.isArray(input))throw new LocalPaidError("INVALID_JSON","请求格式不正确。");
         const field=(key:string)=>typeof input[key]==="string" ? input[key] as string : "";
-        if(this.env.GUIDED_ENABLED==="1" && ["guided/start","guided/draw","guided/advance"].includes(action)){
+        if(this.env.GUIDED_ENABLED==="1" && ["guided/start","guided/draw","guided/advance","guided/mode"].includes(action)){
           const provider=createCloudProvider({key:this.env.AI_KEY,model:this.env.AI_MODEL});
           return json(await guidedAction(store.guidedPreview(provider.requestGuidedJson),user,action,input,provider.reviewPaidQuestion,()=>store.limitNewDrawReview("guided:"+user),(key,task)=>store.shareReadingReview(key,task)));
         }

@@ -3,8 +3,9 @@ import type { DatabaseSync } from "node:sqlite";
 import { lenormandCards } from "../lenormand-cards";
 import { LocalPaidError } from "../paid-local/guard";
 import { coreCardMeaningsZh } from "../paid-local/reading-guidance";
-import { guidedCardCount, guidedPetalPrice, guidedPlanVersion, type GuidedSession } from "./details";
+import { guidedCardCount, guidedPetalPrice, guidedPlanVersion, type GuidedMode, type GuidedSession } from "./details";
 import { interpretGuidedRound, planNextCard, summarizeGuidedReading, type GuidedJsonRequest } from "./model";
+import { guidedSessionMode } from "./questions";
 
 export const guidedSchema = `
   CREATE TABLE IF NOT EXISTS guided_preview_sessions (
@@ -36,6 +37,8 @@ function decode(payload: unknown): SavedSession {
     question: "",
     interpretation: session.messages.find(message => message.role === "assistant" && message.step === index + 1)?.text ?? null,
   }));
+  session.mode ??= session.plan?.mode;
+  if (session.cards.length > 0) session.mode ??= guidedSessionMode(session);
   // Keep drawn cards while letting the user resume with the current recommendation rules.
   if (!session.plan?.groups || session.plan.version !== guidedPlanVersion) session.plan = null;
   return session;
@@ -89,6 +92,19 @@ export class GuidedPreviewStore {
 
   checkStartBalance(owner: string) {
     this.ensureCredits(owner, guidedPetalPrice.test);
+  }
+
+  setMode(owner: string, id: string, mode: GuidedMode, planId: string) {
+    return this.transaction(() => {
+      const session = this.read(owner, id);
+      if (session.cards.length > 0 || session.final) throw new LocalPaidError("GUIDED_MODE_LOCKED", "抽第一张前可以切换展开方式，这局已经开始了。", 409);
+      if (session.mode === mode) return this.publicSession(session);
+      if (!session.plan || session.plan.id !== planId) throw new LocalPaidError("DRAW_CHANGED", "推荐已变化，请读取最新进度后再切换。", 409);
+      session.mode = mode;
+      session.plan = null;
+      this.write(owner, session);
+      return this.publicSession(session);
+    });
   }
 
   start(owner: string, question: string, focus: string, requestId: string) {
@@ -152,6 +168,7 @@ export class GuidedPreviewStore {
       session.final = this.request ? await summarizeGuidedReading(session, this.request) : mockSummary(session);
     } else {
       session.plan = await planNextCard(session, this.request, session.previousSuggestions?.flat());
+      session.mode = session.plan.mode;
     }
     this.write(owner, session);
     return this.publicSession(session);

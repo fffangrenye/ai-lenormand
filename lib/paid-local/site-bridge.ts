@@ -90,7 +90,7 @@ export async function paidSiteRequest<T>(action = "", body?: Record<string, unkn
   // Coalesce repeated mounts for this account and project; every real financial
   // or content mutation still invalidates before and after the server response.
   const touch = action === "project-touch" && typeof body?.projectId === "string";
-  const guidedProgress = action === "guided/start" || action === "guided/advance" || (action === "guided/draw" && body?.step !== 0);
+  const guidedProgress = action === "guided/start" || action === "guided/advance" || action === "guided/mode" || (action === "guided/draw" && body?.step !== 0);
   const key = `${cacheOwner}:${action}${day}${touch ? `:${body!.projectId}` : ""}`, epoch = cacheEpoch;
   if (!body || touch) {
     const saved = cache.get(key);

@@ -122,12 +122,24 @@ async function req(action='',body,token='valid-owner-token-1234567890'){
   assert.deepEqual(initialPlans[0].data.plan,initialPlans[1].data.plan);
   assert.equal((await onion('summary')).data.balance.available,5);
   let next=initialPlans[0].data;
+  const nextMode=next.mode==='analysis'?'exploration':'analysis';
+  const switchInput={id:guided.id,mode:nextMode,planId:next.plan.id};
+  assert.equal((await req('guided/mode',switchInput,otherToken)).status,404);
+  const switched=await onion('guided/mode',switchInput);
+  assert.equal(switched.status,200,JSON.stringify(switched.data));
+  assert.equal(switched.data.mode,nextMode);assert.equal(switched.data.plan,null);
+  assert.deepEqual(switched.data.cards,[]);
+  next=(await onion('guided/advance',{id:guided.id})).data;
+  assert.equal(next.plan.mode,nextMode);
+  assert.equal((await onion('summary')).data.balance.available,5);
   for(let step=0;step<9;step++){
     assert.deepEqual(next.plan.groups.map(group=>group.length),[3,3,3]);
     const drawInput={id:guided.id,step,planId:next.plan.id,question:next.plan.groups[0][0],custom:false};
     const drawn=await onion('guided/draw',drawInput);
     assert.equal(drawn.status,200,JSON.stringify(drawn.data));assert.equal(drawn.data.cards.length,step+1);
     if(step===0){
+      const lockedMode=await onion('guided/mode',{id:guided.id,mode:'analysis',planId:next.plan.id});
+      assert.equal(lockedMode.status,409);assert.equal(lockedMode.data.code,'GUIDED_MODE_LOCKED');
       const duplicate=await onion('guided/draw',drawInput);
       assert.deepEqual(duplicate.data.cards,drawn.data.cards);
       const insufficient=await onion('guided/draw',{id:waitingGuided.id,step:0,planId:waitPlan.id,question:waitPlan.groups[0][0],custom:false});
@@ -143,7 +155,7 @@ async function req(action='',body,token='valid-owner-token-1234567890'){
     assert.equal(progressed.status,200,JSON.stringify(progressed.data));
     next=progressed.data;
   }
-  assert.equal(guidedCalls,21);
+  assert.equal(guidedCalls,22);
   assert.equal(new Set(next.cards).size,9);assert.ok(next.final);
   assert.equal((await onion('guided/'+guided.id)).data.final,next.final);
   assert.equal((await onion('summary')).data.balance.available,2);
