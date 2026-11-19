@@ -196,3 +196,24 @@ test("mode endpoint rejects invalid input and custom precision questions still p
     assert.equal(store.open("owner", current.id).rounds[0].question, "对方身高怎么样");
   } finally { db.close(); }
 });
+
+test("switching modes shares the existing generation rate limit without changing progress on rejection", async () => {
+  const db = new DatabaseSync(":memory:");
+  db.exec(guidedSchema);
+  const store = new GuidedPreviewStore(db, work => work(), () => {}, () => {});
+  const share = <T>(_key: string, task: () => Promise<T>) => task();
+  const review = async () => null;
+  let limited = 0;
+  const limit = () => { if (++limited > 1) throw new Error("rate limited"); };
+  try {
+    const started = store.start("owner", "想了解下一份工作", "", randomUUID());
+    const first = await store.advance("owner", started.id);
+    const switchInput = { id: started.id, mode: "analysis", planId: first.plan!.id };
+    await guidedAction(store, "owner", "guided/mode", switchInput, review, limit, share);
+    await guidedAction(store, "owner", "guided/mode", switchInput, review, limit, share);
+    assert.equal(limited, 1);
+    const next = await store.advance("owner", started.id);
+    await assert.rejects(guidedAction(store, "owner", "guided/mode", { id: started.id, mode: "exploration", planId: next.plan!.id }, review, limit, share), /rate limited/);
+    assert.deepEqual(store.open("owner", started.id), next);
+  } finally { db.close(); }
+});

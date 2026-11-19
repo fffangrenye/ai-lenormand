@@ -16,6 +16,8 @@ export async function guidedAction(
     const mode = input.mode;
     const planId = field("planId");
     if ((mode !== "analysis" && mode !== "exploration") || !requestKey.test(planId)) throw new LocalPaidError("INVALID_GUIDED_MODE", "请选择有效的展开方式。");
+    const session = guided.open(owner, id);
+    if (session.cards.length === 0 && session.plan?.id === planId && session.mode !== mode) limit();
     return guided.setMode(owner, id, mode, planId);
   }
   if (action === "guided/advance") {
