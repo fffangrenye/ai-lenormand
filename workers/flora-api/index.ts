@@ -18,6 +18,7 @@ import { measuredSql } from "./sql-cost";
 import { SnapshotBackup, type BackupSql } from "./backup";
 import { verifyMaintenance } from "./maintenance";
 import { guidedAction } from "../../lib/guided-reading/actions";
+import { onionEventStatus } from "../../lib/guided-reading/onion-event";
 
 type Environment = {
   LEDGER: {idFromName(name:string):unknown;get(id:unknown):{fetch(request:Request):Promise<Response>}};
@@ -51,6 +52,8 @@ export default {
         return recoverPassword(request,env);
       }
       if(path!=="/api/flora" && !path.startsWith("/api/flora/"))return json({code:"NOT_FOUND"},404);
+      // Public clock/config only; no authentication or Durable Object access.
+      if(path==="/api/flora/onion-event" && request.method==="GET")return json(onionEventStatus());
       if (path === "/api/flora/guest-review" && request.method === "POST") {
         return env.LEDGER.get(env.LEDGER.idFromName("flora-v3-ledger-v1")).fetch(request);
       }
@@ -167,6 +170,7 @@ export class FloraLedger {
       }
       store.ensureUser(user,email);
       if(request.method==="GET"){
+        if(this.env.GUIDED_ENABLED==="1" && action==="onion-coupon")return json(store.guidedCoupons().status(user));
         if(this.env.GUIDED_ENABLED==="1" && parts[0]==="guided" && parts.length<=2){
           const guided=store.guidedPreview(createCloudProvider({key:this.env.AI_KEY,model:this.env.AI_MODEL}).requestGuidedJson);
           return json(parts.length===2?guided.open(user,parts[1]):guided.history(user));
@@ -201,6 +205,10 @@ export class FloraLedger {
         let input:Record<string,unknown>;try{input=JSON.parse(raw);}catch{throw new LocalPaidError("INVALID_JSON","请求格式不正确。");}
         if(!input || typeof input!=="object" || Array.isArray(input))throw new LocalPaidError("INVALID_JSON","请求格式不正确。");
         const field=(key:string)=>typeof input[key]==="string" ? input[key] as string : "";
+        if(this.env.GUIDED_ENABLED==="1" && action==="onion-coupon/claim"){
+          if(field("expectedUserId")!==user)throw new LocalPaidError("ACCOUNT_CHANGED","登录账号已变更，请刷新后重新领取。",409);
+          return json(store.guidedCoupons().claim(user));
+        }
         if(this.env.GUIDED_ENABLED==="1" && ["guided/start","guided/draw","guided/advance","guided/mode"].includes(action)){
           const provider=createCloudProvider({key:this.env.AI_KEY,model:this.env.AI_MODEL});
           return json(await guidedAction(store.guidedPreview(provider.requestGuidedJson),user,action,input,provider.reviewPaidQuestion,()=>store.limitNewDrawReview("guided:"+user),(key,task)=>store.shareReadingReview(key,task)));

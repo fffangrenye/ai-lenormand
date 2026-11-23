@@ -14,6 +14,8 @@ import {restoreLegacyHistory,type LegacySnapshot} from "./legacy-restore";
 import type { PaidCard, PaidDrawSession, PaidOverview, PaidProject, PaidReading, PaidResult, PaidSpread, PaidLedgerPage, ReadingTrashPage } from "./types";
 import { GuidedPreviewStore, guidedSchema } from "../guided-reading/preview";
 import type { GuidedJsonRequest } from "../guided-reading/model";
+import { GuidedCoupons } from "../guided-reading/coupons";
+import { onionEventStatus } from "../guided-reading/onion-event";
 
 const readingTrashDurationMs = 30 * 24 * 60 * 60 * 1000;
 
@@ -22,6 +24,7 @@ type ReadingRelations = { follows: Row[]; projectId?: string; completedAt?: stri
 
 export class PaidLedger {
   private guidedStore?: GuidedPreviewStore;
+  private guidedCouponStore?: GuidedCoupons;
   private initializedUsers = new Map<string, string>();
   private checkedProjectLinks = new Set<string>();
   private readingReviews = new Map<string, Promise<unknown>>();
@@ -55,6 +58,10 @@ export class PaidLedger {
   guidedPreview(request?: GuidedJsonRequest) {
     return this.getGuidedStore(request);
   }
+  onionEventStatus() { return onionEventStatus(this.clock()); }
+  guidedCoupons() {
+    return this.guidedCouponStore ??= new GuidedCoupons(this.db, work => this.tx(work), () => this.clock());
+  }
   protected getGuidedStore(request?: GuidedJsonRequest) {
     if (this.guidedStore) return this.guidedStore;
     this.tx(() => {
@@ -85,6 +92,7 @@ export class PaidLedger {
         throw guidedCreditsError(price);
       },
       request,
+      this.guidedCoupons(),
     );
   }
   protected ledger(userId: string, batchId: string, event: string, kind: string, available: number, reserved: number, consumed: number, reason: string) {

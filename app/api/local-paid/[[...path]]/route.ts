@@ -39,12 +39,14 @@ export async function GET(request: NextRequest, { params }: Context) {
     assertLocalRequest(request);
     const store = getPaidLocalStore();
     const segments = (await params).path ?? [];
+    if (segments.join("/") === "onion-event") return json(store.onionEventStatus());
     if (segments[0] === "admin") {
       store.payments.authenticateAdmin(request.cookies.get(adminCookie)?.value);
       if (segments.length===2 && segments[1]==="codes") return json(store.redemptions.adminOverview());
       return json({...store.payments.adminOverview(),xianyuOrders:store.xianyu.adminOrders()});
     }
     const userId = store.authenticate(request.cookies.get(cookieName)?.value);
+    if (segments.join("/") === "onion-coupon" && process.env.NEXT_PUBLIC_FLORA_GUIDED_PREVIEW === "1") return json(store.guidedCoupons().status(userId));
     if (segments[0] === "guided" && segments.length <= 2 && process.env.NEXT_PUBLIC_FLORA_GUIDED_PREVIEW === "1") {
       const guided = store.guidedPreview();
       return json(segments.length === 2 ? guided.open(userId, segments[1]) : guided.history(userId));
@@ -140,6 +142,10 @@ export async function POST(request: NextRequest, { params }: Context) {
       return json(await issueGuestReview(drawQuestion, guestReviewKey, reviewPaidQuestion));
     }
     const userId = store.authenticate(previousToken);
+    if (action === "onion-coupon/claim" && process.env.NEXT_PUBLIC_FLORA_GUIDED_PREVIEW === "1") {
+      if (field("expectedUserId") !== userId) throw new LocalPaidError("ACCOUNT_CHANGED", "登录账号已变更，请刷新后重新领取。", 409);
+      return json(store.guidedCoupons().claim(userId));
+    }
     if (action.startsWith("guided/") && process.env.NEXT_PUBLIC_FLORA_GUIDED_PREVIEW === "1") {
       if (action === "guided/test-credits") {
         store.grantTestCredits(userId, field("requestId"), guidedPetalPrice.test);

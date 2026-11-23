@@ -6,6 +6,7 @@ import { coreCardMeaningsZh } from "../paid-local/reading-guidance";
 import { guidedCardCount, guidedPetalPrice, guidedPlanVersion, type GuidedMode, type GuidedSession } from "./details";
 import { interpretGuidedRound, planNextCard, summarizeGuidedReading, type GuidedJsonRequest } from "./model";
 import { guidedSessionMode } from "./questions";
+import type { GuidedCoupons } from "./coupons";
 
 export const guidedSchema = `
   CREATE TABLE IF NOT EXISTS guided_preview_sessions (
@@ -53,6 +54,7 @@ export class GuidedPreviewStore {
     private readonly ensureCredits: (owner: string, price: number) => void,
     private readonly debitCredits: (owner: string, id: string, price: number) => void,
     private readonly request?: GuidedJsonRequest,
+    private readonly coupons?: GuidedCoupons,
   ) {}
 
   private publicSession(session: SavedSession): GuidedSession {
@@ -91,7 +93,10 @@ export class GuidedPreviewStore {
   }
 
   checkStartBalance(owner: string) {
+    const coupon = this.coupons?.available(owner);
+    if (coupon) return coupon;
     this.ensureCredits(owner, guidedPetalPrice.test);
+    return null;
   }
 
   setMode(owner: string, id: string, mode: GuidedMode, planId: string) {
@@ -110,10 +115,10 @@ export class GuidedPreviewStore {
   start(owner: string, question: string, focus: string, requestId: string) {
     const saved = this.started(owner, question, focus, requestId);
     if (saved) return saved;
-    this.checkStartBalance(owner);
+    const coupon = this.checkStartBalance(owner);
     const pool = lenormandCards.map(card => card.number);
     const deck = Array.from({ length: guidedCardCount }, () => pool.splice(randomInt(pool.length), 1)[0]);
-    const session: SavedSession = { id: randomUUID(), question, focus, petalPrice: guidedPetalPrice.test, initialFocus: focus, deck, cards: [], messages: [], rounds: [], plan: null, final: null, updatedAt: new Date().toISOString() };
+    const session: SavedSession = { id: randomUUID(), question, focus, petalPrice: coupon ? 0 : guidedPetalPrice.test, ...(coupon ? { couponId: coupon.id, couponExpiresAt: coupon.expiresAt } : {}), initialFocus: focus, deck, cards: [], messages: [], rounds: [], plan: null, final: null, updatedAt: new Date().toISOString() };
     this.db.prepare("INSERT INTO guided_preview_sessions VALUES (?, ?, ?, ?, ?)").run(session.id, owner, requestId, JSON.stringify(session), session.updatedAt);
     return this.publicSession(session);
   }
@@ -132,7 +137,15 @@ export class GuidedPreviewStore {
         if (!custom && !session.plan.groups.some(group => group.includes(question))) {
           throw new LocalPaidError("INVALID_GUIDED_FOCUS", "请选择当前推荐的问题，或输入自己的问题。", 400);
         }
-        if (expectedStep === 0 && session.petalPrice > 0) this.debitCredits(owner, id, session.petalPrice);
+        if (expectedStep === 0) {
+          const coupon = session.couponId ? null : this.coupons?.available(owner);
+          if (coupon) { session.couponId = coupon.id; session.couponExpiresAt = coupon.expiresAt; }
+          if (session.couponId) {
+            if (!this.coupons) throw new LocalPaidError("COUPON_UNAVAILABLE", "体验券暂不可用，请稍后重试。", 503);
+            this.coupons.consumeInTransaction(owner, session.couponId, id);
+            session.petalPrice = 0;
+          } else if (session.petalPrice > 0) this.debitCredits(owner, id, session.petalPrice);
+        }
         session.cards.push(session.deck[expectedStep]);
         session.rounds.push({ question, interpretation: null });
         session.previousSuggestions = [...(session.previousSuggestions ?? []), session.plan.groups.flat()].slice(-2);

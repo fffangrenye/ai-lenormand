@@ -26,8 +26,8 @@ export async function guidedAction(
     } catch (error) {
       if (isLocalPaidError(error) && error.code.startsWith("AI_")) {
         const saved = guided.open(owner, id);
-        if (saved.petalPrice > 0 && saved.cards.length > 0) {
-          throw new LocalPaidError(error.code, "这一步的 AI 暂时没有完成。已抽的牌已保存，重试不会再扣花瓣。", error.status);
+        if ((saved.petalPrice > 0 || saved.couponId) && saved.cards.length > 0) {
+          throw new LocalPaidError(error.code, `这一步的 AI 暂时没有完成。已抽的牌已保存，重试不会再扣${saved.couponId ? "体验券或花瓣" : "花瓣"}。`, error.status);
         }
       }
       throw error;

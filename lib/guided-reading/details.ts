@@ -35,6 +35,8 @@ export type GuidedSession = {
   focus: string;
   mode?: GuidedMode;
   petalPrice: number;
+  couponId?: string;
+  couponExpiresAt?: string;
   cards: number[];
   messages: GuidedMessage[];
   rounds: GuidedRound[];

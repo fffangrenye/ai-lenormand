@@ -13,6 +13,7 @@ import { guidedSessionMode } from "@/lib/guided-reading/questions";
 import { guidedQuestionHelp } from "@/lib/guided-reading/question-help";
 import { isReadingSafetyCode, type ReadingSafetyCode } from "@/lib/paid-local/reading-safety";
 import { paidLocalAIEnabled, paidLocalSiteEnabled, paidOnlineSiteEnabled, paidSiteRequest, PaidSiteError, restorePaidSiteSession } from "@/lib/paid-local/site-bridge";
+import type { OnionCoupon, OnionCouponStatus } from "@/lib/guided-reading/onion-event";
 
 type HistoryItem = { id: string; question: string; step: number; complete: boolean };
 const login = "/login?returnTo=%2Fguided";
@@ -42,6 +43,7 @@ function QuestionHelp({ question, mainQuestion, id, onChoose }: { question: stri
 export function GuidedReading() {
   const [access, setAccess] = useState<"loading" | "guest" | "ready" | "error">("loading");
   const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [coupon, setCoupon] = useState<OnionCoupon | null>(null);
   const [session, setSession] = useState<GuidedSession | null>(null);
   const [question, setQuestion] = useState("");
   const [focus, setFocus] = useState("");
@@ -62,6 +64,7 @@ export function GuidedReading() {
   const customInput = useRef<HTMLTextAreaElement>(null);
   const openSession = (value: GuidedSession) => {
     setSession(value);
+    if (value.couponId && value.cards.length > 0) setCoupon(null);
     setHistory(items => [{
       id: value.id, question: value.question, step: value.cards.length, complete: Boolean(value.final),
     }, ...items.filter(item => item.id !== value.id)].slice(0, 20));
@@ -74,8 +77,15 @@ export function GuidedReading() {
         if (mounted) setAccess("guest");
         return;
       }
-      const items = await paidSiteRequest<HistoryItem[]>("guided");
-      if (mounted) { setHistory(items); setAccess("ready"); }
+      const [items, gift] = await Promise.all([
+        paidSiteRequest<HistoryItem[]>("guided"),
+        paidSiteRequest<OnionCouponStatus>("onion-coupon").catch(() => null),
+      ]);
+      if (mounted) {
+        setHistory(items);
+        setCoupon(gift?.coupon && !gift.coupon.usedAt && Date.parse(gift.coupon.expiresAt) > Date.parse(gift.serverNow) ? gift.coupon : null);
+        setAccess("ready");
+      }
     })().catch(() => { if (mounted) setAccess("error"); });
     return () => { mounted = false; };
   }, []);
@@ -211,11 +221,12 @@ export function GuidedReading() {
               <textarea id="guided-focus" rows={2} maxLength={200} value={focus} onChange={event => setFocus(event.target.value)} placeholder="例如：最近联系少了，我想看看以后怎样沟通。" className="mb-4 mt-2 w-full rounded-xl border border-ink/15 bg-white/65 p-3 text-base focus-visible:outline-[#6E2638]" />
               <button type="submit" className={primary} disabled={busy || !question.trim()} aria-describedby="guided-price"><Sparkles size={16} aria-hidden="true" />{busy ? "正在准备牌桌…" : "开始洋葱解牌"}</button>
               <div id="guided-price" className="mt-3">
+                {coupon && <p role="status" className="mb-2 rounded-lg bg-[#6E2638]/5 p-3 text-sm leading-6 text-[#6E2638]">你有1次洋葱体验券，本次优先用券，不扣花瓣。有效至{new Date(coupon.expiresAt).toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false })}（北京时间）。</p>}
                 <p className="flex flex-wrap items-baseline gap-x-3 gap-y-1 text-sm">
                   <span className="font-semibold text-[#6E2638]">测试期间限定 · {guidedPetalPrice.test} 花瓣 / 局</span>
                   <span className="text-ink/60">常规价 <s>{guidedPetalPrice.regular} 花瓣</s></span>
                 </p>
-                <p className="mt-1 text-xs leading-5 text-ink/65">抽第一张时一次扣除，含九轮解读和最终汇总。</p>
+                <p className="mt-1 text-xs leading-5 text-ink/65">{coupon ? "体验券在抽第一张时核销，" : "抽第一张时一次扣除，"}含九轮解读和最终汇总。</p>
                 {paidOnlineSiteEnabled && <p className="mt-1 text-xs leading-5 text-ink/65">必要的问题和解读会交给 DeepSeek 处理，进度保存在账号内。<Link href="/privacy" prefetch={false} className="ml-1 underline underline-offset-2">隐私政策</Link></p>}
               </div>
             </fieldset>
@@ -239,6 +250,7 @@ export function GuidedReading() {
             <section ref={table} className={panel + " scroll-mt-3"} aria-label="洋葱解牌牌桌">
               <p className="mb-1 text-center text-xs text-ink/60">主问题</p>
               <h2 className="mb-5 break-words text-center font-serif text-xl leading-8">{session.question}</h2>
+              {session.couponId && <p className="mb-4 text-center text-xs text-[#6E2638]">{step ? "本局已使用洋葱体验券，不扣花瓣" : "本局使用洋葱体验券，抽第一张时核销"}</p>}
               {session.mode && <div className="mb-5 space-y-2 text-center">
                 {step === 0 && session.plan ? <div className="flex justify-center gap-2" role="group" aria-label="本次展开方式">
                   {(["analysis", "exploration"] as GuidedMode[]).map(item => <button type="button" key={item} disabled={busy} aria-pressed={mode === item} onClick={() => { if (mode !== item) void submit("guided/mode", { id: session.id, mode: item, planId: session.plan!.id }); }} className="min-h-11 rounded-full border border-ink/15 px-4 text-sm text-ink/65 aria-pressed:border-[#715A80]/45 aria-pressed:bg-[#715A80]/10 aria-pressed:text-[#715A80] disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#715A80]">{guidedModeLabels[item]}</button>)}

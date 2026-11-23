@@ -5,6 +5,7 @@ import { AccountMenu } from "@/components/AccountMenu";
 import { QuietCardBack } from "@/components/QuietCardBack";
 import { TodayCheckIn } from "@/components/TodayCheckIn";
 import { HomeEntryArt } from "@/components/HomeEntryArt";
+import { OnionEventGift } from "@/components/OnionEventGift";
 import { guidedHomeDescription, guidedReadingTitle } from "@/lib/guided-reading/details";
 import { useState } from "react";
 import { motion } from "framer-motion";
@@ -209,6 +210,7 @@ export default function HomePage() {
           </div>
         </div>
       </section>
+      <OnionEventGift opened={drawn} />
     </main>
   );
 }

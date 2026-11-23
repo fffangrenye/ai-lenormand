@@ -69,7 +69,7 @@ export class PaidSiteError extends Error {
   constructor(public code: string, message: string, public status: number) { super(message); }
 }
 export async function paidSiteRequest<T>(action = "", body?: Record<string, unknown>): Promise<T> {
-  const guestReview = action === "guest-review";
+  const guestReview = action === "guest-review" || action === "onion-event";
   if (!paidSiteEnabled || typeof window === "undefined") throw new Error("花瓣服务暂未开启。");
   if (paidLocalSiteEnabled && !["127.0.0.1", "localhost"].includes(window.location.hostname)) throw new Error("本地测试接口未开启。");
   let accessToken: string | undefined;

@@ -12,6 +12,7 @@ import { requestGuidedPreviewJson } from "./provider";
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 
 import { PaidLedger } from "./ledger";
+import { onionEvent } from "../guided-reading/onion-event";
 
 export class PaidLocalStore extends PaidLedger {
   readonly payments: LocalPayments;
@@ -118,6 +119,16 @@ export class PaidLocalStore extends PaidLedger {
 const stores = globalThis as typeof globalThis & { paidLocalStore?: { filename: string; store: PaidLocalStore } };
 export function getPaidLocalStore() {
   const filename = assertLocalEnvironment();
-  if (!stores.paidLocalStore || stores.paidLocalStore.filename !== filename) stores.paidLocalStore = { filename, store: new PaidLocalStore(filename) };
+  if (!stores.paidLocalStore || stores.paidLocalStore.filename !== filename) {
+    let clock = Date.now;
+    // Only the isolated, mock-only preview can move the clock. Production uses Date.now.
+    if (process.env.PAID_LOCAL_EVENT_PREVIEW === "1") {
+      if (process.env.PAID_LOCAL_MODEL !== "mock") throw new Error("Event preview requires mock AI");
+      const started = Number(process.env.PAID_LOCAL_EVENT_PREVIEW_STARTED_AT);
+      if (!Number.isFinite(started) || started <= 0) throw new Error("Invalid event preview clock");
+      clock = () => Date.parse(onionEvent.startsAt) + 60_000 + Math.max(0, Date.now() - started);
+    }
+    stores.paidLocalStore = { filename, store: new PaidLocalStore(filename, clock) };
+  }
   return stores.paidLocalStore.store;
 }
