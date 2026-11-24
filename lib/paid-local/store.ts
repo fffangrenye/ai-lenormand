@@ -8,6 +8,7 @@ import { LocalPayments } from "./payment-store";
 import { LocalXianyuPayments } from "./xianyu-store";
 import { readingTrashMigration } from "./reading-trash-migration";
 import { readingReviewMigration } from "./reading-review-migration";
+import { relationshipMigration } from "./relationship-migration";
 import { requestGuidedPreviewJson } from "./provider";
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 
@@ -57,6 +58,7 @@ export class PaidLocalStore extends PaidLedger {
     }
     this.tx(() => {
       if (!this.one("SELECT version FROM local_schema_versions WHERE version=12")) this.db.exec(readingReviewMigration);
+      if (!this.one("SELECT version FROM local_schema_versions WHERE version=15")) this.db.exec(relationshipMigration);
       for (const user of this.all("SELECT id FROM local_users")) this.adjustTrialCredits(String(user.id));
     });
   }

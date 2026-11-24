@@ -25,10 +25,10 @@ export function GuidedCardTable({ session, selectedIndex, onSelect }: {
               className={shape + " block border border-ink/12 bg-[#FFFDF8] shadow-entry transition hover:border-[#6E2638] aria-pressed:ring-2 aria-pressed:ring-[#6E2638] aria-pressed:ring-offset-2 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#6E2638] motion-reduce:transition-none"}
             >{face}</button> : <div className={shape + (card
               ? " border border-ink/12 bg-[#FFFDF8] shadow-entry animate-[cardDraw_0.4s_ease-out] motion-reduce:animate-none"
-              : " grid place-items-center border-2 border-dashed border-[#6E2638]/25 bg-[#6E2638]/[0.02] font-serif text-xl text-[#6E2638]/40")}>
+              : " grid place-items-center border border-dashed border-[#6E2638]/20 bg-[#FFFDF8]/50 font-serif text-xl text-[#6E2638]/40")}>
               {face ?? <span aria-hidden="true">{index + 1}</span>}
             </div>}
-            <p title={question || undefined} className="mt-1 min-h-8 text-[10px] leading-4 text-ink/65 sm:text-xs">
+            <p title={question || undefined} className="mt-2 min-h-8 text-[11px] leading-5 text-ink/65 sm:text-xs">
               <span className="line-clamp-2 break-words">{index + 1} · {question || (card ? card.nameZh : "待抽取")}</span>
             </p>
           </li>

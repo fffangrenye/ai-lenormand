@@ -16,13 +16,13 @@ import type { PaidOverview, PaidSummary, PaidReadingPage, PaidLedgerPage, LocalO
 import { getSession, signOut } from "@/lib/project-store";
 
 export function AccountFrame({ title, children }: { title: string; children: React.ReactNode }) {
-  return <main className="min-h-dvh bg-paper px-4 pb-12 text-ink sm:px-8">
+  return <main className="flora-page px-5 pb-16 sm:px-8">
     <div className="mx-auto w-full max-w-[960px]">
-      <header className="flex h-[72px] items-center justify-between gap-3 border-b border-ink/10">
+      <header className="flora-header">
         <Link prefetch={false} href="/deep" className="inline-flex min-h-11 items-center gap-2 text-xs text-ink/60"><ArrowLeft size={15} />返回解读</Link>
-        <Link prefetch={false} href="/" className="hidden font-serif text-xl sm:block">Flora Lenormand</Link><AccountMenu />
+        <Link prefetch={false} href="/" className="flora-brand hidden sm:block">Flora Lenormand</Link><AccountMenu />
       </header>
-      <div className="py-8 sm:py-12"><p className="text-xs uppercase tracking-[0.2em] text-clay/65">My Flora</p><h1 className="mt-3 font-serif text-3xl sm:text-4xl">{title}</h1></div>
+      <div className="pb-9 pt-10 sm:pb-12 sm:pt-14"><p className="flora-eyebrow">My Flora</p><h1 className="flora-title mt-2">{title}</h1></div>
       {children}
     </div>
   </main>;
@@ -97,7 +97,7 @@ export function ProfileClient() {
   const cutoff = period === "all" ? 0 : Date.now() - Number(period) * 86400000;
   const usage = wallet?.readings.filter((reading) => reading.state === "completed" && new Date(reading.completedAt || reading.createdAt).getTime() >= cutoff).sort((a, b) => (b.completedAt || b.createdAt).localeCompare(a.completedAt || a.createdAt)) || [];
   const ledger = wallet?.ledger.filter((entry) => new Date(entry.createdAt).getTime() >= cutoff) || [];
-  return <AccountFrame title="用户主页">
+  return <AccountFrame title="我的主页">
     {loading && !wallet && <p role="status" className="py-12 text-sm text-ink/50">正在读取你的账户…</p>}
     {error && <div role="alert" className="mb-6 rounded-xl border border-[#6E2638]/20 p-4 text-sm"><p>{error}</p><button type="button" onClick={() => void refresh()} className="mt-3 text-[#6E2638] underline">重新读取</button></div>}
     {wallet && <>
@@ -105,24 +105,24 @@ export function ProfileClient() {
         <div className="flex min-w-0 items-center gap-3"><span className="grid h-12 w-12 shrink-0 place-items-center rounded-full border border-[#6E2638]/15 bg-[#6E2638]/5 text-[#6E2638]"><UserRound size={22} /></span><div className="min-w-0"><h2 className="truncate text-base">{wallet.user.label}</h2><p className="mt-1 text-xs text-ink/40">我的花瓣与消费记录</p></div></div>
         <button type="button" onClick={() => { signOut(); replaceSiteRoute(router, "/"); }} className="inline-flex min-h-11 items-center gap-2 text-xs text-ink/50"><LogOut size={14} />退出登录</button>
       </section>
-      <section className="mt-6 grid gap-3 sm:grid-cols-3" aria-label="账户余额">
-        <div className="rounded-2xl bg-[#6E2638] p-6 text-[#FFF9F2] sm:row-span-2"><div className="flex items-center gap-2 text-xs text-white/65"><Flower2 size={15} />可用花瓣</div><p className="mt-4 font-serif text-5xl">{wallet.balance.available}<span className="ml-2 text-sm text-white/60">花瓣</span></p><p className="mt-3 text-xs text-white/60">花瓣长期有效，随时继续你的故事。</p><Link prefetch={false} href="/recharge" className="mt-6 inline-flex min-h-10 items-center gap-5 rounded-full bg-[#FFF9F2] px-5 text-sm text-[#6E2638]">补充花瓣<ArrowUpRight size={15} /></Link></div>
-        <div className="rounded-2xl border border-ink/10 bg-[#FFFDF8]/80 p-5"><p className="text-xs text-ink/45">累计用于解读</p><p className="mt-3 font-serif text-3xl">{wallet.balance.consumed}<span className="ml-2 text-xs text-ink/45">花瓣</span></p></div>
-        <div className="rounded-2xl border border-ink/10 bg-[#FFFDF8]/80 p-5"><p className="text-xs text-ink/45">正在解读中</p><p className="mt-3 font-serif text-3xl">{wallet.balance.reserved}<span className="ml-2 text-xs text-ink/45">花瓣</span></p></div>
-        <p className="col-span-1 rounded-xl border border-ink/8 px-5 py-4 text-xs leading-6 text-ink/50 sm:col-span-2">1 花瓣可解锁 1 次深度解读，包含 2 次追问。抽牌不扣花瓣，解读失败会返还预留的花瓣。</p>
+      <section className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-3" aria-label="账户余额">
+        <div className="col-span-2 rounded-[26px] bg-[#6E2638] p-7 text-[#FFF9F2] sm:col-span-1 sm:row-span-2"><div className="flex items-center gap-2 text-xs text-white/65"><Flower2 size={15} />可用花瓣</div><p className="mt-4 font-serif text-5xl">{wallet.balance.available}<span className="ml-2 text-sm text-white/60">花瓣</span></p><p className="mt-3 text-xs text-white/60">花瓣长期有效，随时继续你的故事。</p><Link prefetch={false} href="/recharge" className="mt-6 inline-flex min-h-10 items-center gap-5 rounded-full bg-[#FFF9F2] px-5 text-sm text-[#6E2638]">补充花瓣<ArrowUpRight size={15} /></Link></div>
+        <div className="flora-panel"><p className="text-xs text-ink/45">累计用于解读</p><p className="mt-3 font-serif text-3xl">{wallet.balance.consumed}<span className="ml-2 text-xs text-ink/45">花瓣</span></p></div>
+        <div className="flora-panel"><p className="text-xs text-ink/45">正在解读中</p><p className="mt-3 font-serif text-3xl">{wallet.balance.reserved}<span className="ml-2 text-xs text-ink/45">花瓣</span></p></div>
+        <p className="col-span-2 rounded-[22px] border border-ink/[0.06] px-5 py-4 text-[13px] leading-7 text-ink/55 sm:col-span-2">1 花瓣可解锁 1 次深度解读，包含 2 次追问。抽牌不扣花瓣，解读失败会返还预留的花瓣。</p>
       </section>
-      <Link prefetch={false} href="/daily#daily-calendar" className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#6E2638]/15 bg-[#FFFDF8]/70 p-5"><span><span className="block font-serif text-xl">每日运势与牌面日历</span><span className="mt-2 block text-xs leading-6 text-ink/50">每连续签到满 3 天，赠送 1 花瓣。漏签重新计数，跨月连签有效。</span></span><span className="inline-flex items-center gap-2 text-sm text-[#6E2638]">去看看<ArrowUpRight size={15} /></span></Link>
+      <Link prefetch={false} href="/daily#daily-calendar" className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-[24px] border border-ink/[0.07] bg-[#FFFDF8]/80 p-6"><span><span className="block font-serif text-xl">每日运势与牌面日历</span><span className="mt-2 block text-xs leading-6 text-ink/50">每连续签到满 3 天，赠送 1 花瓣。漏签重新计数，跨月连签有效。</span></span><span className="inline-flex items-center gap-2 text-sm text-[#6E2638]">去看看<ArrowUpRight size={15} /></span></Link>
       {conversationManagementEnabled && (
-        <button id="conversation-trash" ref={locateTrash} type="button" onClick={() => setTrashOpen(true)} className="mt-5 flex w-full scroll-mt-5 flex-wrap items-center justify-between gap-3 rounded-xl border border-[#6E2638]/15 bg-[#FFFDF8]/70 p-5 text-left hover:border-[#6E2638]/35">
+        <button id="conversation-trash" ref={locateTrash} type="button" onClick={() => setTrashOpen(true)} className="mt-5 flex w-full scroll-mt-5 flex-wrap items-center justify-between gap-3 rounded-[24px] border border-ink/[0.07] bg-[#FFFDF8]/80 p-6 text-left hover:border-[#6E2638]/35">
           <span><span className="block font-serif text-xl">对话回收站</span><span className="mt-2 block text-xs leading-6 text-ink/50">查看已删除的深度解读对话，30 天内可恢复。</span></span>
           <span className="inline-flex items-center gap-2 text-sm text-[#6E2638]"><Trash2 size={15} aria-hidden="true" />打开</span>
         </button>
       )}
       {conversationManagementEnabled && trashOpen && <ReadingTrashDialog onClose={() => setTrashOpen(false)} />}
-      <section className="mt-10" aria-label="消费管理">
-        <div className="flex flex-wrap items-center justify-between gap-3 border-b border-ink/10">
-          <div className="flex gap-5" aria-label="消费记录类型">
-            {([['usage', '解读消耗'], ['ledger', '花瓣流水'], ['orders', '充值订单']] as const).map(([id, label]) => <button type="button" aria-pressed={tab === id} onClick={() => setTab(id)} key={id} className={`min-h-12 border-b-2 text-sm ${tab === id ? "border-[#6E2638] text-[#6E2638]" : "border-transparent text-ink/45"}`}>{label}</button>)}
+      <section className="mt-12" aria-label="消费管理">
+        <div className="flex flex-wrap items-center justify-between gap-3 pb-3">
+          <div className="flex max-w-full gap-1 rounded-full bg-ink/[0.035] p-1" aria-label="消费记录类型">
+            {([['usage', '解读消耗'], ['ledger', '花瓣流水'], ['orders', '充值订单']] as const).map(([id, label]) => <button type="button" aria-pressed={tab === id} onClick={() => setTab(id)} key={id} className={`min-h-11 rounded-full px-4 text-sm transition-colors ${tab === id ? "bg-[#FFFDF8] text-[#6E2638] shadow-[0_1px_6px_rgba(33,31,27,0.04)]" : "text-ink/55 hover:text-ink/80"}`}>{label}</button>)}
           </div>
           {tab !== "orders" && <select aria-label="记录时间范围" value={period} onChange={(event) => setPeriod(event.target.value)} className="mb-2 h-9 rounded-full border border-ink/10 bg-transparent px-3 text-xs text-ink/50"><option value="all">全部时间</option><option value="30">最近 30 天</option><option value="7">最近 7 天</option></select>}
         </div>

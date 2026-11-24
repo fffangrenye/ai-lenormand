@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ArrowLeft, Hand, RotateCcw, Sparkles } from "lucide-react";
+import { ArrowLeft, RotateCcw, Sparkles } from "lucide-react";
 import { QuietCardBack } from "@/components/QuietCardBack";
 import { containCard, createShuffleTable, pushShuffleCards, settleShuffleCards, type ShuffleTable } from "@/lib/deep-shuffle-physics";
 import { autoShufflePose } from "@/lib/auto-shuffle";
@@ -105,12 +105,12 @@ export function ShuffleRitual({ question, spreadName, onBack, onReady }: { quest
     pointer.current = null;
     if (palm.current) palm.current.style.opacity = "0";
   }
-  return <section className="mx-auto max-w-[760px] py-5 sm:py-8">
-    <button type="button" onClick={onBack} className="inline-flex min-h-10 items-center gap-2 text-xs text-ink/50"><ArrowLeft size={14} />返回问题</button>
-    <h1 className="mt-4 whitespace-pre-wrap break-words font-serif text-2xl leading-relaxed sm:text-3xl">{question}</h1>
-    <p className="mt-2 text-sm text-clay/65">{spreadName} · 洗牌</p>
+  return <section className="deep-stage">
+    <div className="flex items-center justify-between"><button type="button" onClick={onBack} className="inline-flex min-h-11 items-center gap-2 text-sm text-ink/55"><ArrowLeft size={15} />返回问题</button><span className="deep-eyebrow">SHUFFLE & SETTLE</span></div>
+    <h1 className="deep-title mt-6 whitespace-pre-wrap">{question}</h1>
+    <p className="mt-3 text-sm text-ink/55">{spreadName} · 洗牌</p>
     <p id="shuffle-help" className="mt-6 text-center text-sm leading-7 text-ink/55">{mode === "auto" ? ready ? "自动洗牌已完成，可以开始选牌。" : "牌在桌面上缓缓混合，把注意力放回你的问题。" : ready ? "牌已经充分混合，也可以继续搓动，准备好再选牌。" : "按住牌堆画圈、推散，让牌在掌心下自由混合。"}</p>
-    <div className="mx-auto mt-5 w-full max-w-[640px] rounded-[24px] border border-[#B5AA96]/30 bg-[#EAE5D9]/45 p-2 shadow-[inset_0_1px_5px_rgba(96,79,55,0.035)] sm:p-3">
+    <div className="mx-auto mt-5 w-full max-w-[640px] rounded-[28px] border border-[#B5AA96]/20 bg-[#EAE5D9]/45 p-2 shadow-[inset_0_1px_5px_rgba(96,79,55,0.035)] sm:p-3">
       <div ref={board} role="button" tabIndex={mode === "manual" ? 0 : -1} aria-label="手动搓牌区域" aria-disabled={mode === "auto"} aria-describedby="shuffle-help"
         onPointerDown={(event) => {
           if (mode !== "manual" || (event.pointerType === "mouse" && event.button !== 0) || pointer.current) return;
@@ -140,12 +140,12 @@ export function ShuffleRitual({ question, spreadName, onBack, onReady }: { quest
         </div>
       </div>
     </div>
-    <p className="mt-3 flex items-center justify-center gap-2 text-center text-[11px] leading-5 text-ink/40"><Hand size={13} className="shrink-0" />{mode === "manual" ? "36 张牌 · 手指或鼠标搓动 · 也可用方向键" : ready ? "36 张牌已洗好，可以继续选牌" : "正在为你自动混合 36 张牌"}</p>
+    <p className="sr-only">手动洗牌也支持空格、回车和方向键。</p>
     <div role="progressbar" aria-label="洗牌进度" aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress} className="mx-auto mt-5 h-1 max-w-xs overflow-hidden rounded-full bg-[#6E2638]/10"><div style={{ width: `${progress}%` }} className="h-full rounded-full bg-[#6E2638]/50 transition-[width] motion-reduce:transition-none" /></div>
-    <p role="status" className="mt-2 text-center text-xs text-ink/45">{ready ? "洗牌完成" : `洗牌进度 ${progress}%`}</p>
+    <p role="status" className="sr-only">{ready ? "洗牌完成" : `洗牌进度 ${progress}%`}</p>
     <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-      {mode === "manual" ? <button type="button" onClick={() => changeMode("auto")} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-ink/15 px-5 text-sm text-ink/65"><Sparkles size={15} />自动洗牌</button> : <button type="button" onClick={() => changeMode("manual")} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-ink/15 px-5 text-sm text-ink/65"><RotateCcw size={15} />改为手动搓牌</button>}
-      <button type="button" disabled={!ready} onClick={onReady} className="min-h-11 rounded-full bg-[#6E2638] px-6 text-sm text-[#FFF9F2] disabled:opacity-35">洗好了，开始选牌</button>
+      {mode === "manual" ? <button type="button" onClick={() => changeMode("auto")} className="deep-secondary"><Sparkles size={15} />自动洗牌</button> : <button type="button" onClick={() => changeMode("manual")} className="deep-secondary"><RotateCcw size={15} />改为手动搓牌</button>}
+      <button type="button" disabled={!ready} onClick={onReady} className="deep-primary">洗好了，开始选牌</button>
     </div>
   </section>;
 }

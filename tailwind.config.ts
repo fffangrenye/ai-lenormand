@@ -4,6 +4,10 @@ const config: Config = {
   content: ["./app/**/*.{js,ts,jsx,tsx}", "./components/**/*.{js,ts,jsx,tsx}"],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ["var(--font-flora-serif)"],
+        serif: ["var(--font-flora-serif)"]
+      },
       colors: {
         ink: "#211F1B",
         paper: "#F5F1E8",

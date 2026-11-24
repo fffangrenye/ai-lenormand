@@ -2,8 +2,9 @@ import { getDeepSpread, isDeepSpread } from "../deep-spreads";
 import { LocalPaidError } from "./guard";
 import type { PaidReading, PaidResult, PaidProject } from "./types";
 import { coreCardMeaningsZh, verifiedReadingSources } from "./reading-guidance";
+import { relationshipPrompt } from "./relationship-context";
 
-export const paidPromptVersion = "paid-main-v3-natural-advice";
+export const paidPromptVersion = "paid-main-v3.5.6-question-context";
 export const paidModelSettings = { mainMaxTokens: 2800, mainTimeoutMs: 60000, followUpMaxTokens: 420, followUpTimeoutMs: 45000 };
 
 // Server only. Preserve the original AI reader's combination-first narrative style.
@@ -24,6 +25,7 @@ export function buildPaidReadingPrompt(reading: PaidReading, project?: Pick<Paid
   return [
     `问题：${reading.question}`, `牌阵：${spread.name}`, `固定解读规则：${spread.rules}`,
     `具体选项：${reading.choices?.join("；") || "无"}`,
+    ...(reading.spread === "h_seven" && reading.relationship ? [relationshipPrompt(reading.relationship)] : []),
     `项目背景：${project?.background || "未提供"}`, `长期记忆：${project?.memorySummary || "未提供"}`,
     "牌位（不可更换、补抽或调整顺序）：",
     ...reading.cards.map((card, index) => `${index + 1}. ${card.position}：${card.nameZh} / ${card.nameEn}`),

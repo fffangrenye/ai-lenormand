@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "@/components/SiteLink";
-import { AccountMenu } from "@/components/AccountMenu";
+import { FloraHeader } from "@/components/FloraHeader";
 import { QuietCardBack } from "@/components/QuietCardBack";
 import { TodayCheckIn } from "@/components/TodayCheckIn";
 import { HomeEntryArt } from "@/components/HomeEntryArt";
@@ -23,7 +23,7 @@ type HomeCard = {
 };
 
 // Both the opening card backs and the revealed entries use the same physical size.
-const homeCardSizeClass = "h-[252px] w-[168px]";
+const homeCardSizeClass = "h-[234px] w-[156px] sm:h-[252px] sm:w-[168px]";
 
 const cards: HomeCard[] = [
   {
@@ -48,7 +48,7 @@ const cards: HomeCard[] = [
     titleEn: "Deep Reading",
     titleZh: "深度解读",
     href: "/deep",
-    description: "登陆后共同穿越复杂的故事", number: "03", kind: "deep", color: "#617179",
+    description: "一起梳理复杂的故事", number: "03", kind: "deep", color: "#617179",
     idleX: 36,
     idleY: 12,
     idleRotate: 8
@@ -114,8 +114,8 @@ function CardFront({ card, active }: { card: HomeCard; active: boolean }) {
           <span className="relative text-[11px] font-semibold leading-none text-[#654A73]">新</span>
         </span>
       )}
-      <div className="mt-5 h-[110px] w-[110px] shrink-0"><HomeEntryArt kind={card.kind} /></div>
-      <div className="w-full text-center"><h2 className="mt-2 font-serif text-xl leading-7 tracking-[0.12em]">{card.titleZh}</h2><p className="mt-1.5 font-serif text-[10px] leading-4 tracking-[0.04em] opacity-75">{card.titleEn}</p><div className="mx-auto my-3 h-px w-6 bg-current opacity-20" /><p className="text-[9px] leading-5 tracking-[0.02em] opacity-65">{card.description}</p></div>
+      <div className="mt-5 h-[88px] w-[88px] sm:h-[102px] sm:w-[102px] shrink-0"><HomeEntryArt kind={card.kind} /></div>
+      <div className="w-full text-center"><h2 className="mt-2 font-serif text-xl leading-7 tracking-[0.12em]">{card.titleZh}</h2><p className="mt-1.5 font-serif text-[10px] leading-4 tracking-[0.04em] opacity-75">{card.titleEn}</p><div className="mx-auto my-3 h-px w-6 bg-current opacity-20" /><p className="text-[11px] leading-[1.7] tracking-[0.01em] opacity-75">{card.description}</p></div>
     </Link>
   );
 }
@@ -125,13 +125,8 @@ export default function HomePage() {
 
   return (
     <main className={`min-h-dvh bg-paper text-ink ${drawn ? "overflow-hidden" : "overflow-hidden"}`}>
-      <section className="mx-auto flex min-h-dvh w-full max-w-[960px] flex-col px-5 pb-5 pt-5">
-        <header className="flex items-center justify-between">
-          <Link prefetch={false} href="/" className="font-serif text-[18px] leading-none tracking-[0.04em] text-ink/86">
-            Flora Lenormand
-          </Link>
-          <div className="flex items-center gap-2 sm:gap-3"><TodayCheckIn /><AccountMenu /></div>
-        </header>
+      <section className="mx-auto flex min-h-dvh w-full max-w-[960px] flex-col px-5 pb-5 sm:px-8">
+        <FloraHeader><TodayCheckIn /></FloraHeader>
 
         <div className="relative flex flex-1 flex-col items-center justify-center">
           <div className={`relative h-[min(690px,calc(100dvh-100px))] min-h-[460px] w-full max-w-[390px] sm:max-w-[820px] overflow-x-hidden ${drawn ? "overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden" : "overflow-y-hidden"}`}>
@@ -154,7 +149,7 @@ export default function HomePage() {
               {cards.map((card, index) => (
                 <motion.div
                   key={card.titleEn}
-                  className={`absolute left-1/2 top-1/2 ${homeCardSizeClass} [perspective:1000px]`}
+                  className={`absolute left-1/2 top-1/2 -ml-[78px] -mt-[117px] sm:-ml-[84px] sm:-mt-[126px] ${homeCardSizeClass} [perspective:1000px]`}
                   animate={{
                     x: card.idleX,
                     y: card.idleY,
@@ -162,7 +157,7 @@ export default function HomePage() {
                     scale: 1
                   }}
                   transition={{ duration: 0.6, ease: "easeOut" }}
-                  style={{ marginLeft: -84, marginTop: -126, transformOrigin: "50% 88%" }}
+                  style={{ transformOrigin: "50% 88%" }}
                 >
                   <CardBack />
                 </motion.div>
@@ -178,11 +173,11 @@ export default function HomePage() {
               点击卡牌，开启今日雷诺曼之旅
             </motion.p>
 
-            <div className={`absolute inset-x-0 top-5 mx-auto w-full gap-4 pb-10 sm:top-[76px] sm:gap-6 ${guidedPreview ? "grid grid-cols-[168px] justify-center sm:grid-cols-[repeat(3,168px)]" : "flex max-w-[300px] flex-col items-center sm:max-w-none sm:flex-row sm:justify-center"}`}>
+            <div className={`absolute inset-x-0 top-5 mx-auto w-full gap-3 pb-10 sm:top-[42px] sm:gap-6 ${guidedPreview ? "grid grid-cols-[repeat(2,156px)] justify-center max-[389px]:grid-cols-[156px] sm:grid-cols-[repeat(3,168px)]" : "flex max-w-[300px] flex-col items-center sm:max-w-none sm:flex-row sm:justify-center"}`}>
               {featureCards.map((card, index) => (
                 <motion.div
                   key={card.titleEn}
-                  className={`${homeCardSizeClass} shrink-0 [perspective:1000px] ${card.kind === "guided" ? "sm:col-start-1 sm:row-start-1" : guidedPreview ? "sm:row-start-2" : ""}`}
+                  className={`${homeCardSizeClass} shrink-0 [perspective:1000px] ${card.kind === "guided" ? "sm:col-start-2 sm:row-start-1" : guidedPreview ? "sm:row-start-2" : ""}`}
                   initial={false}
                   animate={
                     drawn

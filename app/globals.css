@@ -2,11 +2,37 @@
 @tailwind components;
 @tailwind utilities;
 
+@layer components {
+  .flora-page { @apply min-h-dvh bg-paper text-ink; }
+  .flora-shell { @apply mx-auto w-full max-w-[960px] px-5 pb-16 sm:px-8 sm:pb-20; }
+  .flora-header { @apply flex min-h-[76px] items-center justify-between gap-3 border-b border-ink/[0.06] sm:min-h-[88px]; }
+  .flora-brand { @apply shrink-0 font-serif text-[17px] leading-6 tracking-[0.025em] text-ink/85 max-[359px]:text-[15px] sm:text-xl; }
+  .flora-eyebrow { @apply text-[10px] uppercase leading-5 tracking-[0.2em] text-clay/80; }
+  .flora-title { @apply break-words font-serif text-[32px] leading-[1.45] text-ink sm:text-[42px]; }
+  .flora-section-title { @apply font-serif text-[23px] leading-[1.6] text-ink/90 sm:text-[26px]; }
+  .flora-panel { @apply rounded-[26px] border border-ink/[0.065] bg-[#FFFDF8]/85 p-5 sm:p-8; }
+  .flora-field { @apply w-full min-w-0 rounded-[20px] border border-ink/[0.08] bg-[#FFFDF8]/85 px-5 py-4 text-base leading-7 text-ink outline-none transition-colors placeholder:text-ink/35 focus:border-[#6E2638]/35 focus-visible:ring-2 focus-visible:ring-[#6E2638]/10 disabled:opacity-50; }
+  .flora-primary { @apply inline-flex min-h-[52px] items-center justify-center gap-2 rounded-full bg-[#6E2638] px-7 py-3 text-[15px] leading-6 text-[#FFF9F2] transition-colors hover:bg-[#5C2030] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#6E2638] disabled:cursor-not-allowed disabled:opacity-40; }
+  .flora-secondary { @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-[#6E2638]/15 bg-[#FFFDF8]/45 px-5 py-2.5 text-sm leading-6 text-[#6E2638] transition-colors hover:bg-[#6E2638]/[0.04] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#6E2638] disabled:opacity-40; }
+  .flora-note { @apply text-[13px] leading-7 text-ink/55; }
+  .flora-dialog { @apply m-auto max-h-[88dvh] w-[calc(100%_-_2rem)] max-w-lg overflow-y-auto rounded-[28px] border border-ink/[0.08] bg-[#FFFDF8] p-6 text-ink shadow-paper backdrop:bg-ink/25 sm:p-8; }
+  .deep-stage { @apply mx-auto w-full max-w-[760px] px-1 pb-12 pt-7 sm:pb-16 sm:pt-10; }
+  .deep-eyebrow { @apply text-[10px] uppercase tracking-[0.2em] text-clay/80; }
+  .deep-title { @apply break-words font-serif text-[30px] leading-[1.5] text-ink sm:text-[38px]; }
+  .deep-surface { @apply rounded-[24px] border border-ink/[0.07] bg-[#FFFDF8]/80; }
+  .deep-primary { @apply inline-flex min-h-[52px] items-center justify-center gap-3 rounded-full bg-[#6E2638] px-7 text-[15px] text-[#FFF9F2] transition-colors hover:bg-[#5C2030] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#6E2638] disabled:cursor-not-allowed disabled:opacity-40; }
+  .deep-secondary { @apply inline-flex min-h-11 items-center justify-center gap-2 rounded-full border border-[#6E2638]/15 px-5 text-sm text-[#6E2638] transition-colors hover:bg-[#6E2638]/[0.04] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#6E2638] disabled:opacity-40; }
+  .deep-reading-card { @apply mb-7 rounded-[26px] border border-ink/[0.06] bg-[#FFFDF8]/85 px-5 sm:mb-10 sm:px-9; }
+  .deep-reading-body { @apply space-y-6 text-[16px] leading-[2] text-ink/80 sm:text-[17px]; }
+}
+
 * {
   box-sizing: border-box;
 }
 
 html {
+  --font-flora-serif: ui-serif, Georgia, Cambria, "Times New Roman", Times, serif;
+  font-family: var(--font-flora-serif);
   background: #f5f1e8;
 }
 
@@ -24,13 +50,20 @@ select {
   font: inherit;
 }
 
+code,
+kbd,
+pre,
+samp {
+  font-family: inherit;
+}
+
 body::before {
   pointer-events: none;
   content: "";
   position: fixed;
   inset: 0;
   z-index: 0;
-  opacity: 0.32;
+  opacity: 0.12;
   background-image:
     linear-gradient(rgba(33, 31, 27, 0.04) 1px, transparent 1px),
     linear-gradient(90deg, rgba(33, 31, 27, 0.03) 1px, transparent 1px);
@@ -62,7 +95,7 @@ body > * {
 }
 
 .home-card-title {
-  font-family: var(--font-title-serif), Georgia, "Times New Roman", serif;
+  font-family: var(--font-flora-serif);
   font-weight: 500;
   letter-spacing: 0.02em;
   text-rendering: geometricPrecision;

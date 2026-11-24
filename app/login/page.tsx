@@ -29,14 +29,14 @@ function LocalSiteLogin() {
     finally { setBusy(false); }
   }
   return (
-    <main className="min-h-dvh bg-paper px-5 py-5 text-ink">
-      <section className="mx-auto flex min-h-[calc(100dvh-40px)] w-full max-w-[430px] flex-col">
+    <main className="flora-page px-5 py-5">
+      <section className="mx-auto flex min-h-[calc(100dvh-40px)] w-full max-w-[460px] flex-col">
         <Link prefetch={false} href="/" className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-ink/10 bg-ivory/70 text-ink/70 shadow-sm"><ArrowLeft size={18} /><span className="sr-only">返回首页</span></Link>
-        <div className="flex flex-1 items-center"><section className="w-full rounded-[6px] border border-ink/10 bg-[#FFFDF8]/86 p-6 shadow-paper">
-          <p className="text-[12px] uppercase tracking-[0.2em] text-clay/70">Deep Reading</p>
-          <h1 className="mt-4 font-serif text-[32px] leading-[1.05] text-ink">登录后进入你的故事</h1>
+        <div className="flex flex-1 items-center"><section className="flora-panel my-8 w-full sm:p-9">
+          <p className="flora-eyebrow">Your Flora</p>
+          <h1 className="flora-title mt-3 text-[30px] sm:text-[34px]">登录后进入你的故事</h1>
           <p className="mt-4 text-[14px] leading-6 text-ink/58">保留原来的项目、抽牌和追问体验。本地预览使用独立测试账号，无需输入真实邮箱或密码。</p>
-          <div className="mt-7 space-y-3">{[["new", "新用户体验账号"], ["legacy", "老用户体验账号"], ["other", "独立测试账号"]].map(([id, label]) => <button key={id} disabled={busy} onClick={() => void login(id)} className={`h-12 w-full rounded-full px-5 text-[13px] disabled:opacity-50 ${id === "new" ? "bg-[#6E2638] text-[#FFF9F2] shadow-soft" : "border border-ink/12 text-ink/56"}`}>{label}</button>)}</div>
+          <div className="mt-7 space-y-3">{[["new", "新用户体验账号"], ["legacy", "老用户体验账号"], ["other", "独立测试账号"]].map(([id, label]) => <button key={id} disabled={busy} onClick={() => void login(id)} className={`min-h-[52px] w-full rounded-full px-5 text-[15px] disabled:opacity-50 ${id === "new" ? "bg-[#6E2638] text-[#FFF9F2] shadow-soft" : "border border-ink/12 text-ink/56"}`}>{label}</button>)}</div>
           <p className="mt-5 text-[12px] leading-6 text-ink/45">首次赠送 1 次，重复登录不重复领取。本地体验账号不连接线上账户。</p>
           {error ? <p role="status" className="mt-3 text-[13px] text-[#8E4D4A]">{error}</p> : null}
         </section></div>
@@ -111,19 +111,19 @@ function LoginClient() {
   }
 
   return (
-    <main className="min-h-dvh bg-paper px-5 py-5 text-ink">
-      <section className="mx-auto flex min-h-[calc(100dvh-40px)] w-full max-w-[430px] flex-col">
+    <main className="flora-page px-5 py-5">
+      <section className="mx-auto flex min-h-[calc(100dvh-40px)] w-full max-w-[460px] flex-col">
         <Link prefetch={false} href="/" className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-ink/10 bg-ivory/70 text-ink/70 shadow-sm">
           <ArrowLeft size={18} aria-hidden="true" />
           <span className="sr-only">返回首页</span>
         </Link>
 
         <div className="flex flex-1 items-center">
-          <form onSubmit={handleSubmit} className="w-full rounded-[6px] border border-ink/10 bg-[#FFFDF8]/86 p-6 shadow-paper">
-            <p className="text-[12px] uppercase tracking-[0.2em] text-clay/70">Deep Reading</p>
-            <h1 className="mt-4 font-serif text-[32px] leading-[1.05] text-ink">登录后进入你的故事</h1>
+          <form onSubmit={handleSubmit} className="flora-panel my-8 w-full sm:p-9">
+            <p className="flora-eyebrow">Your Flora</p>
+            <h1 className="flora-title mt-3 text-[30px] sm:text-[34px]">登录后进入你的故事</h1>
             <p className="mt-4 text-[14px] leading-6 text-ink/58">
-              登录后可以用项目制持续提问，保存过往记忆，并结合上下文解读你内心的困惑。抽牌后，也可以围绕这次牌面继续追问。
+              登录，保存你的问题、解读与追问，让每次探索连贯起来。
             </p>
 
             <label className="mt-8 block text-[13px] text-ink/62" htmlFor="email">
@@ -138,7 +138,7 @@ function LoginClient() {
                 setError("");
               }}
               placeholder="you@example.com"
-              className="mt-2 h-12 w-full rounded-[4px] border border-ink/12 bg-white/70 px-4 text-[15px] outline-none transition focus:border-ink/35"
+              className="flora-field mt-3 rounded-2xl py-3.5"
             />
 
             <div className="mt-5 flex items-center justify-between gap-4">
@@ -159,15 +159,15 @@ function LoginClient() {
                 setError("");
                 setMessage("");
               }}
-              placeholder="至少 6 位"
-              className="mt-2 h-12 w-full rounded-[4px] border border-ink/12 bg-white/70 px-4 text-[15px] outline-none transition focus:border-ink/35"
+              placeholder="At least 6 characters"
+              className="flora-field mt-3 rounded-2xl py-3.5"
             />
 
             {error ? <p className="mt-3 text-[13px] text-[#8E4D4A]">{error}</p> : null}
             {message ? <p className="mt-3 text-[13px] text-ink/48">{message}</p> : null}
 
             {failedSignInCount >= 2 ? (
-              <div className="mt-4 rounded-[5px] border border-[#8E4D4A]/18 bg-[#FDF3EF] p-4 text-[12px] leading-5 text-[#8E4D4A]">
+              <div className="mt-5 rounded-[20px] border border-[#8E4D4A]/18 bg-[#FDF3EF] p-5 text-[13px] leading-7 text-[#8E4D4A]">
                 如果一直提示密码不对，可以用注册邮箱收重置链接。
                 <Link prefetch={false} href="/forgot-password" className="ml-1 font-medium underline underline-offset-4">
                   现在找回
@@ -175,8 +175,8 @@ function LoginClient() {
               </div>
             ) : null}
 
-            <div className="mt-5 space-y-3 rounded-[5px] border border-ink/8 bg-ivory/48 p-4">
-              <label className="flex gap-3 text-[12px] leading-5 text-ink/54">
+            <div className="mt-6 space-y-4 rounded-[20px] bg-paper/65 p-4">
+              <label className="flex gap-3 text-[13px] leading-6 text-ink/60">
                 <input
                   type="checkbox"
                   checked={privacyAccepted}
@@ -188,7 +188,7 @@ function LoginClient() {
                 />
                 <span>我同意本工具保存账号邮箱、项目、长期记忆、抽牌与追问内容，用于提供连续的上下文解读体验。</span>
               </label>
-              <label className="flex gap-3 text-[12px] leading-5 text-ink/54">
+              <label className="flex gap-3 text-[13px] leading-6 text-ink/60">
                 <input
                   type="checkbox"
                   checked={entertainmentAccepted}
@@ -205,7 +205,7 @@ function LoginClient() {
             <button
               type="submit"
               disabled={Boolean(submitting)}
-              className="mt-7 h-12 w-full rounded-full bg-[#6E2638] px-5 text-[13px] uppercase tracking-[0.12em] text-[#FFF9F2] shadow-soft transition active:scale-[0.99]"
+              className="flora-primary mt-7 w-full"
             >
               {submitting === "signin" ? "登录中" : "登录"}
             </button>
@@ -214,7 +214,7 @@ function LoginClient() {
               type="button"
               disabled={Boolean(submitting)}
               onClick={() => void submitAuth("signup")}
-              className="mt-3 h-12 w-full rounded-full border border-ink/12 px-5 text-[13px] uppercase tracking-[0.12em] text-ink/56 transition active:scale-[0.99] disabled:opacity-50"
+              className="flora-secondary mt-3 w-full"
             >
               {submitting === "signup" ? "注册中" : "创建账号"}
             </button>

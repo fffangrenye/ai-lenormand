@@ -27,14 +27,14 @@ function Dropdown({ label, children, compact = false }: { label: React.ReactNode
     if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setOpen(false);
   }}>
     <button ref={trigger} type="button" aria-expanded={open} onClick={() => setOpen(!open)}
-      className={`inline-flex items-center justify-center gap-2 rounded-full text-ink/65 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#6E2638] ${compact ? "min-h-9 px-2 text-xs" : "h-11 border border-ink/10 bg-ivory/80 px-3 text-xs"}`}>
+      className={`inline-flex items-center justify-center gap-2 rounded-full text-ink/65 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#6E2638] ${compact ? "min-h-11 px-3 text-[13px]" : "h-11 border border-ink/[0.07] bg-ivory/65 px-3.5 text-[13px] max-[359px]:px-2.5"}`}>
       {label}<ChevronDown size={13} aria-hidden="true" className={open ? "rotate-180" : ""} />
     </button>
-    {open && <div onClick={() => setOpen(false)} className="absolute right-0 top-full z-50 mt-2 w-[min(18rem,calc(100vw-2.5rem))] rounded-xl border border-ink/10 bg-[#FFFDF8] p-2 shadow-paper">{children}</div>}
+    {open && <div onClick={() => setOpen(false)} className="absolute right-0 top-full z-50 mt-2 w-[min(18rem,calc(100vw-2.5rem))] rounded-[22px] border border-ink/[0.07] bg-[#FFFDF8] p-2.5 shadow-[0_16px_48px_-16px_rgba(33,31,27,0.18)]">{children}</div>}
   </div>;
 }
 
-const itemClass = "flex min-h-12 items-center gap-3 rounded-lg px-3 text-sm text-ink/75 hover:bg-[#6E2638]/5 focus-visible:bg-[#6E2638]/5 focus-visible:outline-none";
+const itemClass = "flex min-h-12 items-center gap-3 rounded-[14px] px-4 text-[15px] text-ink/75 hover:bg-[#6E2638]/5 focus-visible:bg-[#6E2638]/5 focus-visible:outline-none";
 
 export function AccountMenu() {
   return <Dropdown label={<><UserRound size={16} aria-hidden="true" /><span className="hidden sm:inline">我的</span><span className="sr-only sm:hidden">账户菜单</span></>}>

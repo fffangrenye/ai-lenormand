@@ -153,17 +153,17 @@ export default function ResetPasswordPage() {
   const canReset = Boolean(recoveryProof);
 
   return (
-    <main className="min-h-dvh bg-paper px-5 py-5 text-ink">
-      <section className="mx-auto flex min-h-[calc(100dvh-40px)] w-full max-w-[430px] flex-col">
+    <main className="flora-page px-5 py-5">
+      <section className="mx-auto flex min-h-[calc(100dvh-40px)] w-full max-w-[460px] flex-col">
         <Link prefetch={false} href="/forgot-password" className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-ink/10 bg-ivory/70 text-ink/70 shadow-sm">
           <ArrowLeft size={18} aria-hidden="true" />
           <span className="sr-only">重新申请密码重置</span>
         </Link>
 
         <div className="flex flex-1 items-center">
-          <form onSubmit={handleSubmit} className="w-full rounded-[6px] border border-ink/10 bg-[#FFFDF8]/86 p-6 shadow-paper">
-            <p className="text-[12px] uppercase tracking-[0.2em] text-clay/70">Flora Lenormand</p>
-            <h1 className="mt-4 font-serif text-[32px] leading-[1.05] text-ink">设置新密码</h1>
+          <form onSubmit={handleSubmit} className="flora-panel my-8 w-full sm:p-9">
+            <p className="flora-eyebrow">Flora Lenormand</p>
+            <h1 className="flora-title mt-3 text-[30px] sm:text-[34px]">设置新密码</h1>
             <p className="mt-4 text-[14px] leading-6 text-ink/58">
               {canReset ? "请输入新密码。更新成功后，你可以用新密码重新登录。" : "只有从最新重置邮件进入这里，才可以设置新密码。"}
             </p>
@@ -182,8 +182,8 @@ export default function ResetPasswordPage() {
                     setNewPassword(event.target.value);
                     setError("");
                   }}
-                  placeholder="至少 8 位"
-                  className="mt-2 h-12 w-full rounded-[4px] border border-ink/12 bg-white/70 px-4 text-[15px] outline-none transition focus:border-ink/35"
+                  placeholder="At least 8 characters"
+                  className="flora-field mt-3 rounded-2xl py-3.5"
                 />
 
                 <label className="mt-5 block text-[13px] text-ink/62" htmlFor="confirm-password">
@@ -198,8 +198,8 @@ export default function ResetPasswordPage() {
                     setConfirmPassword(event.target.value);
                     setError("");
                   }}
-                  placeholder="再输入一次新密码"
-                  className="mt-2 h-12 w-full rounded-[4px] border border-ink/12 bg-white/70 px-4 text-[15px] outline-none transition focus:border-ink/35"
+                  placeholder="Confirm your new password"
+                  className="flora-field mt-3 rounded-2xl py-3.5"
                 />
               </>
             ) : null}
@@ -211,7 +211,7 @@ export default function ResetPasswordPage() {
               <button
                 type="submit"
                 disabled={submitting}
-                className="mt-7 h-12 w-full rounded-full bg-[#6E2638] px-5 text-[13px] uppercase tracking-[0.12em] text-[#FFF9F2] shadow-soft transition active:scale-[0.99] disabled:opacity-60"
+                className="flora-primary mt-7 w-full"
               >
                 {submitting ? "更新中" : "更新密码"}
               </button>
@@ -219,7 +219,7 @@ export default function ResetPasswordPage() {
 
             <Link prefetch={false}
               href={canReset ? "/login" : "/forgot-password"}
-              className="mt-3 flex h-12 w-full items-center justify-center rounded-full border border-ink/12 px-5 text-[13px] uppercase tracking-[0.12em] text-ink/56 transition active:scale-[0.99]"
+              className="flora-secondary mt-3 w-full"
             >
               {canReset ? "返回登录" : "重新发送重置邮件"}
             </Link>

@@ -67,17 +67,17 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <main className="min-h-dvh bg-paper px-5 py-5 text-ink">
-      <section className="mx-auto flex min-h-[calc(100dvh-40px)] w-full max-w-[430px] flex-col">
+    <main className="flora-page px-5 py-5">
+      <section className="mx-auto flex min-h-[calc(100dvh-40px)] w-full max-w-[460px] flex-col">
         <Link prefetch={false} href="/login" className="inline-flex h-11 w-11 items-center justify-center rounded-full border border-ink/10 bg-ivory/70 text-ink/70 shadow-sm">
           <ArrowLeft size={18} aria-hidden="true" />
           <span className="sr-only">返回登录</span>
         </Link>
 
         <div className="flex flex-1 items-center">
-          <form onSubmit={handleSubmit} className="w-full rounded-[6px] border border-ink/10 bg-[#FFFDF8]/86 p-6 shadow-paper">
-            <p className="text-[12px] uppercase tracking-[0.2em] text-clay/70">Flora Lenormand</p>
-            <h1 className="mt-4 font-serif text-[32px] leading-[1.05] text-ink">忘记密码</h1>
+          <form onSubmit={handleSubmit} className="flora-panel my-8 w-full sm:p-9">
+            <p className="flora-eyebrow">Flora Lenormand</p>
+            <h1 className="flora-title mt-3 text-[30px] sm:text-[34px]">忘记密码</h1>
             <p className="mt-4 text-[14px] leading-6 text-ink/58">输入你的注册邮箱，我们会发送密码重置链接。</p>
 
             <label className="mt-8 block text-[13px] text-ink/62" htmlFor="email">
@@ -92,7 +92,7 @@ export default function ForgotPasswordPage() {
                 setError("");
               }}
               placeholder="you@example.com"
-              className="mt-2 h-12 w-full rounded-[4px] border border-ink/12 bg-white/70 px-4 text-[15px] outline-none transition focus:border-ink/35"
+              className="flora-field mt-3 rounded-2xl py-3.5"
             />
 
             {error ? <p className="mt-3 text-[13px] text-[#8E4D4A]">{error}</p> : null}
@@ -101,14 +101,14 @@ export default function ForgotPasswordPage() {
             <button
               type="submit"
               disabled={submitting || cooldownSeconds > 0}
-              className="mt-7 h-12 w-full rounded-full bg-[#6E2638] px-5 text-[13px] uppercase tracking-[0.12em] text-[#FFF9F2] shadow-soft transition active:scale-[0.99] disabled:opacity-60"
+              className="flora-primary mt-7 w-full"
             >
               {submitting ? "发送中" : cooldownSeconds > 0 ? `${cooldownSeconds}s 后可重新发送` : "发送重置邮件"}
             </button>
 
             <Link prefetch={false}
               href="/login"
-              className="mt-3 flex h-12 w-full items-center justify-center rounded-full border border-ink/12 px-5 text-[13px] uppercase tracking-[0.12em] text-ink/56 transition active:scale-[0.99]"
+              className="flora-secondary mt-3 w-full"
             >
               返回登录
             </Link>

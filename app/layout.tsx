@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { Noto_Serif_SC } from "next/font/google";
 import { CookieConsent } from "@/components/CookieConsent";
 import { RecoveryRedirector } from "@/components/RecoveryRedirector";
 import { getPublicSiteUrl } from "@/lib/site-config";
@@ -9,13 +8,6 @@ const siteUrl = getPublicSiteUrl();
 const siteTitle = "花语雷诺曼 · Flora Lenormand · 深度解读";
 const siteDescription = "每日运势 · 是与否 · 深度解读";
 const ogImageUrl = `${siteUrl}/og-flora-v3-20261022.jpg`;
-
-const titleSerif = Noto_Serif_SC({
-  weight: "500",
-  display: "swap",
-  preload: false,
-  variable: "--font-title-serif"
-});
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -54,7 +46,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="zh-CN">
-      <body className={titleSerif.variable}>
+      <body>
         {process.env.PAID_LOCAL_MODE !== "1" && <RecoveryRedirector />}
         {children}
         {process.env.PAID_LOCAL_MODE === "1" && <div className="pointer-events-none fixed inset-x-0 bottom-1 z-[100] text-center text-[10px] text-ink/40">雷诺曼 V3 · 支付为模拟 · {process.env.PAID_LOCAL_MODEL === "deepseek" ? "真实 AI · 记录仅存本机" : "本地模拟预览"} · 未部署</div>}

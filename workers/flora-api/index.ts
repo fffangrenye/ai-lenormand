@@ -4,6 +4,8 @@ import { createCloudProvider } from "../../lib/paid-local/cloud-provider";
 import { reserveReviewedReading, reserveReviewedFollowUp, startReviewedDraw } from "../../lib/paid-local/reviewed-reading";
 import { getGuestReview, issueGuestReview } from "../../lib/paid-local/reviewed-draw";
 import { readingReviewMigration } from "../../lib/paid-local/reading-review-migration";
+import { relationshipMigration } from "../../lib/paid-local/relationship-migration";
+import { normalizeRelationshipContext } from "../../lib/paid-local/relationship-context";
 import { LocalPaidError, isLocalPaidError } from "../../lib/paid-local/guard";
 import { cardCatalog } from "../../lib/paid-local/card-catalog";
 import { hideLockedReadingCards, hideSelectedCards, requireRevealConfirmation } from "../../lib/paid-local/reveal";
@@ -103,6 +105,7 @@ export class FloraLedger {
     if(!sql.exec("SELECT version FROM local_schema_versions WHERE version=10").toArray().length)ctx.storage.transactionSync(()=>sql.exec(costIndexes));
     if(!sql.exec("SELECT version FROM local_schema_versions WHERE version=11").toArray().length)ctx.storage.transactionSync(()=>sql.exec(readingTrashMigration));
     if(!sql.exec("SELECT version FROM local_schema_versions WHERE version=12").toArray().length)ctx.storage.transactionSync(()=>sql.exec(readingReviewMigration));
+    if(!sql.exec("SELECT version FROM local_schema_versions WHERE version=15").toArray().length)ctx.storage.transactionSync(()=>sql.exec(relationshipMigration));
     ensureTelemetrySchema(sql);
     const execute=measuredSql(sql);
     const db={prepare:(query:string)=>({all:(...args:unknown[])=>execute(query,...args),get:(...args:unknown[])=>execute(query,...args)[0],run:(...args:unknown[])=>{execute(query,...args);return{};}}),exec:(query:string)=>execute(query),close:()=>{}};
@@ -121,7 +124,7 @@ export class FloraLedger {
         const choices = Array.isArray(input.choices) ? input.choices.filter((x: unknown): x is string => typeof x === "string") : undefined;
         const provider = createCloudProvider({ key: this.env.AI_KEY, model: this.env.AI_MODEL });
         this.store.limitNewDrawReview("guest:" + (request.headers.get("cf-connecting-ip") || "unknown"));
-        return json(await issueGuestReview({ question: input.question, spread: input.spread, choices }, this.env.CODE_SIGNING_KEY, provider.reviewPaidQuestion));
+        return json(await issueGuestReview({ question: input.question, spread: input.spread, choices, relationship: normalizeRelationshipContext(input.spread, input.relationship) }, this.env.CODE_SIGNING_KEY, provider.reviewPaidQuestion));
       }
       if(new URL(request.url).pathname==="/internal/maintenance" || request.headers.get("x-flora-private-maintenance")==="1"){
         const job=await verifyMaintenance(request,this.env.CODE_SIGNING_KEY,this.env.ADMIN_EMAILS);
@@ -227,7 +230,7 @@ export class FloraLedger {
           if(action==="reading-move")return json(store.moveReading(user,field("readingId"),field("projectId"),field("targetProjectId")));
         }
         const choices=Array.isArray(input.choices) ? input.choices.filter((x):x is string=>typeof x==="string") : undefined;
-        const drawInput={projectId:field("projectId"),question:field("question"),spread:field("spread") as PaidSpread,requestKey:field("requestKey"),choices};
+        const drawInput={projectId:field("projectId"),question:field("question"),spread:field("spread") as PaidSpread,requestKey:field("requestKey"),choices,relationship:normalizeRelationshipContext(field("spread"),input.relationship)};
         const provider=createCloudProvider({key:this.env.AI_KEY,model:this.env.AI_MODEL});
         if(action==="claim-guest-draw"){
           if(field("expectedUserId")!==user)throw new LocalPaidError("ACCOUNT_CHANGED","登录账号已变更，请重新登录后继续。",409);

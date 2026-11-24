@@ -144,7 +144,7 @@ function DeepLoadState({
   return (
     <main className="min-h-dvh bg-paper px-5 text-ink">
       <section className="mx-auto flex min-h-dvh w-full max-w-[430px] flex-col items-center justify-center">
-        <div className="w-full rounded-[6px] border border-ink/10 bg-[#FFFDF8]/82 p-6 text-center shadow-paper">
+        <div className="flora-panel w-full text-center">
           <h1 className="font-serif text-[30px] leading-tight">{title}</h1>
           <p className="mt-4 text-[14px] leading-6 text-ink/56">{message}</p>
           {actionLabel && onAction ? (
@@ -273,7 +273,7 @@ function ProjectDrawer({
       >
         <div className="flex items-start justify-between">
           <div>
-            <p className="text-[12px] uppercase tracking-[0.22em] text-clay/72">Deep Reading</p>
+            <p className="flora-eyebrow">Deep Reading</p>
             <h2 className="mt-2 font-serif text-[25px] leading-tight text-ink">Project Stories</h2>
           </div>
           <button type="button" onClick={onClose} className="grid h-11 w-11 place-items-center rounded-full border border-ink/10 bg-ivory/72 text-ink/58">
@@ -390,7 +390,7 @@ function ProjectSheet({
       />
       <section
         aria-label={mode === "create" ? "创建新项目" : "编辑项目"}
-        className={`fixed inset-x-0 bottom-0 z-[60] mx-auto max-h-[90dvh] w-full max-w-[560px] overflow-y-auto rounded-t-[18px] border border-ink/10 bg-[#FFFDF8] px-5 pb-[calc(env(safe-area-inset-bottom)+22px)] pt-5 shadow-paper transition-transform duration-300 ${
+        className={`fixed inset-x-0 bottom-0 z-[60] mx-auto max-h-[90dvh] w-full max-w-[560px] overflow-y-auto rounded-t-[30px] border border-ink/[0.07] bg-[#FFFDF8] px-5 pb-[calc(env(safe-area-inset-bottom)+22px)] pt-5 shadow-paper transition-transform duration-300 ${
           open ? "translate-y-0" : "translate-y-full"
         }`}
       >
@@ -409,8 +409,8 @@ function ProjectSheet({
               setForm((current) => ({ ...current, title: event.target.value }));
               setError("");
             }}
-            placeholder="例如：学业/工作"
-            className="mt-2 h-12 w-full rounded-[4px] border border-ink/12 bg-white/70 px-4 text-[15px] outline-none focus:border-ink/35"
+            placeholder="Give this chapter a name"
+            className="mt-3 h-[52px] w-full rounded-2xl border border-ink/[0.08] bg-white/70 px-4 text-base outline-none placeholder:text-ink/35 focus:border-[#6E2638]/30"
           />
 
           <label htmlFor="project-memory" className="mt-5 block text-[13px] text-ink/58">
@@ -421,12 +421,12 @@ function ProjectSheet({
             value={form.memorySummary}
             onChange={(event) => { setForm((current) => ({ ...current, memorySummary: event.target.value })); setError(""); }}
             maxLength={projectMemoryLimit}
-            placeholder={projectMemoryHint}
+            placeholder="A little context, in your own words…"
             rows={5}
-            className="mt-2 w-full resize-none rounded-[4px] border border-ink/12 bg-white/70 px-4 py-3 text-[15px] leading-6 outline-none focus:border-ink/35"
+            className="mt-3 w-full resize-none rounded-2xl border border-ink/[0.08] bg-white/70 px-4 py-4 text-base leading-7 outline-none placeholder:text-ink/35 focus:border-[#6E2638]/30"
           />
 
-          <p className="mt-1 text-right text-xs text-ink/55">{form.memorySummary.length}/{projectMemoryLimit}</p>
+          <div className="mt-2 flex items-start justify-between gap-4"><details className="text-[13px] leading-6 text-ink/55"><summary className="cursor-pointer">不知道写什么？</summary><p className="mt-2 max-w-sm">{projectMemoryHint}</p></details><span className="shrink-0 text-xs text-ink/40">{form.memorySummary.length}/{projectMemoryLimit}</span></div>
           {error ? <p className="mt-3 text-[13px] text-[#8E4D4A]">{error}</p> : null}
 
           <div className="mt-6 flex gap-3">
@@ -551,16 +551,16 @@ function ProjectMemory({ project, onSaved }: { project: DeepProject; onSaved: (p
 
   return (
     <section className="max-h-[max(3rem,calc(100dvh-320px))] shrink-0 overflow-y-auto py-2">
-      <form onSubmit={handleSubmit} className="overflow-hidden rounded-[6px] border border-ink/8 bg-[#FFFDF8]/72">
+      <form onSubmit={handleSubmit} className="overflow-hidden rounded-[20px] border border-ink/[0.07] bg-[#FFFDF8]/75">
         <button
           type="button"
           aria-expanded={open}
           onClick={() => setOpen((current) => !current)}
-          className="flex min-h-[46px] w-full items-center justify-between gap-4 px-4 py-3 text-left"
+          className="flex min-h-[62px] w-full items-center justify-between gap-4 px-5 py-4 text-left"
         >
           <div>
-            <p className="text-[12px] uppercase tracking-[0.17em] text-clay/64">长期记忆</p>
-            <p className="mt-1 line-clamp-1 text-[13px] leading-5 text-ink/48">{memory || "未填写长期记忆"}</p>
+            <p className="text-sm text-ink/75">长期记忆</p>
+            <p className="mt-1 line-clamp-1 text-[13px] leading-6 text-ink/50">{memory || "未填写长期记忆"}</p>
           </div>
           <ChevronDown size={18} aria-hidden="true" className={`shrink-0 text-ink/42 transition-transform ${open ? "rotate-180" : ""}`} />
         </button>
@@ -587,12 +587,12 @@ function ProjectMemory({ project, onSaved }: { project: DeepProject; onSaved: (p
                 setSaved(false);
                 setError("");
               }}
-              placeholder={projectMemoryHint}
-              className="mt-4 w-full resize-none rounded-[5px] border border-ink/12 bg-white/72 px-3 py-3 text-[14px] leading-6 outline-none focus:border-ink/35"
+              placeholder="A little context, in your own words…"
+              className="mt-4 w-full resize-none rounded-2xl border border-ink/[0.08] bg-[#FFFDF8] px-4 py-4 text-[15px] leading-7 outline-none placeholder:text-ink/35 focus:border-[#6E2638]/30"
             />
             {error && <p role="alert" className="mt-2 text-xs text-[#8E4D4A]">{error}</p>}
             <div className="mt-2 flex items-center justify-between text-[12px] text-ink/38">
-              <span>{saved ? "长期记忆已保存。" : "不会自动总结，也不会自动调用 AI。"}</span>
+              <span>{saved ? "长期记忆已保存。" : ""}</span>
               <span>{draft.length}/{projectMemoryLimit}</span>
             </div>
           </div>
@@ -662,26 +662,26 @@ function ReadingChapter({ reading, onUnlock, unlocking = false, actions }: { rea
   }
 
   return (
-    <article className="break-words py-6 sm:py-8" data-reading-id={reading.id}>
+    <article className="break-words py-7 sm:py-10" data-reading-id={reading.id}>
       <div className="flex flex-wrap items-center justify-between gap-x-3">
         <p className="text-[12px] uppercase tracking-[0.17em] text-ink/36">{formatProjectDate(reading.createdAt)}</p>
         {actions}
       </div>
-      <h2 className="mt-4 whitespace-pre-wrap font-serif text-[27px] leading-relaxed text-ink sm:text-[32px]">{reading.question}</h2>
+      <h2 className="mt-5 whitespace-pre-wrap font-serif text-[27px] leading-[1.55] text-ink sm:text-[34px]">{reading.question}</h2>
       <div className="mt-3 flex items-center justify-between gap-3">
-        <p className="text-sm leading-6 text-clay/65">{spread.name}</p>
+        <p className="text-sm leading-6 text-ink/55">{spread.name}</p>
         <span className="shrink-0 rounded-full border border-ink/10 bg-ivory/70 px-3 py-1 text-[11px] uppercase tracking-[0.12em] text-ink/44">
           {paidSiteEnabled ? reading.status === "completed" ? isLocalRealAI ? paidOnlineSiteEnabled ? "AI 生成" : "AI 生成 · 本地测试" : "AI 生成 · 本地模拟预览" : cardsLocked ? "牌面已锁定" : "原牌已保存" : isVerifiedRuleReading ? `Rule-based / ${reading.ruleEngineVersion}` : "AI 生成"}
         </span>
       </div>
 
-      <div {...(cardsLocked ? {} : cardSaveHandlers)} className="mt-7 pb-2">
+      <div {...(cardsLocked ? {} : cardSaveHandlers)} className="mt-8 rounded-[22px] bg-paper/50 px-3 py-6 sm:px-5 sm:py-8">
         <SpreadLayout spreadId={spread.id} cards={cardsLocked ? [] : reading.cards} pendingCount={cardsLocked ? spread.positions.length : 0} choices={reading.choices} />
       </div>
 
-      {!cardsLocked && <section className="mt-7">
-        <p className="text-[12px] uppercase tracking-[0.17em] text-clay/64">核心结论</p>
-        <p className="mt-3 font-serif text-[22px] leading-8 text-ink">
+      {!cardsLocked && <section className="mt-8 rounded-[22px] bg-[#6E2638]/[0.035] px-5 py-6 sm:px-6">
+        <p className="deep-eyebrow" aria-label="核心结论">THE ESSENCE</p>
+        <p className="mt-3 font-serif text-[20px] leading-[1.8] text-ink/90 sm:text-[22px]">
           {paidSiteEnabled && reading.status === "drawing" ? "原问题和牌面已保存。解锁后可查看完整主解读，并获得 2 次追问。" : reading.status === "failed"
             ? "这次解读暂时没有生成成功，但你的问题和抽到的牌已经保留。"
             : reading.status === "quota_limited"
@@ -693,27 +693,27 @@ function ReadingChapter({ reading, onUnlock, unlocking = false, actions }: { rea
       </section>}
 
       {reading.status === "completed" ? (
-        <section className="mt-7 space-y-4 text-[16px] leading-8 text-ink/72">
+        <section className="deep-reading-body mt-8 sm:mt-10">
           {paragraphs.map((paragraph) => (
             <p key={paragraph} className="whitespace-pre-line">{paragraph}</p>
           ))}
-          {isVerifiedRuleReading ? <p className="text-sm leading-7 text-ink/65">本次内容由站内规则生成。{serviceNotices.purpose}</p> : <ServiceNotice kind="deep" expanded simulated={paidSiteEnabled && !isLocalRealAI} />}
+          {isVerifiedRuleReading ? <p className="text-sm leading-7 text-ink/65">本次内容由站内规则生成。{serviceNotices.purpose}</p> : <ServiceNotice kind="deep" compact simulated={paidSiteEnabled && !isLocalRealAI} />}
         </section>
       ) : null}
 
       {paidSiteEnabled && reading.status !== "completed" ? (
-        <section className="mt-7 rounded-[6px] border border-clay/14 bg-[#FFFDF8]/72 p-4">
+        <section className="deep-surface mt-8 p-5 sm:p-6">
           <p className="font-serif text-[20px] leading-7 text-ink">{cardsLocked ? "牌已选好，等你翻开" : "解锁本次深度解读"}</p>
           <p className="mt-3 text-[14px] leading-6 text-ink/58">{cardsLocked ? "使用 1 花瓣，揭晓这组牌面、完整解读和 2 次追问。解读失败会退回花瓣，可用同一组牌重试。" : "使用 1 花瓣，包含完整解读与 2 次追问。"}</p>
           <Link prefetch={false} href={`/recharge?readingId=${encodeURIComponent(reading.id)}`} className="mt-3 inline-flex min-h-11 items-center text-sm text-[#6E2638] underline underline-offset-4">{cardsLocked ? "补充花瓣后回来继续" : "充值并返回本问题"}</Link>
           <button disabled={unlocking || reading.status === "generating"} onClick={() => {
             setUnlockError("");
             void onUnlock?.().catch((error: unknown) => setUnlockError(error instanceof Error ? error.message : "解读暂未完成，请重试。"));
-          }} className="mt-4 flex h-12 w-full items-center justify-center gap-2 rounded-full bg-[#6E2638] text-[13px] text-[#FFF9F2] disabled:opacity-50"><Sparkles size={15} />{unlocking || reading.status === "generating" ? "正在解读…" : cardsLocked ? "使用 1 花瓣，翻牌并解读" : "解锁深度解读 · 1 花瓣"}</button>
+          }} className="deep-primary mt-5 w-full"><Sparkles size={15} />{unlocking || reading.status === "generating" ? "正在解读…" : cardsLocked ? "使用 1 花瓣，翻牌并解读" : "解锁深度解读 · 1 花瓣"}</button>
           {unlockError ? <p role="status" className="mt-3 text-[13px] leading-6 text-[#8E4D4A]">{unlockError}</p> : null}
         </section>
       ) : reading.status === "quota_limited" || reading.status === "failed" ? (
-        <section className="mt-7 rounded-[6px] border border-clay/14 bg-[#FFFDF8]/72 p-4">
+        <section className="deep-surface mt-8 p-5 sm:p-6">
           <p className="font-serif text-[20px] leading-7 text-ink">{reading.status === "quota_limited" ? "你还可以这样继续" : "这次 AI 没有成功回复"}</p>
           <p className="mt-3 text-[14px] leading-6 text-ink/58">明天北京时间 00:00 后会获得新的免费 AI 解读次数。现在也可以复制 Prompt，去 ChatGPT / Claude / DeepSeek 等模型自行解读。</p>
           <div className="mt-4 grid gap-2">
@@ -738,9 +738,9 @@ function ReadingChapter({ reading, onUnlock, unlocking = false, actions }: { rea
       ) : null}
 
       {reading.timeWindow || reading.uncertainty ? (
-        <section className="mt-7 rounded-[5px] border border-ink/8 bg-ivory/58 p-4 text-[13px] leading-6 text-ink/52">
+        <section className="mt-8 border-l-2 border-[#6E2638]/15 pl-4 text-[14px] leading-7 text-ink/60">
           {reading.timeWindow ? <p>时间：{reading.timeWindow}</p> : null}
-          {reading.uncertainty ? <p className="mt-2">边界：{reading.uncertainty}</p> : null}
+          {reading.uncertainty ? <p className="mt-2">{reading.uncertainty}</p> : null}
         </section>
       ) : null}
     </article>
@@ -769,19 +769,19 @@ function ReadingFollowUps({ reading }: { reading: ReadingWithCards }) {
     }
     finally { setBusy(false); }
   }
-  return <section className="border-t border-ink/10 pb-6 pt-4" aria-label="这次解读的附属追问">
+  return <section className="border-t border-ink/[0.07] pb-7 pt-5 sm:pb-9" aria-label="这次解读的附属追问">
     {safetyCode && <ReadingSafetyDialog code={safetyCode} followUp onClose={() => setSafetyCode(null)} />}
     <details open={messages.length > 0 || undefined}>
-      <summary className="cursor-pointer py-2 text-sm text-[#6E2638]">{reading.legacyRestored ? "旧站追问记录 · 仅供回看" : `围绕这次解读追问 · 剩余 ${remaining} 次`}</summary>
+      <summary className="cursor-pointer py-3 text-[15px] text-[#6E2638]">{reading.legacyRestored ? "旧站追问记录 · 仅供回看" : `围绕这次解读追问 · 剩余 ${remaining} 次`}</summary>
       <div className="mt-3 space-y-4">{messages.map((message, index) => <div key={message.id} className={message.role === "user" ? "border-l-2 border-[#6E2638]/30 pl-3" : "pl-3"}>
         {message.role === "user" && <p className="mb-1 text-xs text-clay/65">追问 {Math.floor(index / 2) + 1}</p>}
         {message.role === "assistant" && <div className="mb-2"><AIGeneratedLabel followUp simulated={paidSiteEnabled && !paidOnlineSiteEnabled && !paidLocalAIEnabled} /></div>}
         <p className={`whitespace-pre-wrap break-words text-sm leading-7 ${message.role === "user" ? "text-ink/85" : "text-ink/65"}`}>{message.content}</p>
       </div>)}</div>
       {messages.some(message => message.role === "assistant") && <p aria-label="追问内容说明" className="mt-4 border-t border-sage/15 pt-3 text-[13px] leading-7 text-ink/60">{serviceNotices.short}</p>}
-      {remaining > 0 && <form onSubmit={(event) => void submit(event)} className="mt-4 rounded-xl border border-ink/12 bg-paper/60 p-3">
-        <label htmlFor={`follow-${reading.id}`} className="sr-only">追问这次解读</label><textarea id={`follow-${reading.id}`} value={draft} rows={2} maxLength={paidSiteEnabled ? 300 : 500} disabled={busy} onChange={(event) => setDraft(event.target.value)} placeholder="针对上面的牌面，再问一个具体问题…" className="w-full resize-y bg-transparent text-base leading-6 outline-none" />
-        <div className="mt-2 flex items-center justify-between gap-3"><p className="text-xs leading-5 text-ink/40">沿用本次原牌，{paidSiteEnabled ? "不再扣花瓣。" : "继续解读。"}</p><button type="submit" disabled={busy || !draft.trim()} className="min-h-10 shrink-0 rounded-full bg-[#6E2638] px-4 text-xs text-[#FFF9F2] disabled:opacity-40">{busy ? "正在回复…" : "发送追问"}</button></div>
+      {remaining > 0 && <form onSubmit={(event) => void submit(event)} className="mt-5 rounded-[22px] border border-ink/[0.07] bg-paper/55 p-4 sm:p-5">
+        <label htmlFor={`follow-${reading.id}`} className="sr-only">追问这次解读</label><textarea id={`follow-${reading.id}`} value={draft} rows={2} maxLength={paidSiteEnabled ? 300 : 500} disabled={busy} onChange={(event) => setDraft(event.target.value)} placeholder="What would you like to understand further?" className="w-full resize-y bg-transparent text-base leading-7 outline-none placeholder:text-ink/35" />
+        <div className="mt-2 flex items-center justify-between gap-3"><p className="text-xs leading-5 text-ink/40">沿用本次原牌，{paidSiteEnabled ? "不再扣花瓣。" : "继续解读。"}</p><button type="submit" disabled={busy || !draft.trim()} className="deep-primary min-h-11 shrink-0 px-5 text-sm">{busy ? "正在回复…" : "发送追问"}</button></div>
       </form>}
       {error && <p role="alert" className="mt-3 text-sm text-[#8E4D4A]">{error}</p>}
     </details>
@@ -873,11 +873,11 @@ function ReadingWorkspace({ project, projects, readings, onProjectSaved, onReadi
         memoryPrompt={{ hasMemory: Boolean(projectMemoryText(project)), maxLength: projectMemoryLimit, onSave: saveMemoryBeforeDraw }}
         onHistory={() => setView("history")}
         onComplete={(id, message) => { setActiveId(id); setNotice(message || ""); setView("history"); onReadingsChange(); }}
-      /> : <div className="mx-auto w-full max-w-[760px] px-1 sm:px-4">
-        <div className="flex items-center justify-between gap-3 py-5"><p className="text-xs text-ink/45">按时间排列 · 最新问题在下方</p><button type="button" onClick={() => setView("compose")} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[#6E2638] px-5 text-sm text-[#FFF9F2]"><Plus size={15} />新的解读</button></div>
+      /> : <div className="mx-auto w-full max-w-[800px] px-1 sm:px-4">
+        <div className="flex items-center justify-between gap-3 py-5"><p className="deep-eyebrow">YOUR READINGS</p><button type="button" onClick={() => setView("compose")} className="inline-flex min-h-11 items-center gap-2 rounded-full bg-[#6E2638] px-5 text-sm text-[#FFF9F2]"><Plus size={15} />新的解读</button></div>
         {onLoadEarlier && <button type="button" disabled={loadingEarlier} onClick={onLoadEarlier} className="mb-5 min-h-11 w-full rounded-full border border-ink/15 text-sm text-ink/60 disabled:opacity-50">{loadingEarlier ? "正在读取…" : "查看更早的解读"}</button>}
         {ordered.map(reading => (
-          <div key={reading.id} id={"reading-" + reading.id} className="mb-6 rounded-xl border border-ink/10 bg-[#FFFDF8]/70 px-4 shadow-sm sm:px-7">
+          <div key={reading.id} id={"reading-" + reading.id} className="deep-reading-card">
             <ReadingChapter
               reading={reading}
               onUnlock={() => unlock(reading.id)}
@@ -1075,7 +1075,7 @@ export function DeepLandingClient() {
             return;
           }
           const result = await paidSiteRequest<{ id: string; projectId: string }>("claim-guest-draw", {
-            question: draft.question, spread: draft.spread, choices: draft.choices, slots: draft.slots,
+            question: draft.question, spread: draft.spread, choices: draft.choices, slots: draft.slots, relationship: draft.relationship,
             requestKey: draft.id, expectedUserId: owner, approval: draft.approval
           });
           if (cancelled) return;

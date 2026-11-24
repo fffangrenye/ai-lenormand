@@ -2,7 +2,7 @@
 
 import Link from "@/components/SiteLink";
 import { QuietCardBack } from "@/components/QuietCardBack";
-import { AccountMenu } from "@/components/AccountMenu";
+import { FloraHeader } from "@/components/FloraHeader";
 import { ServiceNotice } from "@/components/ServiceNotice";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { motion } from "framer-motion";
@@ -21,7 +21,7 @@ function YesNoQuotaNotice({ used, dailyLimit }: { used: number; dailyLimit: numb
   const loaded = used >= 0;
   const remainingUses = loaded ? Math.max(0, dailyLimit - used) : 0;
   return (
-    <section aria-label="YES OR NO 今日次数" className="mt-6 w-full rounded-2xl border border-[#6E2638]/15 bg-[#FFFDF8]/75 p-4 text-left sm:p-5">
+    <section aria-label="YES OR NO 今日次数" className="mx-auto mt-6 w-full max-w-lg rounded-[22px] border border-ink/[0.06] bg-[#FFFDF8]/65 px-5 py-4 text-left">
       <p aria-live="polite" className="text-[13px] leading-7 text-ink/65">
         {loaded ? <>今日 YES OR NO 剩余 <span className="font-serif text-lg text-[#6E2638]">{remainingUses}</span> 次<span className="text-ink/45"> · 北京时间每日零点更新</span></> : used === -2 ? "正在读取今日 YES OR NO 次数…" : "暂时无法读取今日次数，请允许浏览器本地存储。"}
       </p>
@@ -30,7 +30,7 @@ function YesNoQuotaNotice({ used, dailyLimit }: { used: number; dailyLimit: numb
           <div key={index} aria-hidden="true" className={`h-1.5 flex-1 rounded-full transition-colors ${index < remainingUses ? "bg-[#6E2638]/55" : "bg-[#6E2638]/10"}`} />
         ))}
       </div>
-      <p className="mt-3 text-[12px] leading-6 text-ink/50">YES OR NO功能在升级开发中，为防止用户与开发访问冲突，YES OR NO暂时限量，敬请期待</p>
+      <details className="mt-2 text-[13px] leading-6 text-ink/50"><summary className="w-fit cursor-pointer py-1">关于体验次数</summary><p className="mt-1">YES OR NO功能在升级开发中，为防止用户与开发访问冲突，YES OR NO暂时限量，敬请期待</p></details>
       {used === -1 && <Link href="/deep" className="mt-2 inline-flex min-h-11 items-center text-[13px] text-[#6F2638] underline underline-offset-4">前往深度解读</Link>}
     </section>
   );
@@ -186,13 +186,8 @@ export default function YesNoPage() {
 
   return (
     <main className="min-h-dvh bg-paper text-ink">
-      <section className="mx-auto flex min-h-dvh w-full max-w-[760px] flex-col px-5 pb-8 pt-5">
-        <header className="flex items-center justify-between">
-          <Link prefetch={false} href="/" className="font-serif text-[18px] leading-none tracking-[0.04em] text-ink/86">
-            Flora Lenormand
-          </Link>
-          <AccountMenu />
-        </header>
+      <section className="mx-auto flex min-h-dvh w-full max-w-[760px] flex-col px-5 pb-14 sm:px-8">
+        <FloraHeader />
 
         {stage === "input" ? (
           quotaExhausted ? (
@@ -209,8 +204,8 @@ export default function YesNoPage() {
             </div>
           ) : (
           <div className="flex flex-1 flex-col justify-center py-10">
-            <p className="text-center text-[12px] uppercase tracking-[0.28em] text-sage">Quick Answer</p>
-            <h1 className="mt-5 text-center font-serif text-[42px] leading-none text-ink">Yes or No</h1>
+            <p className="flora-eyebrow text-center">Quick Answer</p>
+            <h1 className="flora-title mt-4 text-center sm:text-[48px]">Yes or No</h1>
             <p className="mt-3 text-center text-[15px] leading-6 text-ink/58">写下一个可以用“是 / 否”倾向回答的问题。</p>
             <YesNoQuotaNotice used={used} dailyLimit={dailyLimit} />
 
@@ -221,8 +216,8 @@ export default function YesNoPage() {
               id="question"
               value={question}
               onChange={(event) => setQuestion(event.target.value.slice(0, 220))}
-              placeholder="例如：我今天会收到来自Ta的消息吗？"
-              className="mt-3 min-h-[132px] max-h-[220px] w-full resize-none rounded-[4px] border border-ink/14 bg-ivory px-4 py-4 text-[16px] leading-7 text-ink shadow-entry outline-none placeholder:text-ink/30 focus:border-ink/32"
+              placeholder="What would you like to know?"
+              className="flora-field mt-3 min-h-[160px] max-h-[260px] resize-none"
             />
             <div className="mt-2 flex items-center justify-between text-[12px] text-ink/42">
               <span />
@@ -232,7 +227,7 @@ export default function YesNoPage() {
             {error ? <p className="mt-4 text-[14px] leading-6 text-[#9C5E55]">{error}</p> : null}
 
             {unsuitable ? (
-              <div className="mt-4 rounded-[4px] border border-[#D4B0A9] bg-[#FFF8F4] p-4 text-[14px] leading-6 text-ink/64">
+              <div className="mt-4 rounded-[20px] border border-[#D4B0A9]/50 bg-[#FFF8F4] p-5 text-sm leading-7 text-ink/65">
                 <p>这个问题更适合深度解读。你可以把它改成一个更明确的 Yes / No 问题。</p>
                 <Link prefetch={false} href="/login" className="mt-3 inline-block border-b border-ink/24 pb-1 text-[12px] uppercase tracking-[0.14em] text-ink/60">
                   Deep Reading
@@ -244,7 +239,7 @@ export default function YesNoPage() {
               type="button"
               onClick={() => void startReading()}
               disabled={starting || used < 0}
-              className="mt-7 h-12 rounded-full bg-[#6F2638] px-6 text-[13px] uppercase tracking-[0.14em] text-[#FDF8EF] shadow-entry transition active:translate-y-px disabled:opacity-50"
+              className="flora-primary mt-6"
             >
               抽牌看倾向
             </button>
@@ -253,8 +248,8 @@ export default function YesNoPage() {
           )
         ) : (
           <div className="flex flex-1 flex-col py-8">
-            <p className="text-center text-[12px] uppercase tracking-[0.28em] text-sage">Yes or No</p>
-            <p className="mx-auto mt-5 max-w-[320px] text-center font-serif text-[22px] leading-7 text-ink">{question}</p>
+            <p className="flora-eyebrow text-center">Yes or No</p>
+            <p className="flora-title mx-auto mt-5 max-w-xl text-center">{question}</p>
             <YesNoQuotaNotice used={used} dailyLimit={dailyLimit} />
 
             <div {...(cards.length ? cardSaveHandlers : {})} className="mx-auto mt-8 flex w-full max-w-[400px] justify-center gap-2 sm:gap-4">
@@ -274,11 +269,11 @@ export default function YesNoPage() {
                   </p>
                 </div>
 
-                <article className="mt-7 rounded-[4px] border border-ink/12 bg-ivory px-5 py-5 text-[15px] leading-7 text-ink/68 shadow-entry">
+                <article className="flora-panel mt-8 text-base leading-8 text-ink/70">
                   这是一份快速倾向参考，仅依据三张牌的正负倾向给出简答，未结合具体问题、牌位与组合关系展开分析，可能与实际情况不符。
                 </article>
 
-                <aside aria-label="进一步了解这个问题" className="mt-6 rounded-[6px] border border-[#C9CEBC]/65 bg-[#F2F1E9]/70 px-5 py-6 text-center sm:px-8">
+                <aside aria-label="进一步了解这个问题" className="flora-panel mt-5 bg-[#EDEFE7]/65 text-center">
                   <p className="font-serif text-[17px] leading-8 text-ink/80">
                     {deepReadingInvitations[result]}
                   </p>
@@ -289,7 +284,7 @@ export default function YesNoPage() {
                   <p className="mt-3 text-[12px] leading-6 text-ink/50">三牌深入解读 · 1 花瓣 · 含 2 次追问</p>
                 </aside>
 
-                <ServiceNotice kind="yesNo" expanded />
+                <ServiceNotice kind="yesNo" compact />
 
                 <div className="mt-6 grid gap-3">
                   {quotaExhausted ? (
@@ -298,7 +293,7 @@ export default function YesNoPage() {
                     <button
                       type="button"
                       onClick={reset}
-                      className="h-12 rounded-full border border-ink/14 px-6 text-[13px] tracking-[0.1em] text-ink/65 transition-colors hover:bg-ink/[0.03]"
+                      className="flora-secondary"
                     >
                       再问一个问题
                     </button>

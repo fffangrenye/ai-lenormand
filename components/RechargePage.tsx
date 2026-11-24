@@ -53,7 +53,7 @@ export function RechargeClient() {
   },[router,readingId]);
   return <AccountFrame title="补充花瓣">
     <p className="-mt-3 max-w-xl text-sm leading-7 text-ink/65">1 花瓣解锁 1 次完整深度解读，含同一问题的 {paidConfig.followUpsPerReading} 次追问。花瓣长期有效，可以分开使用。</p>
-    <section className="mt-5 flex flex-wrap items-center justify-between gap-x-5 gap-y-2 rounded-xl border border-[#6E2638]/15 bg-[#6E2638]/[0.025] px-4 py-3 sm:px-5" aria-label="购买与兑换">
+    <section className="mt-7 flex flex-wrap items-center justify-between gap-5 rounded-[24px] border border-ink/[0.06] bg-[#FFFDF8]/65 p-5 sm:p-6" aria-label="购买与兑换">
       <div>
         <p className="text-sm text-ink/75">闲鱼付款 <span aria-hidden="true">→</span> 收到充值码 <span aria-hidden="true">→</span> 回 Flora 兑换</p>
         <p className="mt-1 text-xs leading-5 text-ink/55">兑换后，花瓣到账至当前账号。</p>
@@ -65,21 +65,21 @@ export function RechargeClient() {
     {paidOnlineSiteEnabled && catalog && !packages.some(item => item.ready) && <p className="mt-3 text-xs leading-6 text-[#6E2638]">充值库存准备中，已有正式充值码仍可兑换。</p>}
     {error && <p role="alert" className="mt-6 text-sm text-[#6E2638]">{error}</p>}
     {!catalog && !error && <p role="status" className="py-10 text-sm text-ink/50">正在读取套餐…</p>}
-    <section className="mt-6 grid gap-4 md:grid-cols-3" aria-label="花瓣套餐">
+    <section className="mt-8 grid gap-4 md:grid-cols-3 sm:gap-5" aria-label="花瓣套餐">
       {packages.map(item => {
         const featured = item.id === "ten" && item.ready;
         const savings = featured && five && five.credits * 2 === item.credits ? 2 * five.amountCents - item.amountCents : 0;
-        return <article key={item.id} id={`petal-${item.id}`} className={`flex min-w-0 scroll-mt-6 flex-col rounded-2xl border p-5 sm:p-6 ${featured ? "border-[#6E2638]/45 bg-[#FCF4F0] shadow-sm" : "border-ink/10 bg-[#FFFDF8]"}`}>
+        return <article key={item.id} id={`petal-${item.id}`} className={`flex min-w-0 scroll-mt-6 flex-col rounded-[26px] border p-6 sm:p-7 ${featured ? "border-[#6E2638]/30 bg-[#FAF3EF] shadow-[0_12px_32px_-24px_rgba(110,38,56,0.25)]" : "border-ink/[0.07] bg-[#FFFDF8]/85"}`}>
           <div className="flex items-center justify-between gap-2">
             <Flower2 size={22} className="shrink-0 text-[#6E2638]/80" aria-hidden="true"/>
             {(featured || item.id !== "ten") && <span className={`rounded-full px-2.5 py-1 text-xs ${featured ? "bg-[#6E2638]/10 text-[#6E2638]" : "bg-ink/5 text-ink/60"}`}>{packageLabels[item.id]}</span>}
           </div>
-          <h2 className="mt-4 font-serif text-3xl text-ink">{item.credits} 花瓣</h2>
+          <h2 className="mt-6 font-serif text-[32px] text-ink">{item.credits} 花瓣</h2>
           <p className="mt-2 text-sm leading-6 text-ink/75">{item.credits} 次完整解读 + {item.credits * paidConfig.followUpsPerReading} 次追问</p>
-          <p className="mt-4 text-2xl font-medium text-[#6E2638]">{money(item.amountCents)}<span className="ml-2 text-xs font-normal text-ink/55">实付</span></p>
-          <p className="mt-1 text-xs leading-5 text-ink/60">每次完整解读{item.amountCents % item.credits ? "约 " : " "}{money(item.amountCents / item.credits)}，含 {paidConfig.followUpsPerReading} 次追问</p>
-          {savings > 0 && <p className="mt-2 text-xs leading-5 text-[#6E2638]">比买两份 5 花瓣省 {money(savings)}</p>}
-          <div className="mt-auto pt-5">
+          <p className="mt-6 font-serif text-[36px] text-[#6E2638]">{money(item.amountCents)}<span className="ml-2 text-xs font-normal text-ink/55">实付</span></p>
+          <p className="mt-1 text-[13px] leading-6 text-ink/60">每次完整解读{item.amountCents % item.credits ? "约 " : " "}{money(item.amountCents / item.credits)}，含 {paidConfig.followUpsPerReading} 次追问</p>
+          {savings > 0 && <p className="mt-2 text-[13px] leading-6 text-[#6E2638]">比买两份 5 花瓣省 {money(savings)}</p>}
+          <div className="mt-auto pt-7">
             {item.ready ? <XianyuPurchaseLink purchaseUrl={item.purchaseUrl} credits={item.credits} featured={featured}/> : <button disabled className={`${paymentButton} w-full !px-3`}>{paidOnlineSiteEnabled && item.id!=="ten" ? "充值准备中" : "商品审核中"}</button>}
           </div>
         </article>;

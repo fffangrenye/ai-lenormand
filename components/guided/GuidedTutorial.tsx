@@ -9,7 +9,7 @@ const slides = [
   {
     title: "写下一个主问题",
     description: "说清这次想看什么。愿意的话，可以补一点背景，让推荐更贴近你的处境。",
-    artwork: <div className="w-full max-w-[250px] rounded-xl border border-[#715A80]/15 bg-[#FFFDF8] px-4 py-3 text-left shadow-sm">
+    artwork: <div className="w-full max-w-[250px] rounded-[20px] border border-[#715A80]/10 bg-[#FFFDF8] px-4 py-3 text-left shadow-sm">
       <p className="font-serif text-sm text-[#574463]">这一次，你想问什么？</p>
       <p className="mt-2 rounded-lg border border-[#715A80]/20 bg-[#F9F5F9] px-3 py-2 text-xs leading-5 text-ink/80">这段关系接下来怎样相处会更自然？</p>
       <p className="mt-2 text-[11px] text-ink/60">想补充的背景 · 可选</p>
@@ -91,8 +91,8 @@ export function GuidedTutorial() {
     <button ref={trigger} type="button" onClick={() => open(true)} aria-haspopup="dialog" className="inline-flex min-h-11 shrink-0 items-center gap-1.5 rounded-full border border-[#715A80]/25 bg-[#FFFDF8] px-3 text-sm text-[#574463] hover:bg-[#715A80]/5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#715A80]">
       <BookOpen size={15} aria-hidden="true" />使用说明
     </button>
-    <dialog ref={dialog} aria-labelledby="guided-tutorial-title" onCancel={event => { event.preventDefault(); dismiss(); }} className="m-auto max-h-[94dvh] w-[calc(100%-1.5rem)] max-w-[420px] overflow-y-auto overscroll-contain rounded-2xl border border-[#715A80]/20 bg-[#FFFDF8] text-ink shadow-paper backdrop:bg-ink/40">
-      <div className="flex items-center justify-between gap-2 px-4 pb-1 pt-2 sm:px-5">
+    <dialog ref={dialog} aria-labelledby="guided-tutorial-title" onCancel={event => { event.preventDefault(); dismiss(); }} className="m-auto max-h-[94dvh] w-[calc(100%-1.5rem)] max-w-[420px] overflow-y-auto overscroll-contain rounded-[28px] border border-[#715A80]/15 bg-[#FFFDF8] text-ink shadow-paper backdrop:bg-ink/25">
+      <div className="flex items-center justify-between gap-2 px-5 pb-2 pt-4 sm:px-6">
         <h2 id="guided-tutorial-title" className="font-serif text-lg text-[#574463]">{title}</h2>
         <button type="button" onClick={dismiss} aria-label="关闭使用说明" className={iconButton}><X size={18} aria-hidden="true" /></button>
       </div>
@@ -100,7 +100,7 @@ export function GuidedTutorial() {
         const { scrollLeft, clientWidth } = event.currentTarget;
         if (clientWidth) setIndex(Math.max(0, Math.min(slides.length - 1, Math.round(scrollLeft / clientWidth))));
       }} className="flex snap-x snap-mandatory overflow-x-auto overscroll-x-contain [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-        {slides.map((slide, slideIndex) => <section key={slide.title} aria-hidden={index !== slideIndex} className="w-full shrink-0 snap-start snap-always space-y-2 px-4 sm:px-5">
+        {slides.map((slide, slideIndex) => <section key={slide.title} aria-hidden={index !== slideIndex} className="w-full shrink-0 snap-start snap-always space-y-3 px-5 sm:px-6">
           <div aria-hidden="true" className="grid h-[clamp(138px,26dvh,184px)] place-items-center rounded-xl border border-[#715A80]/15 bg-gradient-to-br from-[#F5EEF6] via-[#F8F3F3] to-[#F5F0E6] px-3">
             {slide.artwork}
           </div>
@@ -117,8 +117,8 @@ export function GuidedTutorial() {
         )}</div>
         <button type="button" className={iconButton} aria-label="下一张" disabled={index === slides.length - 1} onClick={() => goTo(index + 1)}><ChevronRight size={20} aria-hidden="true" /></button>
       </div>
-      <div className="px-4 pb-4 sm:px-5">
-        <button type="button" onClick={dismiss} className="min-h-11 w-full rounded-full bg-[#6E2638] px-4 text-sm font-medium text-white hover:bg-[#5A2030] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#6E2638]">知道了，去玩一下</button>
+      <div className="px-5 pb-5 sm:px-6">
+        <button type="button" onClick={dismiss} className="flora-primary w-full">知道了，去玩一下</button>
       </div>
     </dialog>
   </>;

@@ -1,3 +1,4 @@
+import { relationshipMigration } from "../paid-local/relationship-migration";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {DatabaseSync} from "node:sqlite";
@@ -13,7 +14,7 @@ import {readDrawDraft,saveDrawDraft,recoverDrawTokens,clearDrawDraft} from "../p
 import {staticApplicationPaths,staticLegalPaths,isStaticPublicHref,safeSitePath} from "../public-routes";
 
 function fixture(){
- const db=new DatabaseSync(":memory:");db.exec(schema);db.exec(costIndexes);const queries:string[]=[];let fail=false;
+ const db=new DatabaseSync(":memory:");db.exec(schema);db.exec(relationshipMigration);db.exec(costIndexes);const queries:string[]=[];let fail=false;
  const proxy={prepare(sql:string){queries.push(sql);const statement=db.prepare(sql);if(fail&&sql.startsWith("INSERT INTO paid_readings"))return {run(){throw Error("fixture disk failure");}};return statement;}} as DatabaseSync;
  const tx=<T>(fn:()=>T)=>{db.exec("BEGIN");try{const result=fn();db.exec("COMMIT");return result;}catch(e){db.exec("ROLLBACK");throw e;}};
  const store=new PaidLedger(proxy,tx,()=>Date.parse("2026-10-24T07:00:00Z"));const uid=randomUUID(),other=randomUUID();store.ensureUser(uid,"one@example.invalid");store.ensureUser(other,"two@example.invalid");const project=store.saveProject(uid,{title:"请求优化测试"});

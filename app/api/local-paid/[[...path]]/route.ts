@@ -1,3 +1,4 @@
+import { normalizeRelationshipContext } from "@/lib/paid-local/relationship-context";
 import { NextRequest, NextResponse } from "next/server";
 import { assertLocalRequest, isLocalPaidError, LocalPaidError } from "@/lib/paid-local/guard";
 import { getPaidLocalStore } from "@/lib/paid-local/store";
@@ -134,7 +135,7 @@ export async function POST(request: NextRequest, { params }: Context) {
       return response;
     }
     const choices = Array.isArray(input.choices) ? input.choices.filter((value): value is string => typeof value === "string") : undefined;
-    const drawQuestion = { question: field("question"), spread: field("spread") as PaidSpread, choices };
+    const drawQuestion = { question: field("question"), spread: field("spread") as PaidSpread, choices, relationship: normalizeRelationshipContext(field("spread"), input.relationship) };
     if (action === "guest-review") {
       store.limitNewDrawReview("local-guest");
       return json(await issueGuestReview(drawQuestion, guestReviewKey, reviewPaidQuestion));
@@ -182,7 +183,7 @@ export async function POST(request: NextRequest, { params }: Context) {
     if (action === "reading-restore") return json(store.restoreReading(userId, field("readingId"), field("targetProjectId") || undefined));
     if (action === "reading-move") return json(store.moveReading(userId, field("readingId"), field("projectId"), field("targetProjectId")));
     if (action === "project-remove") { store.archiveProject(userId, field("projectId")); return json({ ok: true }); }
-    if (action === "draw") return json(visibleReading(store.draw(userId, { question: field("question"), spread: field("spread") as PaidSpread, requestKey: field("requestKey"), projectId: field("projectId") || undefined, choices })));
+    if (action === "draw") return json(visibleReading(store.draw(userId, { question: field("question"), spread: field("spread") as PaidSpread, requestKey: field("requestKey"), projectId: field("projectId") || undefined, choices, relationship: drawQuestion.relationship })));
     if (action === "claim-guest-draw") {
       if (field("expectedUserId") !== userId) throw new LocalPaidError("ACCOUNT_CHANGED", "登录账号已变更，请重新登录后继续。", 409);
       const approval = field("approval");

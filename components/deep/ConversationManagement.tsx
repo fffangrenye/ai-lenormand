@@ -9,9 +9,9 @@ import type { PaidProject, ReadingTrashPage, TrashedReading } from "@/lib/paid-l
 type ProjectChoice = Pick<PaidProject, "id" | "title">;
 export type ConversationAction = { kind: "move" | "delete"; reading: { id: string; question: string } };
 
-const primary = "inline-flex min-h-11 items-center justify-center rounded-full bg-[#6E2638] px-5 text-sm text-[#FFF9F2] disabled:opacity-40";
-const secondary = "inline-flex min-h-11 items-center justify-center rounded-full border border-ink/15 px-5 text-sm text-ink/70 disabled:opacity-40";
-const selectClass = "mt-2 min-h-11 w-full rounded-lg border border-ink/15 bg-[#FFFDF8] px-3 text-sm text-ink";
+const primary = "flora-primary";
+const secondary = "flora-secondary";
+const selectClass = "flora-field mt-3 rounded-2xl py-3";
 const expiryFormat = new Intl.DateTimeFormat("zh-CN", {
   timeZone: "Asia/Shanghai", year: "numeric", month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit", hour12: false
 });
@@ -32,9 +32,9 @@ export function Modal({ title, busy, onClose, children }: { title: string; busy:
         event.preventDefault();
         if (!busy) onClose();
       }}
-      className="m-auto max-h-[85dvh] w-[calc(100%-2rem)] max-w-lg overflow-y-auto rounded-2xl border border-ink/10 bg-[#FFFDF8] p-5 text-ink shadow-paper backdrop:bg-ink/35 sm:p-7"
+      className="flora-dialog"
     >
-      <h2 id={heading} className="font-serif text-2xl">{title}</h2>
+      <h2 id={heading} className="flora-section-title pr-8">{title}</h2>
       {children}
     </dialog>
   );
@@ -88,7 +88,7 @@ export function ConversationDialog({ action, projectId, projects, onClose, onDon
 
   return (
     <Modal title={deleting ? "删除这条对话？" : "移动到项目"} busy={busy} onClose={onClose}>
-      <p className="mt-3 break-words rounded-lg bg-paper p-3 text-sm leading-6 text-ink/75">{action.reading.question}</p>
+      <p className="mt-3 break-words rounded-2xl bg-paper/65 p-4 text-sm leading-6 text-ink/75">{action.reading.question}</p>
       <form onSubmit={submit}>
         {deleting ? (
           <p className="mt-3 text-sm leading-6 text-ink/65">这条对话的牌面、解读和追问会一起移入回收站。30 天内可前往「我的主页 → 对话回收站」恢复。</p>
@@ -201,7 +201,7 @@ export function ReadingTrashDialog({ onClose }: { onClose: () => void }) {
             const original = projects.find(project => project.id === item.projectId);
             const destination = original?.id || destinations[item.id] || "";
             return (
-              <li key={item.id} className="rounded-xl border border-ink/10 p-3 sm:p-4">
+              <li key={item.id} className="rounded-[20px] border border-ink/[0.07] p-4 sm:p-5">
                 <p className="break-words text-sm leading-6">{item.question}</p>
                 <p className="mt-1 break-words text-xs leading-5 text-ink/55">原项目 {item.projectTitle || "未归档"} · 可恢复至 {expiryFormat.format(new Date(item.expiresAt))}（北京时间）</p>
                 {!original && (

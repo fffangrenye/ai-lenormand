@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, Check, RotateCcw, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, Flower2, RotateCcw, Sparkles } from "lucide-react";
 import { deepSpreads, getDeepSpread, type DeepSpreadId } from "@/lib/deep-spreads";
 import { completePaidRequestKey, getPaidSiteSession, PaidSiteError, paidRevealConfirmationEnabled, paidSiteEnabled, paidSiteRequest, stablePaidRequestKey } from "@/lib/paid-local/site-bridge";
 import { clearDrawDraft, readDrawDraft, recoverDrawTokens, saveDrawDraft } from "@/lib/paid-local/draw-draft";
@@ -11,8 +11,11 @@ import { isReadingSafetyCode, type ReadingSafetyCode } from "@/lib/paid-local/re
 import type { PaidDrawSession } from "@/lib/paid-local/types";
 import { generateDeepReading, saveReading } from "@/lib/project-store";
 import { SpreadLayout } from "./SpreadLayout";
+import { SpreadPicker } from "./SpreadPicker";
 import { ShuffleRitual } from "./ShuffleRitual";
 import { ReadingMemoryPrompt } from "./ReadingMemoryPrompt";
+import { RelationshipSetup } from "./RelationshipSetup";
+import type { RelationshipContext } from "@/lib/paid-local/relationship-context";
 import { ReadingSafetyDialog } from "./ReadingSafetyDialog";
 import { QuietCardBack } from "@/components/QuietCardBack";
 import { ServiceNotice } from "@/components/ServiceNotice";
@@ -63,13 +66,14 @@ export function DivinationExperience({ projectId = "", historyCount = 0, ruleEng
   const [question, setQuestion] = useState("");
   const [spreadId, setSpreadId] = useState<DeepSpreadId>("three_card");
   const [choices, setChoices] = useState(["", "", ""]);
+  const [relationship, setRelationship] = useState<RelationshipContext | undefined>();
   const [session, setSession] = useState<PaidDrawSession | null>(null);
   const [pending, setPending] = useState<PaidDrawSession | null>(null);
   const [pendingQueuedCount, setPendingQueuedCount] = useState(0);
   const [queued, setQueued] = useState<string[]>([]);
   const queuedRef = useRef<string[]>([]);
   const draftOwner = useRef("");
-  const [phase, setPhase] = useState<"setup" | "shuffle" | "shuffling" | "picking" | "interpreting">("setup");
+  const [phase, setPhase] = useState<"setup" | "relationship" | "shuffle" | "shuffling" | "picking" | "interpreting">("setup");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [safetyCode, setSafetyCode] = useState<ReadingSafetyCode | null>(null);
@@ -105,14 +109,19 @@ export function DivinationExperience({ projectId = "", historyCount = 0, ruleEng
     if (!question.trim()) { setError("先写下这次想问的具体问题。"); return; }
     if (size && (values.some((value) => !value) || new Set(values).size !== size)) { setError(`请填写 ${size} 个不同的具体选项。`); return; }
     setError("");
+    if (spreadId === "h_seven") { setPhase("relationship"); return; }
+    prepareShuffle();
+  }
+
+  function prepareShuffle(selection?: RelationshipContext) {
     if (memoryPrompt && !memoryPrompt.hasMemory) {
       setShowMemoryPrompt(true);
       return;
     }
-    void continueToShuffle();
+    void continueToShuffle(selection);
   }
 
-  async function continueToShuffle() {
+  async function continueToShuffle(selection = relationship) {
     if (checking.current) return;
     setShowMemoryPrompt(false);
     if (!paidSiteEnabled) { setPhase("shuffle"); return; }
@@ -121,7 +130,7 @@ export function DivinationExperience({ projectId = "", historyCount = 0, ruleEng
     setError("");
     try {
       const values = choices.slice(0, getDeepSpread(spreadId).choiceCount || 0).map(value => value.trim());
-      const fields = { question: question.trim(), spread: spreadId, choices: values };
+      const fields = { question: question.trim(), spread: spreadId, choices: values, ...(spreadId === "h_seven" && selection ? { relationship: selection } : {}) };
       if (guest) {
         const { approval } = await paidSiteRequest<{ approval: string }>("guest-review", fields);
         guestApproval.current = approval;
@@ -153,6 +162,7 @@ export function DivinationExperience({ projectId = "", historyCount = 0, ruleEng
         setChoices(["", "", ""]);
         guestApproval.current = "";
         setSafetyCode(cause.code);
+        setPhase("setup");
       } else setError(cause instanceof Error ? cause.message : "暂时无法完成问题审查，请稍后重试。");
     } finally {
       checking.current = false;
@@ -175,6 +185,7 @@ export function DivinationExperience({ projectId = "", historyCount = 0, ruleEng
         await pause(900);
         setSession({
           id: crypto.randomUUID(), projectId: "", question: question.trim(), spread: spreadId, choices: values,
+          ...(spreadId === "h_seven" && relationship ? { relationship } : {}),
           deck: Array.from({ length: guestDeckSize }, (_, index) => ({ token: String(index), picked: false })),
           selected: [], state: "picking", readingId: null
         });
@@ -286,7 +297,7 @@ export function DivinationExperience({ projectId = "", historyCount = 0, ruleEng
   function continueToLogin() {
     if (!session || queuedRef.current.length !== spread.positions.length || picking.current) return;
     try {
-      saveGuestDraw({ id: session.id, question: session.question, spread: session.spread, choices: session.choices, slots: queuedRef.current.map(Number), approval: guestApproval.current || undefined });
+      saveGuestDraw({ id: session.id, question: session.question, spread: session.spread, choices: session.choices, relationship: session.relationship, slots: queuedRef.current.map(Number), approval: guestApproval.current || undefined });
       picking.current = true;
       setBusy(true);
       router.push(`/login?returnTo=${encodeURIComponent(`/deep?resumeDraw=${session.id}`)}`);
@@ -297,10 +308,25 @@ export function DivinationExperience({ projectId = "", historyCount = 0, ruleEng
   async function resume(value:PaidDrawSession){
     if (checking.current) return;
     draftOwner.current=getPaidSiteSession()?.userId||"";
-    setSession(value);setQuestion(value.question);setSpreadId(value.spread);setChoices([...value.choices,"","",""] .slice(0,3));
+    setRelationship(value.relationship);setSession(value);setQuestion(value.question);setSpreadId(value.spread);setChoices([...value.choices,"","",""] .slice(0,3));
     updateQueued(recoverDrawTokens(value,readDrawDraft(draftOwner.current,projectId)));setPhase("picking");
     if(value.state==="completed")await finish(value);
   }
+
+  if (phase === "relationship") return <>
+    <RelationshipSetup question={question.trim()} initial={relationship} busy={busy} error={error} onBack={() => { setError(""); setPhase("setup"); }} onContinue={value => { setRelationship(value); prepareShuffle(value); }} />
+    {showMemoryPrompt && memoryPrompt && (
+      <ReadingMemoryPrompt
+        maxLength={memoryPrompt.maxLength}
+        onClose={() => setShowMemoryPrompt(false)}
+        onSkip={continueToShuffle}
+        onSave={async (memory) => {
+          await memoryPrompt.onSave(memory);
+          continueToShuffle();
+        }}
+      />
+    )}
+  </>;
 
   if (phase === "shuffle") return <ShuffleRitual question={question} spreadName={spread.name} onBack={() => setPhase("setup")} onReady={() => void start()} />;
 
@@ -309,44 +335,42 @@ export function DivinationExperience({ projectId = "", historyCount = 0, ruleEng
     <p className="font-serif text-3xl">{phase === "shuffling" ? "切牌中" : "正在解读"}</p><p className="mt-4 max-w-xs text-sm leading-7 text-ink/50">{phase === "shuffling" ? "轻轻切好这副牌，准备展开牌扇。" : "你的牌已全部归位，正在结合牌阵与问题梳理解读。"}</p>
   </section>;
 
-  if (phase === "picking" && session) return <section className="py-5 sm:py-8">
+  if (phase === "picking" && session) return <section className="deep-stage">
     <div className="flex items-center justify-between gap-3"><button type="button" disabled={busy} onClick={() => {
       if (guest) { setSession(null); updateQueued([]); setPhase("setup"); }
       else void syncPicks(session,queuedRef.current,true);
     }} className="inline-flex min-h-10 items-center gap-2 text-xs text-ink/50"><ArrowLeft size={14} />{guest ? "返回问题" : "暂存并返回"}</button><span className="text-xs text-[#6E2638]" aria-live="polite">已抽 {selectedCount} / {spread.positions.length} 张</span></div>
-    <h1 className="mt-3 font-serif text-2xl">{spread.name}</h1><p className="mt-2 break-words text-sm leading-6 text-ink/60">{session.question}</p>
-    <div className="mt-6 grid items-center gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-10">
+    <p className="deep-eyebrow mt-6">CHOOSE YOUR CARDS</p><h1 className="deep-title mt-3">{session.question}</h1><p className="mt-3 text-sm text-ink/55">{spread.name}</p>
+    <div className="mt-9 grid items-center gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:gap-10">
       <div><SpreadLayout spreadId={spread.id} cards={visibleCards} pendingCount={selectedCount - visibleCards.length} choices={session.choices} compact /><p className="mt-3 text-center text-xs leading-6 text-ink/45" aria-live="polite">{busy ? "牌正在归位…" : `下一张 → ${spread.positions[selectedCount]?.label || "牌面已完整"}`}</p></div>
       <div className="min-w-0"><CardFan session={{...session,deck:session.deck.map(card=>({...card,picked:card.picked||queued.includes(card.token)}))}} busy={busy} onPick={pick} />
         {selectedCount < spread.positions.length && <div className="mt-5 flex flex-wrap items-center justify-center gap-x-4 gap-y-2">
-          <button type="button" disabled={busy} onClick={autoPickRemaining} className="inline-flex min-h-11 items-center gap-2 rounded-full border border-[#6E2638]/25 px-5 text-sm text-[#6E2638] hover:bg-[#6E2638]/5 disabled:opacity-50"><Sparkles size={15} aria-hidden="true" />自动选牌</button>
+          <button type="button" disabled={busy} onClick={autoPickRemaining} className="deep-secondary"><Sparkles size={15} aria-hidden="true" />自动选牌</button>
           {!selectedCount && <button type="button" disabled={busy} onClick={() => setPhase("shuffle")} className="inline-flex min-h-11 items-center gap-2 text-xs text-[#6E2638]"><RotateCcw size={14} />再洗一次</button>}
         </div>}
-        {selectedCount === spread.positions.length && (guest || !busy) && <button type="button" disabled={busy} onClick={guest ? continueToLogin : () => void syncPicks(session, queuedRef.current)} className="mx-auto mt-5 flex min-h-11 items-center rounded-full bg-[#6E2638] px-6 text-sm text-[#FFF9F2] disabled:opacity-50">{guest ? "登录后继续解读" : paidRevealConfirmationEnabled ? "保存选好的牌" : "同步并开始解读"}</button>}
-        <p className="mt-4 text-center text-[11px] leading-5 text-ink/55">{guest ? "选牌免费。登录后会保留你的选择，确认翻牌时使用 1 花瓣，含 2 次追问。" : paidRevealConfirmationEnabled ? "选牌免费。选满后可使用 1 花瓣翻牌并解读，含 2 次追问。" : "选择会在本机暂存，选满后统一翻牌并解读，使用 1 花瓣；解读失败不扣花瓣。"}</p>
+        {selectedCount === spread.positions.length && (guest || !busy) && <button type="button" disabled={busy} onClick={guest ? continueToLogin : () => void syncPicks(session, queuedRef.current)} className="deep-primary mx-auto mt-5 flex">{guest ? "登录后继续解读" : paidRevealConfirmationEnabled ? "保存选好的牌" : "同步并开始解读"}</button>}
+        <p className="mt-5 text-center text-xs leading-6 text-ink/50">{guest ? "选牌免费，登录后保留本次选择。" : paidRevealConfirmationEnabled ? "选满后使用 1 花瓣翻牌，含完整解读与 2 次追问。" : "选牌会暂存，选满后统一解读；失败不扣花瓣。"}</p>
       </div>
     </div>
     {error && <p role="alert" className="mt-5 rounded-lg border border-[#6E2638]/15 p-3 text-sm leading-6 text-[#8E4D4A]">{error}</p>}
   </section>;
 
-  return <>{safetyCode && <ReadingSafetyDialog code={safetyCode} onClose={() => setSafetyCode(null)} />}<form onSubmit={beginShuffle} className="py-6 sm:py-10">
+  return <>{safetyCode && <ReadingSafetyDialog code={safetyCode} onClose={() => setSafetyCode(null)} />}<form onSubmit={beginShuffle} className="deep-stage">
     <fieldset disabled={busy} className="m-0 min-w-0 border-0 p-0">
-    <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-xs uppercase tracking-[0.2em] text-clay/65">A question, a little clarity</p>{historyCount > 0 && <button type="button" onClick={onHistory} className="min-h-10 text-xs text-[#6E2638]">查看历史解读（{historyCount}）<ArrowRight size={13} className="ml-1 inline" /></button>}</div>
-    <h1 className="mt-4 font-serif text-3xl sm:text-4xl">这一次，你想问什么？</h1><p className="mt-3 text-sm leading-7 text-ink/50">先放下一个具体的问题，再选择适合它的牌阵。</p>
+    <div className="flex flex-wrap items-center justify-between gap-3"><p className="deep-eyebrow inline-flex items-center gap-2"><Flower2 size={15} strokeWidth={1.2} aria-hidden="true" />A LITTLE CLARITY</p>{historyCount > 0 && <button type="button" onClick={onHistory} className="min-h-10 text-xs text-[#6E2638]">查看历史解读（{historyCount}）<ArrowRight size={13} className="ml-1 inline" /></button>}</div>
+    <h1 className="deep-title mt-6">这一次，你想问什么？</h1><p className="mt-3 text-[15px] leading-7 text-ink/55">一个问题，一点新的视角。</p>
     {pending && <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-[#6E2638]/15 bg-[#FFFDF8] p-4"><div className="min-w-0"><p className="text-sm">有一次尚未完成的抽牌 · {savedPickCount(pending)+pendingQueuedCount}/{getDeepSpread(pending.spread).positions.length} 张</p><p className="mt-1 max-w-xs truncate text-xs text-ink/45">{pending.question}</p></div><button type="button" onClick={() => void resume(pending)} className="min-h-10 text-sm text-[#6E2638]">继续抽牌</button></div>}
-    <label htmlFor="deep-question" className="mt-7 block text-sm text-ink/65">你的问题</label><textarea id="deep-question" value={question} onChange={(event) => { setQuestion(event.target.value); setError(""); }} maxLength={300} required rows={3} placeholder="例如：未来一个月，这段关系会怎样发展？" className="mt-3 w-full resize-y rounded-xl border border-ink/15 bg-[#FFFDF8] p-4 text-base leading-7 outline-none focus:border-[#6E2638]/45" />
-    <p className="mt-1 text-right text-xs text-ink/35">{question.length}/300</p>
-    <fieldset className="mt-5"><legend className="text-sm text-ink/65">选择牌阵</legend><div className="mt-3 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{deepSpreads.filter((item) => paidSiteEnabled || ["three_card","five_card_linear"].includes(item.id)).map((item) => <label key={item.id} className={`relative cursor-pointer rounded-xl border p-4 ${item.id === spreadId ? "border-[#6E2638]/65 bg-[#6E2638]/[0.035]" : "border-ink/10 bg-[#FFFDF8]/75"}`}>
-      <input type="radio" name="deep-spread" value={item.id} checked={item.id === spreadId} onChange={() => { setSpreadId(item.id); setError(""); }} className="sr-only peer" /><span className="absolute inset-0 rounded-xl peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-[#6E2638]" />
-      <div className="flex items-start justify-between gap-3"><div><h2 className="font-serif text-xl">{item.name}</h2><p className="mt-1 text-xs text-clay/65">{item.positions.length} 张 · {item.subtitle.replace(/^.+? · /, "")}</p></div>{item.id === spreadId && <Check size={16} className="shrink-0 text-[#6E2638]" />}</div>
-      <div className="mt-3 flex items-center gap-4"><div className="w-20 shrink-0"><SpreadLayout spreadId={item.id} miniature /></div><p className="text-xs leading-6 text-ink/55">{item.suitable}</p></div>
-    </label>)}</div></fieldset>
-    <section className="mt-4 rounded-xl border border-ink/10 bg-[#FFFDF8]/70 p-4"><p className="text-sm text-[#6E2638]">{getDeepSpread(spreadId).name} · 牌位与阅读方式</p><p className="mt-2 text-xs leading-6 text-ink/55">{getDeepSpread(spreadId).rules}</p><p className="mt-2 text-xs leading-6 text-ink/40">提问参考：{getDeepSpread(spreadId).example}</p></section>
-    {getDeepSpread(spreadId).choiceCount && <fieldset className="mt-5"><legend className="text-sm text-ink/65">写清楚要比较的选项（目标与时间范围保持一致）</legend><div className="mt-3 grid gap-3 sm:grid-cols-2">{Array.from({ length: getDeepSpread(spreadId).choiceCount! }, (_, index) => <label key={index} className="text-xs text-ink/55">选项 {String.fromCharCode(65 + index)}<input required value={choices[index]} maxLength={80} onChange={(event) => setChoices((values) => values.map((value, at) => at === index ? event.target.value : value))} placeholder={index === 0 ? "例如：留在目前的工作" : index === 1 ? "例如：接受新公司的邀请" : "例如：先学习再求职"} className="mt-2 h-12 w-full rounded-lg border border-ink/15 bg-[#FFFDF8] px-3 text-base outline-none focus:border-[#6E2638]/45" /></label>)}</div></fieldset>}
+    <div className="deep-surface group mt-8 p-5 transition-colors focus-within:border-[#6E2638]/30 sm:p-6">
+      <label htmlFor="deep-question" className="deep-eyebrow">YOUR QUESTION</label>
+      <textarea id="deep-question" aria-label="你的问题" value={question} onChange={(event) => { setQuestion(event.target.value); setError(""); }} maxLength={300} required rows={3} placeholder="What would you like to explore?" className="mt-4 w-full resize-y border-0 bg-transparent p-0 text-[17px] leading-8 text-ink/90 outline-none placeholder:text-ink/30 sm:text-lg" />
+      <p className="mt-1 text-right text-[11px] tracking-wide text-ink/35 opacity-0 transition-opacity group-focus-within:opacity-100">{question.length}/300</p>
+    </div>
+    <SpreadPicker spreads={deepSpreads.filter(item => paidSiteEnabled || ["three_card", "five_card_linear"].includes(item.id))} selected={getDeepSpread(spreadId)} onSelect={id => { setSpreadId(id); setError(""); }} />
+    {getDeepSpread(spreadId).choiceCount && <fieldset className="mt-5"><legend className="text-sm text-ink/65">写下要比较的选项</legend><div className="mt-3 grid gap-3 sm:grid-cols-2">{Array.from({ length: getDeepSpread(spreadId).choiceCount! }, (_, index) => <label key={index} className="text-xs text-ink/55">选项 {String.fromCharCode(65 + index)}<input required value={choices[index]} maxLength={80} onChange={(event) => setChoices((values) => values.map((value, at) => at === index ? event.target.value : value))} placeholder={index === 0 ? "Stay with my current role" : index === 1 ? "Explore the new opportunity" : "Take time to learn first"} className="mt-2 h-12 w-full rounded-lg border border-ink/15 bg-[#FFFDF8] px-3 text-base outline-none focus:border-[#6E2638]/45" /></label>)}</div></fieldset>}
     {ruleEngineTrialAllowed && !paidSiteEnabled && <label className="mt-5 flex items-center gap-2 text-xs text-ink/50"><input type="checkbox" checked={useRuleEngineTrial} onChange={(event) => setUseRuleEngineTrial(event.target.checked)} />试用 V2 规则解读</label>}
     {error && <p role="alert" className="mt-4 text-sm text-[#8E4D4A]">{error}</p>}
-    <ServiceNotice kind="deep" />
-    <div className="mt-6 flex flex-wrap items-center gap-4"><button type="submit" disabled={busy} className="inline-flex min-h-12 items-center justify-center gap-2 rounded-full bg-[#6E2638] px-8 text-sm text-[#FFF9F2] disabled:opacity-50"><Sparkles size={16} />{busy ? "正在审查…" : "洗牌，开始这次解读"}</button><p className="text-xs leading-6 text-ink/45" aria-live="polite">{busy ? "审查通过后即可洗牌。" : paidRevealConfirmationEnabled ? "选牌免费，确认后使用 1 花瓣翻牌并解读，含 2 次追问。" : paidSiteEnabled ? "自己选满牌位后使用 1 花瓣，含 2 次追问。" : "选择问题与牌阵后开始解读。"}</p></div>
+    <ServiceNotice kind="deep" compact />
+    <div className="mt-7 flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:gap-5"><button type="submit" disabled={busy} className="deep-primary w-full sm:w-auto"><Sparkles size={16} />{busy ? "正在审查…" : "开始这次解读"}</button><p className="text-xs leading-6 text-ink/45" aria-live="polite">{busy ? "审查通过后即可洗牌。" : paidRevealConfirmationEnabled ? "选牌免费 · 1 花瓣解锁 · 含 2 次追问" : paidSiteEnabled ? "1 花瓣 · 完整解读与 2 次追问" : "选择问题与牌阵后开始解读。"}</p></div>
     </fieldset>
   </form>
     {showMemoryPrompt && memoryPrompt && (

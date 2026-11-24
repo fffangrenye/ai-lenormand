@@ -1,4 +1,5 @@
 import type { DeepSpreadId } from "../deep-spreads";
+import type { RelationshipContext } from "./relationship-context";
 import type { DailyFortune, DailyFortuneCard } from "../daily-fortune";
 export type DailyFortuneEntry = { date: string; card: DailyFortuneCard; fortune: DailyFortune; createdAt: string };
 export type DailyCheckInState = {
@@ -12,6 +13,7 @@ export type PaidSpread = DeepSpreadId;
 export type PaidCard = { number: number; slug: string; nameEn: string; nameZh: string; position: string };
 export type PaidResult = { conclusion: string; interpretation: string; uncertainty: string; advice: string; model: string; promptVersion: string; legacy?:{sourceRecord:Record<string,unknown>;sourceCards:Record<string,unknown>[];messages:{id:string;role:"user"|"assistant";content:string;created_at:string}[]} };
 export type PaidReading = {
+  relationship?: RelationshipContext;
   projectId?: string; choices?: string[];
   id: string; question: string; spread: PaidSpread; cards: PaidCard[];
   state: "locked" | "generating" | "completed" | "failed";
@@ -20,6 +22,7 @@ export type PaidReading = {
   followUps: { id: string; question: string; answer: string; createdAt: string }[];
 };
 export type PaidDrawSession = {
+  relationship?: RelationshipContext;
   id: string; projectId: string; question: string; spread: PaidSpread; choices: string[];
   deck: { token: string; picked: boolean }[]; selected: PaidCard[];
   selectedTokens?: string[];

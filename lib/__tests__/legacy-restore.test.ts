@@ -1,3 +1,4 @@
+import { relationshipMigration } from "../paid-local/relationship-migration";
 import test from "node:test";
 import assert from "node:assert/strict";
 import {randomUUID,createHmac} from "node:crypto";
@@ -10,7 +11,7 @@ import {verifyRestoreJob} from "../../workers/flora-api/legacy-maintenance";
 import {paidReadingForSite,paidFollowUpsForSite} from "../paid-local/site-bridge";
 
 function setup(){
-  const db=new DatabaseSync(":memory:");db.exec(schema);db.exec("PRAGMA foreign_keys=ON");
+  const db=new DatabaseSync(":memory:");db.exec(schema);db.exec(relationshipMigration);db.exec("PRAGMA foreign_keys=ON");
   const tx=<T>(work:()=>T)=>{db.exec("BEGIN IMMEDIATE");try{const r=work();db.exec("COMMIT");return r;}catch(e){db.exec("ROLLBACK");throw e;}};
   const store=new PaidLedger(db,tx,Date.now,{key:()=>"test-key-".repeat(8),prefix:"FLORA"});
   const uid=randomUUID(),pid=randomUUID(),rid=randomUUID(),at="2026-09-22T10:00:00.000Z";

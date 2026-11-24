@@ -27,15 +27,15 @@ export function CookieConsent() {
   if (!visible) return null;
 
   return (
-    <div className="fixed inset-x-4 bottom-4 z-[80] mx-auto max-w-[430px] rounded-[8px] border border-ink/10 bg-[#FFFDF8]/95 p-4 text-ink shadow-paper backdrop-blur">
+    <div className="fixed inset-x-4 bottom-4 z-[80] mx-auto max-w-[430px] rounded-[24px] border border-ink/[0.08] bg-[#FFFDF8]/95 p-5 text-ink shadow-paper backdrop-blur">
       <p className="font-serif text-[18px] leading-6">必要 Cookie 与本地存储</p>
-      <p className="mt-2 text-[12px] leading-5 text-ink/54">
+      <p className="mt-3 text-[13px] leading-7 text-ink/60">
         我们会使用必要 Cookie / 本地存储来保存登录状态、免费额度、项目记忆和基础偏好，用于提供连续的解读体验。
       </p>
       <button
         type="button"
         onClick={acceptConsent}
-        className="mt-3 h-10 w-full rounded-full bg-[#6E2638] px-4 text-[12px] uppercase tracking-[0.12em] text-[#FFF9F2]"
+        className="flora-primary mt-4 w-full"
       >
         知道了
       </button>

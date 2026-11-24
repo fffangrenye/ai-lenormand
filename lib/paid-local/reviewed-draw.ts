@@ -4,8 +4,9 @@ import { LocalPaidError } from "./guard";
 import { throwReadingBlocked } from "./reading-precheck";
 import type { ReadingReview } from "./reviewed-reading";
 import type { PaidProject, PaidSpread } from "./types";
+import { normalizeRelationshipContext, type RelationshipContext } from "./relationship-context";
 
-export type DrawQuestion = { question: string; spread: PaidSpread; choices?: string[] };
+export type DrawQuestion = { question: string; spread: PaidSpread; choices?: string[]; relationship?: RelationshipContext };
 export type ReadingReviewContext = Pick<PaidProject, "background" | "memorySummary">;
 
 export function validateDrawQuestion(input: DrawQuestion) {
@@ -18,11 +19,12 @@ export function validateDrawQuestion(input: DrawQuestion) {
   if (choices.length !== size || choices.some(value => !value || value.length > 80) || new Set(choices.map(value => value.toLowerCase())).size !== size) {
     throw new LocalPaidError("INVALID_CHOICES", `请填写 ${size} 个不同的具体选项，每项不超过 80 字。`);
   }
-  return { question, spread: input.spread, choices };
+  const relationship = normalizeRelationshipContext(input.spread, input.relationship);
+  return { question, spread: input.spread, choices, ...(relationship ? { relationship } : {}) };
 }
 
 export function readingReviewFingerprint(input: DrawQuestion, project?: ReadingReviewContext) {
-  return createHash("sha256").update(JSON.stringify(["flora-review-v1", input.question, input.spread, input.choices ?? [], project?.background ?? "", project?.memorySummary ?? ""])).digest("hex");
+  return createHash("sha256").update(JSON.stringify(["flora-review-v1", input.question, input.spread, input.choices ?? [], project?.background ?? "", project?.memorySummary ?? "", ...(input.relationship ? [input.relationship] : [])])).digest("hex");
 }
 
 export async function reviewNewDraw(input: DrawQuestion, review: ReadingReview, project?: ReadingReviewContext) {

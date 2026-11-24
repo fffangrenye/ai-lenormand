@@ -1,11 +1,13 @@
 import { getDeepSpread, isDeepSpread, type DeepSpreadId } from "../deep-spreads";
 import { lenormandCards } from "../lenormand-cards";
+import type { RelationshipContext } from "./relationship-context";
 
 export const guestDeckSize = lenormandCards.length;
 const draftLifetime = 24 * 60 * 60 * 1000;
 const storageKey = "flora:guest-draw:v1";
 
 type GuestDraw = {
+  relationship?: RelationshipContext;
   id: string;
   question: string;
   spread: DeepSpreadId;
@@ -40,6 +42,9 @@ export function readGuestDraw(id: string): GuestDraw | null {
       || draft.choices.some(choice => typeof choice !== "string" || choice.length > 80)
       || !validGuestSlots(draft.slots, draft.spread)
       || (draft.approval !== undefined && (typeof draft.approval !== "string" || !/^\d{13}\.[a-f0-9]{64}$/.test(draft.approval)))) return null;
+    if (draft.relationship !== undefined && (draft.spread !== "h_seven" || !draft.relationship
+      || !["woman", "man", "unspecified"].includes(draft.relationship.selfGender)
+      || !["woman", "man", "unspecified"].includes(draft.relationship.otherGender))) return null;
     return draft;
   } catch {
     return null;

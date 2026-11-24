@@ -60,7 +60,7 @@ export function ReadingMemoryPrompt({ maxLength, onSave, onSkip, onClose }: {
         event.preventDefault();
         if (!saving.current) onClose();
       }}
-      className="m-auto max-h-[88dvh] w-[calc(100%-1.5rem)] max-w-xl overflow-y-auto overscroll-contain rounded-2xl border border-ink/10 bg-[#FFFDF8] p-4 text-ink shadow-paper backdrop:bg-ink/35 sm:p-7"
+      className="m-auto max-h-[88dvh] w-[calc(100%-1.5rem)] max-w-xl overflow-y-auto overscroll-contain rounded-[28px] border border-ink/[0.07] bg-[#FFFDF8] p-5 text-ink shadow-paper backdrop:bg-ink/25 sm:p-8"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2.5">
@@ -75,15 +75,15 @@ export function ReadingMemoryPrompt({ maxLength, onSave, onSkip, onClose }: {
         写下一两句背景，AI 就能把牌与牌之间的变化，联系到你实际经历的事。你也可以直接抽牌。
       </p>
 
-      <div className="mt-4 rounded-xl border border-ink/10 bg-paper/55 p-3 sm:p-4">
+      <div className="mt-5 rounded-[22px] bg-paper/55 p-4 sm:p-5">
         <p className="text-sm font-medium">「为什么我们聊得来，关系却一直没有进展？」</p>
         <p className="mt-1 text-xs text-ink/65">同一组牌 · 心 → 鸟 → 山</p>
         <div className="mt-3 grid grid-cols-2 gap-2 sm:gap-3">
-          <div className="min-w-0 rounded-lg border border-ink/10 bg-[#FFFDF8] p-2.5 sm:p-3">
+          <div className="min-w-0 rounded-2xl bg-[#FFFDF8] p-3 sm:p-4">
             <p className="text-xs font-medium text-ink/65">没有长期记忆</p>
             <p className="mt-1.5 text-[13px] leading-5 text-ink/75">心接鸟，像是靠来回聊天维持着好感。鸟接山，说明互动虽然在继续，关系可能还卡在从聊天走向实际行动的这一步。</p>
           </div>
-          <div className="min-w-0 rounded-lg border border-[#6E2638]/15 bg-[#6E2638]/5 p-2.5 sm:p-3">
+          <div className="min-w-0 rounded-2xl bg-[#6E2638]/[0.045] p-3 sm:p-4">
             <p className="text-xs font-medium text-[#6E2638]">有长期记忆</p>
             <p className="mt-1.5 text-xs leading-5 text-ink/65">你们分开一个月，最近恢复聊天，但每次提到见面就换话题。</p>
             <p className="mt-1.5 border-t border-[#6E2638]/15 pt-1.5 text-[13px] leading-5 text-ink/75">心和鸟对应恢复联系后的有来有往。山让卡点落在「从聊天到见面」：你们能聊日常，但还没谈成见面的安排。换话题的原因仍不清楚。</p>
@@ -118,8 +118,8 @@ export function ReadingMemoryPrompt({ maxLength, onSave, onSkip, onClose }: {
             disabled={busy}
             maxLength={maxLength}
             rows={3}
-            placeholder="例如：我们分开一个月，最近重新聊天。一提见面就换话题，我想弄清关系卡在哪一步。"
-            className="mt-2 w-full resize-y rounded-lg border border-ink/15 bg-white/80 px-3 py-2.5 text-base leading-6 outline-none focus:border-[#6E2638]/50"
+            placeholder="Share the context that matters to this question…"
+            className="mt-3 w-full resize-y rounded-2xl border border-ink/[0.08] bg-white/80 px-4 py-4 text-base leading-7 outline-none placeholder:text-ink/35 focus:border-[#6E2638]/30"
           />
           {error && <p role="alert" className="mt-2 text-sm text-[#8E4D4A]">{error}</p>}
           <div className="mt-2 flex items-center justify-between gap-3">

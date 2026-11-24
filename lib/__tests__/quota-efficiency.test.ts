@@ -1,3 +1,4 @@
+import { relationshipMigration } from "../paid-local/relationship-migration";
 import test from "node:test";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
@@ -12,7 +13,7 @@ import floraApi, { FloraLedger } from "../../workers/flora-api/index";
 import { measuredSql } from "../../workers/flora-api/sql-cost";
 
 function fixture() {
-  const db = new DatabaseSync(":memory:"); db.exec(schema); db.exec(costIndexes);
+  const db = new DatabaseSync(":memory:"); db.exec(schema); db.exec(costIndexes); db.exec(relationshipMigration);
   const statements: string[] = [];
   const proxy = {prepare(query: string) { statements.push(query); return db.prepare(query); }} as DatabaseSync;
   const tx = <T>(work: () => T) => { db.exec("BEGIN"); try {const value=work();db.exec("COMMIT");return value;}catch(error){db.exec("ROLLBACK");throw error;} };

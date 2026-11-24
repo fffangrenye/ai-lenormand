@@ -3,6 +3,7 @@ import type { DatabaseSync, SQLInputValue } from "node:sqlite";
 import { lenormandCards } from "../lenormand-cards";
 import { projectMemoryLimit, projectMemoryLimitMessage } from "../project-memory";
 import { validGuestSlots } from "./guest-draw";
+import { normalizeRelationshipContext, type RelationshipContext } from "./relationship-context";
 import { getDeepSpread, isDeepSpread, positionLabels } from "../deep-spreads";
 import { paidConfig } from "./config";
 import { dailyDeck, readingForDailyCard } from "../daily-fortune";
@@ -380,6 +381,7 @@ export class PaidLedger {
     const legacy=result?.legacy;
     return {
       projectId: relations ? relations.projectId : this.one("SELECT project_id FROM local_reading_projects WHERE reading_id=?", row.id)?.project_id as string | undefined,
+      ...(row.relationship_json && row.relationship_json !== "null" ? { relationship: JSON.parse(String(row.relationship_json)) as RelationshipContext } : {}),
       id: String(row.id), question: String(row.question), choices: JSON.parse(String(row.choices_json || "[]")), spread: row.spread as PaidSpread,
       cards: JSON.parse(String(row.cards_json)) as PaidCard[], state: row.state as PaidReading["state"], createdAt: String(row.created_at),
       completedAt: row.state === "completed" ? String(legacy ? legacy.sourceRecord.completed_at || row.created_at : (relations ? relations.completedAt : this.completionTimes(String(row.user_id), [String(row.id)])[0]?.created_at) || row.created_at) : null,
@@ -450,20 +452,21 @@ export class PaidLedger {
       }))
     };
   }
-  draw(userId: string, input: { question: string; spread: PaidSpread; requestKey: string; projectId?: string; choices?: string[] }) {
+  draw(userId: string, input: { question: string; spread: PaidSpread; requestKey: string; projectId?: string; choices?: string[]; relationship?: RelationshipContext }) {
     return this.tx(() => this.drawInTransaction(userId, input));
   }
-  protected drawInTransaction(userId: string, input: { question: string; spread: PaidSpread; requestKey: string; projectId?: string; choices?: string[] }, selected?: PaidCard[], reviewedContext?: string) {
+  protected drawInTransaction(userId: string, input: { question: string; spread: PaidSpread; requestKey: string; projectId?: string; choices?: string[]; relationship?: RelationshipContext }, selected?: PaidCard[], reviewedContext?: string) {
     const question = input.question?.trim();
     if (!question || question.length > 300 || !isDeepSpread(input.spread)) throw new LocalPaidError("INVALID_QUESTION", "请填写 1–300 字的问题并选择牌阵。");
     this.validateKey(input.requestKey);
     const choices = this.validateChoices(input.spread, input.choices);
+    const relationship = normalizeRelationshipContext(input.spread, input.relationship);
       if (input.projectId) this.ownedProject(userId, input.projectId);
       const previous = this.one("SELECT * FROM paid_readings WHERE user_id=? AND request_key=?", userId, input.requestKey);
       if (previous) {
         if (this.readingManagementEnabled && previous.deleted_at) throw new LocalPaidError("NOT_FOUND", "这条对话已移出项目记录。", 404);
         const previousProject = this.one("SELECT project_id FROM local_reading_projects WHERE reading_id=?", previous.id)?.project_id;
-        if (previous.question !== question || previous.spread !== input.spread || String(previous.choices_json || "[]") !== JSON.stringify(choices) || (input.projectId && previousProject !== input.projectId)) throw new LocalPaidError("REQUEST_CONFLICT", "同一请求不能变更问题、牌阵或项目。", 409);
+        if (previous.question !== question || previous.spread !== input.spread || String(previous.choices_json || "[]") !== JSON.stringify(choices) || String(previous.relationship_json || "null") !== JSON.stringify(relationship ?? null) || (input.projectId && previousProject !== input.projectId)) throw new LocalPaidError("REQUEST_CONFLICT", "同一请求不能变更问题、牌阵或项目。", 409);
         return this.serialize(previous);
       }
       const count = this.one("SELECT count(*) as n FROM paid_readings WHERE user_id=? AND created_at>=?", userId, new Date(this.clock() - paidConfig.drawWindowMs).toISOString());
@@ -474,7 +477,7 @@ export class PaidLedger {
       const positions = positionLabels(spread, choices);
       for (let i = 0; i < positions.length; i++) cards.push(selected?.[i] || { ...pool.splice(randomInt(pool.length), 1)[0], position: positions[i] });
       const id = randomUUID();
-      this.run("INSERT INTO paid_readings(id,user_id,request_key,question,spread,cards_json,created_at,choices_json) VALUES (?,?,?,?,?,?,?,?)", id, userId, input.requestKey, question, input.spread, JSON.stringify(cards), this.now(), JSON.stringify(choices));
+      this.run("INSERT INTO paid_readings(id,user_id,request_key,question,spread,cards_json,created_at,choices_json,relationship_json) VALUES (?,?,?,?,?,?,?,?,?)", id, userId, input.requestKey, question, input.spread, JSON.stringify(cards), this.now(), JSON.stringify(choices), JSON.stringify(relationship ?? null));
       if (reviewedContext) this.run("UPDATE paid_readings SET reviewed_context=? WHERE id=?", reviewedContext, id);
       if (input.projectId) {
         this.run("INSERT INTO local_reading_projects VALUES (?,?)", id, input.projectId);
@@ -488,7 +491,7 @@ export class PaidLedger {
     if (size && (values.length !== size || values.some((value) => !value || value.length > 80) || new Set(values.map((value) => value.toLowerCase())).size !== size)) throw new LocalPaidError("INVALID_CHOICES", `请填写 ${size} 个不同的具体选项，每项不超过 80 字。`);
     return size ? values : [];
   }
-  claimGuestDraw(userId: string, input: { question: string; spread: PaidSpread; choices?: string[]; requestKey: string; slots: unknown }, reviewedContext?: string) {
+  claimGuestDraw(userId: string, input: { question: string; spread: PaidSpread; choices?: string[]; relationship?: RelationshipContext; requestKey: string; slots: unknown }, reviewedContext?: string) {
     if (!isDeepSpread(input.spread) || !validGuestSlots(input.slots, input.spread)) {
       throw new LocalPaidError("INVALID_CARDS", "选好的牌与牌阵不匹配，请重新选牌。");
     }
@@ -499,7 +502,7 @@ export class PaidLedger {
     return this.tx(() => {
       const previous = this.one("SELECT id FROM paid_readings WHERE user_id=? AND request_key=?", userId, requestKey);
       const projectId = previous ? this.readingProjectId(String(previous.id)) : String(this.defaultProjectRow(userId).id);
-      const readingInput = { question: input.question, spread: input.spread, projectId, requestKey, choices };
+      const readingInput = { question: input.question, spread: input.spread, projectId, requestKey, choices, relationship: input.relationship };
       if (previous) return this.drawInTransaction(userId, readingInput);
       const positions = positionLabels(getDeepSpread(input.spread), choices);
       // Guests select positions of face-down cards. The server assigns card identities.
@@ -525,6 +528,7 @@ export class PaidLedger {
     const choices = JSON.parse(String(row.choices_json)) as string[];
     const positions = positionLabels(getDeepSpread(String(row.spread)), choices);
     return {
+      ...(row.relationship_json && row.relationship_json !== "null" ? { relationship: JSON.parse(String(row.relationship_json)) as RelationshipContext } : {}),
       id: String(row.id), projectId: String(row.project_id), question: String(row.question), spread: row.spread as PaidSpread, choices,
       deck: deck.map(({ token }) => ({ token, picked: picked.includes(token) })),
       selectedTokens: picked,
@@ -538,27 +542,28 @@ export class PaidLedger {
     const row = this.one("SELECT * FROM paid_draw_sessions WHERE user_id=? AND project_id=? AND state='picking' ORDER BY created_at DESC,rowid DESC LIMIT 1", userId, projectId);
     return row ? this.serializeDraw(row) : null;
   }
-  private existingDraw(userId: string, input: { projectId: string; question: string; spread: PaidSpread; choices: string[]; requestKey: string }) {
+  private existingDraw(userId: string, input: { projectId: string; question: string; spread: PaidSpread; choices: string[]; relationship?: RelationshipContext; requestKey: string }) {
     this.validateKey(input.requestKey);
     const project = this.ownedProject(userId, input.projectId);
     const previous = this.one("SELECT * FROM paid_draw_sessions WHERE user_id=? AND request_key=?", userId, input.requestKey);
     if (previous) {
       if (this.readingManagementEnabled && previous.reading_id) this.owned(userId, String(previous.reading_id));
-      if (previous.question !== input.question || previous.spread !== input.spread || previous.project_id !== input.projectId || previous.choices_json !== JSON.stringify(input.choices)) {
+      if (previous.question !== input.question || previous.spread !== input.spread || previous.project_id !== input.projectId || previous.choices_json !== JSON.stringify(input.choices) || String(previous.relationship_json || "null") !== JSON.stringify(normalizeRelationshipContext(input.spread, input.relationship) ?? null)) {
         throw new LocalPaidError("REQUEST_CONFLICT", "请勿改变同一次洗牌的问题或牌阵。", 409);
       }
     }
     return { project, previous };
   }
-  drawForReview(userId: string, input: { projectId: string; question: string; spread: PaidSpread; choices: string[]; requestKey: string }) {
+  drawForReview(userId: string, input: { projectId: string; question: string; spread: PaidSpread; choices: string[]; relationship?: RelationshipContext; requestKey: string }) {
     const { project, previous } = this.existingDraw(userId, input);
     return { project: this.serializeProject(project), previous: previous ? this.serializeDraw(previous) : undefined };
   }
-  startDrawSession(userId: string, input: { projectId: string; question: string; spread: PaidSpread; choices?: string[]; requestKey: string }, reviewedContext?: string) {
+  startDrawSession(userId: string, input: { projectId: string; question: string; spread: PaidSpread; choices?: string[]; relationship?: RelationshipContext; requestKey: string }, reviewedContext?: string) {
     const question = input.question?.trim();
     if (!question || question.length > 300 || !isDeepSpread(input.spread)) throw new LocalPaidError("INVALID_QUESTION", "请填写 1–300 字的问题并选择牌阵。");
     this.validateKey(input.requestKey);
     const choices = this.validateChoices(input.spread, input.choices);
+    const relationship = normalizeRelationshipContext(input.spread, input.relationship);
     return this.tx(() => {
       const { previous } = this.existingDraw(userId, { ...input, question, choices });
       if (previous) return this.serializeDraw(previous);
@@ -570,7 +575,7 @@ export class PaidLedger {
       // Starting again abandons an unfinished session, without consuming a petal.
       this.run("UPDATE paid_draw_sessions SET state='abandoned' WHERE user_id=? AND project_id=? AND state='picking'", userId, input.projectId);
       const id = randomUUID();
-      this.run("INSERT INTO paid_draw_sessions(id,user_id,project_id,request_key,question,spread,choices_json,deck_json,created_at) VALUES (?,?,?,?,?,?,?,?,?)", id, userId, input.projectId, input.requestKey, question, input.spread, JSON.stringify(choices), JSON.stringify(deck), this.now());
+      this.run("INSERT INTO paid_draw_sessions(id,user_id,project_id,request_key,question,spread,choices_json,deck_json,created_at,relationship_json) VALUES (?,?,?,?,?,?,?,?,?,?)", id, userId, input.projectId, input.requestKey, question, input.spread, JSON.stringify(choices), JSON.stringify(deck), this.now(), JSON.stringify(relationship ?? null));
       if (reviewedContext) this.run("UPDATE paid_draw_sessions SET reviewed_context=? WHERE id=?", reviewedContext, id);
       return this.serializeDraw(this.drawSessionRow(userId, id));
     });
