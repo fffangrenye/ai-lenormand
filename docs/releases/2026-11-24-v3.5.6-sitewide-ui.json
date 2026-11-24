@@ -1,0 +1,247 @@
+{
+  "productVersion": "3.5.6",
+  "releaseName": "Flora V3.5.6 · 全站界面与字体统一、线性解读及 H 人物设置",
+  "environment": "production",
+  "domain": "https://floralenormand.site",
+  "sourceTag": "flora-v3.5.6-20261124",
+  "sourceCommit": "583369fe959ec2a856e6bd892dcf330c210dcda1",
+  "branch": "codex/onion-home-release",
+  "changes": [
+    "统一首页、日运、Yes or No、洋葱、深度、登录、账户、花瓣及弹窗的排版与控件。",
+    "全站采用系统衬线字体，保留设备字号适配，移除未使用的网络字体。",
+    "三牌与五牌按原问题决定组合解释方向，保留既有整体框架与事实边界。",
+    "H 七张牌阵增加双方性别与不指定选项，保存上下文，不改变随机抽牌。",
+    "价格、花瓣权益、签到及 Yes or No 次数规则不变，无新增统计、轮询或 AI 调用阶段。"
+  ],
+  "workers": [
+    {
+      "commit": "583369fe959ec2a856e6bd892dcf330c210dcda1",
+      "branch": "codex/onion-home-release",
+      "worker": "flora-domain-info",
+      "config": "wrangler.flora-v3-site.jsonc",
+      "version": "3e5c3b7a-bc10-4d19-a724-9f39109ef415",
+      "deploymentId": "c19d0a29-2020-4dda-9d8d-e96f49bbec70",
+      "createdAt": "2026-11-24T08:52:31.304755Z",
+      "percentage": 100,
+      "rollback": {
+        "deploymentId": "9949ca2b-3be9-4247-8d40-386042abb878",
+        "createdAt": "2026-11-19T06:58:45.654505Z",
+        "versions": [
+          {
+            "version": "65d034d9-91dd-490f-a7a4-5650aabc370b",
+            "percentage": 100
+          }
+        ]
+      },
+      "checks": [
+        {
+          "command": "secure-cloudflare-build.cjs --flora-v3",
+          "passed": true,
+          "reusedValidatedBuild": true
+        },
+        {
+          "command": "scan-cloudflare-artifacts.cjs",
+          "passed": true
+        },
+        {
+          "command": "test-public-assets.cjs",
+          "passed": true,
+          "publicPages": 11,
+          "publicHtmlRequestsEnterWorker": false
+        },
+        {
+          "command": "test-site-runtime.cjs",
+          "passed": true,
+          "productionServicesUsed": false
+        },
+        {
+          "command": "scan-source-secrets.cjs",
+          "passed": true
+        }
+      ],
+      "activationRecovery": "Upload connection ended without a success response. Queried Cloudflare versions, verified the exact Git commit and tag, then activated that existing version at 100%; no duplicate API deployment."
+    },
+    {
+      "commit": "583369fe959ec2a856e6bd892dcf330c210dcda1",
+      "branch": "codex/onion-home-release",
+      "worker": "flora-v3-api",
+      "config": "wrangler.flora-v3-api.jsonc",
+      "version": "40f40a61-8310-466b-af73-c5a85adf9bf0",
+      "createdAt": "2026-11-24T07:54:39.447Z",
+      "rollback": {
+        "deploymentId": "ecb41c6e-93b5-42a1-ad71-6ab29a5adada",
+        "createdAt": "2026-11-19T05:34:42.633278Z",
+        "versions": [
+          {
+            "version": "c644022d-ddf1-42d7-ba31-de6c0a5cdf5d",
+            "percentage": 100
+          }
+        ]
+      },
+      "checks": [
+        {
+          "command": "node.exe scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 833
+        },
+        {
+          "command": "node.exe C:\\Users\\SQY\\.codex\\worktrees\\onion-home-release\\release-v3.4.4-session-20261113\\node_modules\\wrangler\\bin\\wrangler.js deploy --config wrangler.flora-v3-api.jsonc --dry-run --outdir .local-paid/cloud-api-build",
+          "passed": true,
+          "durationMs": 5188
+        },
+        {
+          "command": "node.exe scripts/test-cloud-ledger.cjs",
+          "passed": true,
+          "durationMs": 3268
+        },
+        {
+          "command": "node.exe scripts/test-cloud-security.cjs",
+          "passed": true,
+          "durationMs": 1624
+        },
+        {
+          "command": "node.exe scripts/test-cloud-legacy-restore.cjs",
+          "passed": true,
+          "durationMs": 1205
+        },
+        {
+          "command": "node.exe scripts/scan-source-secrets.cjs",
+          "passed": true,
+          "durationMs": 820
+        }
+      ],
+      "deploymentId": "e595ecd5-3796-4762-a991-6a0d20dc2094",
+      "percentage": 100
+    }
+  ],
+  "verification": {
+    "checkedAt": "2026-11-24T08:54:22.112Z",
+    "sourceCommit": "583369fe959ec2a856e6bd892dcf330c210dcda1",
+    "pages": [
+      {
+        "path": "/",
+        "status": 200,
+        "static": true,
+        "matchesBuild": true
+      },
+      {
+        "path": "/daily",
+        "status": 200,
+        "static": true,
+        "matchesBuild": true
+      },
+      {
+        "path": "/yes-no",
+        "status": 200,
+        "static": true,
+        "matchesBuild": true
+      },
+      {
+        "path": "/knowledge",
+        "status": 200,
+        "static": true,
+        "matchesBuild": true
+      },
+      {
+        "path": "/oracle",
+        "status": 200,
+        "static": true,
+        "matchesBuild": true
+      },
+      {
+        "path": "/space",
+        "status": 200,
+        "static": true,
+        "matchesBuild": true
+      },
+      {
+        "path": "/terms",
+        "status": 200,
+        "static": true,
+        "matchesBuild": true
+      },
+      {
+        "path": "/privacy",
+        "status": 200,
+        "static": true,
+        "matchesBuild": true
+      },
+      {
+        "path": "/refunds",
+        "status": 200,
+        "static": true,
+        "matchesBuild": true
+      },
+      {
+        "path": "/contact",
+        "status": 200,
+        "static": true,
+        "matchesBuild": true
+      },
+      {
+        "path": "/pricing",
+        "status": 200,
+        "static": true,
+        "matchesBuild": true
+      },
+      {
+        "path": "/login",
+        "status": 200,
+        "containsLocalPreview": false
+      },
+      {
+        "path": "/profile",
+        "status": 200,
+        "containsLocalPreview": false
+      },
+      {
+        "path": "/deep",
+        "status": 200,
+        "containsLocalPreview": false
+      },
+      {
+        "path": "/recharge",
+        "status": 200,
+        "containsLocalPreview": false
+      },
+      {
+        "path": "/redeem",
+        "status": 200,
+        "containsLocalPreview": false
+      }
+    ],
+    "assets": [
+      {
+        "path": "/_next/static/css/c8476ab9144f8047.css",
+        "status": 200,
+        "matchesBuild": true
+      },
+      {
+        "path": "/_next/static/chunks/app/layout-bfc019854f97d018.js",
+        "status": 200,
+        "matchesBuild": true
+      },
+      {
+        "path": "/_next/static/chunks/app/deep/page-9087f2aa6ee0be1c.js",
+        "status": 200,
+        "matchesBuild": true
+      }
+    ],
+    "anonymousApi": 401,
+    "productionUserDataModified": false,
+    "aiCalls": 0,
+    "systemSerifVerified": true,
+    "typecheckPassed": true,
+    "testFilesPassed": 26,
+    "additionalMigrationCompatibilityTestPassed": true,
+    "cloudRuntimeChecksPassed": true
+  },
+  "rollback": {
+    "siteVersion": "65d034d9-91dd-490f-a7a4-5650aabc370b",
+    "apiVersion": "c644022d-ddf1-42d7-ba31-de6c0a5cdf5d",
+    "schemaMigration": 15,
+    "schemaChange": "Only adds relationship_json with null defaults to readings and draw sessions; old code ignores the added columns.",
+    "deleteColumnsOnRollback": false,
+    "reimportHistory": false
+  }
+}
